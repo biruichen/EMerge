@@ -1,0 +1,37 @@
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project]
+name = "emerge"
+version = "0.1.0"
+description = "An open source EM FEM simulator in Python"
+readme = "README.md"
+requires-python = ">=3.10, <4.0"
+dependencies = [
+    "gmsh>=4.13.1",
+    "loguru>=0.7.3",
+    "numba>=0.61.2",
+    "numba-progress>=1.1.3",
+    "numpy>=2.2.6",
+    "pyvista>=0.45.2",
+    "scipy>=1.15.3",
+    "threadpoolctl>=3.6.0",
+]
+
+[project.optional-dependencies]
+pypardiso = [
+  "pypardiso @ git+https://github.com/haasad/PyPardiso.git",
+  "matplotlib",
+  "scikit-rf",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+no-build-isolation-package = ["cchardet"]
+
+[project.urls]
+Homepage = "https://github.com/FennisRobert/EMerge"
+Issues = "https://github.com/FennisRobert/EMerge/issues"
