@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -240,7 +240,7 @@ class CoordinateSystem:
     xax: Axis
     yax: Axis
     zax: Axis
-    origin: np.ndarray = np.array([0,0,0])
+    origin: np.ndarray = field(default_factory=lambda: np.array([0,0,0]))
     _is_global: bool = False
 
     def __post_init__(self):
