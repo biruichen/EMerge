@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from ...mesh3d import Mesh3D, SurfaceMesh
-from ...geo3d import GMSHObject, GMSHSurface, GMSHVolume
+from ...geometry import GeoObject, GeoSurface, GeoVolume
 from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection
 from ...bc import PortBC
 import numpy as np
@@ -143,12 +143,12 @@ def _min_distance(xs, ys, zs):
 def _norm(x, y, z):
     return np.sqrt(np.abs(x)**2 + np.abs(y)**2 + np.abs(z)**2)
 
-def _select(obj: GMSHObject | Selection) -> Selection:
-    if isinstance(obj, GMSHObject):
+def _select(obj: GeoObject | Selection) -> Selection:
+    if isinstance(obj, GeoObject):
         return obj.select
     return obj
 
-def _merge(lst: list[GMSHObject | Selection]) -> Selection:
+def _merge(lst: list[GeoObject | Selection]) -> Selection:
     selections = [_select(item) for item in lst]
     dim = selections[0].dim
     all_tags = []
@@ -182,7 +182,7 @@ class MPLDisplay(BaseDisplay):
         self._ax = None
 
     ## OBLIGATORY METHODS
-    def add_object(self, obj: GMSHObject | Selection | Iterable, opacity: float = 1, color: str = None, **kwargs):
+    def add_object(self, obj: GeoObject | Selection | Iterable, opacity: float = 1, color: str = None, **kwargs):
         self.init()
 
         if color is not None:

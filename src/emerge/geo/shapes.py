@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import gmsh
-from ..geo3d import GMSHObject, GMSHSurface, GMSHVolume
+from ..geometry import GeoObject, GeoSurface, GeoVolume
 from ..cs import CoordinateSystem, GCS
 import numpy as np
 from enum import Enum
@@ -30,7 +30,7 @@ class Alignment(Enum):
     CENTER = 1
     CORNER = 2
 
-class OldBox(GMSHVolume):
+class OldBox(GeoVolume):
     """ A class that represents a box shaped volume
 
     """
@@ -88,7 +88,7 @@ class OldBox(GMSHVolume):
     def top(self) -> FaceSelection:
         return SELECTOR_OBJ.face.near(self.centre[0], self.centre[1], self.centre[2]+self.height/2)
     
-class Sphere(GMSHVolume):
+class Sphere(GeoVolume):
 
     def __init__(self, 
                  radius: float,
@@ -103,7 +103,7 @@ class Sphere(GMSHVolume):
         x,y,z = position
         self.tags: list[int] = [gmsh.model.occ.addSphere(x,y,z,radius),]
 
-class XYPlate(GMSHSurface):
+class XYPlate(GeoSurface):
     def __init__(self, 
                  width: float, 
                  depth: float, 
@@ -128,7 +128,7 @@ class XYPlate(GMSHSurface):
         self.tags: list[int] = [gmsh.model.occ.addRectangle(x,y,z,width,depth),]
 
 
-class Plate(GMSHSurface):
+class Plate(GeoSurface):
         
     def __init__(self,
                 origin: tuple[float, float, float],
@@ -167,7 +167,7 @@ class Plate(GMSHSurface):
         self.tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
 
 
-class Cyllinder(GMSHVolume):
+class Cyllinder(GeoVolume):
 
     def __init__(self, 
                  radius: float,
@@ -223,7 +223,7 @@ class Cyllinder(GMSHVolume):
         xo, yo, zo = self.cs.in_global_cs(x.flatten(), y.flatten(), z.flatten())
         return xo, yo, zo
 
-class CoaxCyllinder(GMSHVolume):
+class CoaxCyllinder(GeoVolume):
     """A coaxial cylinder with an inner and outer radius."""
     
     def __init__(self, 
@@ -284,7 +284,7 @@ class CoaxCyllinder(GMSHVolume):
         return xo, yo, zo
         return super().boundary()
     
-class HalfSphere(GMSHVolume):
+class HalfSphere(GeoVolume):
 
     def __init__(self,
                  radius: float,
@@ -300,7 +300,7 @@ class HalfSphere(GMSHVolume):
 
 
 
-class Box(GMSHVolume):
+class Box(GeoVolume):
     '''The sided box class creates a box just like the Box class but with selectable face tags.
     This class is more convenient in use when defining radiation boundaries.'''
     def __init__(self, 

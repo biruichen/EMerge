@@ -16,12 +16,12 @@
 # <https://www.gnu.org/licenses/>.
 
 from typing import TypeVar
-from ..geo3d import GMSHSurface, GMSHVolume
+from ..geometry import GeoSurface, GeoVolume
 from ..cs import CoordinateSystem, GCS
 import gmsh
 import numpy as np
 
-T = TypeVar('T', GMSHSurface, GMSHVolume)
+T = TypeVar('T', GeoSurface, GeoVolume)
 
 def _gen_mapping(obj_in, obj_out) -> dict:
     tag_mapping: dict[int, dict] = {0: dict(),
@@ -39,8 +39,8 @@ def add(main: T, tool: T,
     
     Parameters
     ----------
-    main : GMSHSurface | GMSHVolume
-    tool : GMSHSurface | GMSHVolume
+    main : GeoSurface | GeoVolume
+    tool : GeoSurface | GeoVolume
     remove_object : bool, optional
         If True, the main object will be removed from the model after the operation. Default is True.
     remove_tool : bool, optional
@@ -48,14 +48,14 @@ def add(main: T, tool: T,
     
     Returns
     -------
-    GMSHSurface | GMSHVolume
+    GeoSurface | GeoVolume
         A new object that is the union of the main and tool objects.
     '''
     out_dim_tags, out_dim_tags_map = gmsh.model.occ.fuse(main.dimtags, tool.dimtags, removeObject=remove_object, removeTool=remove_tool)
     if out_dim_tags[0][0] == 3:
-        return GMSHVolume([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+        return GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
     elif out_dim_tags[0][0] == 2:
-        return GMSHSurface([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+        return GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
 
 def remove(main: T, other: T, 
              remove_object: bool = True,
@@ -64,8 +64,8 @@ def remove(main: T, other: T,
     
     Parameters
     ----------
-    main : GMSHSurface | GMSHVolume
-    tool : GMSHSurface | GMSHVolume
+    main : GeoSurface | GeoVolume
+    tool : GeoSurface | GeoVolume
     remove_object : bool, optional
         If True, the main object will be removed from the model after the operation. Default is True.
     remove_tool : bool, optional
@@ -73,24 +73,24 @@ def remove(main: T, other: T,
     
     Returns
     -------
-    GMSHSurface | GMSHVolume
+    GeoSurface | GeoVolume
         A new object that is the difference of the main and tool objects.
     '''
     out_dim_tags, out_dim_tags_map = gmsh.model.occ.cut(main.dimtags, other.dimtags, removeObject=remove_object, removeTool=remove_tool)
     if out_dim_tags[0][0] == 3:
-        return GMSHVolume([dt[1] for dt in out_dim_tags])._take_tools(other,main)
+        return GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(other,main)
     elif out_dim_tags[0][0] == 2:
-        return GMSHSurface([dt[1] for dt in out_dim_tags])._take_tools(other,main)
+        return GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(other,main)
 
 subtract = remove
 
-def embed(main: GMSHVolume, other: GMSHSurface) -> None:
+def embed(main: GeoVolume, other: GeoSurface) -> None:
     ''' Embeds a surface into a volume in the GMSH model.
     Parameters
     ----------
-    main : GMSHVolume
+    main : GeoVolume
         The volume into which the surface will be embedded.
-    other : GMSHSurface
+    other : GeoSurface
         The surface to be embedded into the volume.
     
     Returns
@@ -100,22 +100,22 @@ def embed(main: GMSHVolume, other: GMSHSurface) -> None:
     gmsh.model.geo.synchronize()
     gmsh.model.mesh.embed(other.dim, [other.tag,], main.dim, main.tags)
 
-def rotate(main: GMSHVolume, 
+def rotate(main: GeoVolume, 
            c0: tuple[float, float, float],
            ax: tuple[float, float, float],
            angle: float,
-           degree=True) -> GMSHVolume:
-    """Rotates a GMSHVolume object around an axist defined at a coordinate.
+           degree=True) -> GeoVolume:
+    """Rotates a GeoVolume object around an axist defined at a coordinate.
 
     Args:
-        main (GMSHVolume): The object to rotate
+        main (GeoVolume): The object to rotate
         c0 (tuple[float, float, float]): The point of origin for the rotation axis
         ax (tuple[float, float, float]): A vector defining the rotation axis
         angle (float): The angle in degrees (if degree is True)
         degree (bool, optional): Whether to interpret the angle in degrees. Defaults to True.
 
     Returns:
-        GMSHVolume: The rotated GMSHVolume object.
+        GeoVolume: The rotated GeoVolume object.
     """
     if degree:
         angle = angle * np.pi/180
@@ -126,20 +126,20 @@ def rotate(main: GMSHVolume,
         fp.rotate(c0, ax, angle)
     return main
 
-def translate(main: GMSHVolume,
+def translate(main: GeoVolume,
               dx: float = 0,
               dy: float = 0,
-              dz: float = 0) -> GMSHVolume:
-    """Translates the GMSHVolume object along a given displacement
+              dz: float = 0) -> GeoVolume:
+    """Translates the GeoVolume object along a given displacement
 
     Args:
-        main (GMSHVolume): The object to translate
+        main (GeoVolume): The object to translate
         dx (float, optional): The X-displacement in meters. Defaults to 0.
         dy (float, optional): The Y-displacement in meters. Defaults to 0.
         dz (float, optional): The Z-displacement in meters. Defaults to 0.
 
     Returns:
-        GMSHVolume: The translated object
+        GeoVolume: The translated object
     """
     gmsh.model.occ.translate(main.dimtags, dx, dy, dz)
     
@@ -149,18 +149,18 @@ def translate(main: GMSHVolume,
 
     return main
 
-def mirror(main: GMSHVolume,
+def mirror(main: GeoVolume,
            origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-           direction: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> GMSHVolume:
-    """Mirrors a GMSHVolume object along a miror plane defined by a direction originating at a point
+           direction: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> GeoVolume:
+    """Mirrors a GeoVolume object along a miror plane defined by a direction originating at a point
 
     Args:
-        main (GMSHVolume): The object to mirror
+        main (GeoVolume): The object to mirror
         origin (tuple[float, float, float], optional): The point of origin in meters. Defaults to (0.0, 0.0, 0.0).
         direction (tuple[float, float, float], optional): The normal axis defining the plane of reflection. Defaults to (1.0, 0.0, 0.0).
 
     Returns:
-        GMSHVolume: The mirrored GMSHVolume object
+        GeoVolume: The mirrored GeoVolume object
     """
     a, b, c = direction
     x0, y0, z0 = origin
@@ -173,16 +173,16 @@ def mirror(main: GMSHVolume,
         fp.mirror(origin, direction)
     return main
 
-def change_coordinate_system(main: GMSHVolume,
+def change_coordinate_system(main: GeoVolume,
                              new_cs: CoordinateSystem = GCS,
                              old_cs: CoordinateSystem = GCS):
-    """Moves the GMSHVolume object from a current coordinate system to a new one.
+    """Moves the GeoVolume object from a current coordinate system to a new one.
 
     The old and new coordinate system by default are the global coordinate system.
     Thus only one needs to be provided to transform to and from these coordinate systems.
 
     Args:
-        main (GMSHVolume): The object to transform
+        main (GeoVolume): The object to transform
         new_cs (CoordinateSystem): The new coordinate system. Defaults to GCS
         old_cs (CoordinateSystem, optional): The old coordinate system. Defaults to GCS.
 

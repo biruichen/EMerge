@@ -24,7 +24,7 @@ Dtot = 750
 extra = 100
 with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
     mat = em.Material(3.55, color=(0.1,1.0,0.2), opacity=0.1)
-    pcb = em.modeling.PCBLayouter(th,unit=mil)
+    pcb = em.geo.PCBLayouter(th,unit=mil)
 
     pcb.new(0,140,w0,(1,0)).straight(l0).turn(0).straight(l1*0.8)\
         .straight(l1,w1, dy=abs(w1-w0)/2).jump(gap=g1, side='left', reverse=l1-e).straight(l1,w1)\

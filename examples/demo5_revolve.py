@@ -3,7 +3,7 @@ from emerge.plotting.pyvista import PVDisplay
 
 with em.Simulation3D('Revolve test', PVDisplay) as m:
 
-    poly = em.modeling.XYPolygon.rect(0.5, 1, (0.5, 0))
+    poly = em.geo.XYPolygon.rect(0.5, 1, (0.5, 0))
 
     m.view()
 

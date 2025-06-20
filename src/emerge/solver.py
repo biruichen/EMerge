@@ -29,23 +29,17 @@ import platform
 import time
 
 _PARDISO_AVAILABLE = False
+
+""" Check if the PC runs on a non-ARM architechture
+If so, attempt to import PyPardiso (if its installed)
+"""
+
 if 'arm' not in platform.processor():
-    logger.info('Non ARM architecture discovered. Importing PyPARDISO')
     try:
         from pypardiso import spsolve as pardiso_solve
         _PARDISO_AVAILABLE = True
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
-
-def _scale(A,b):
-    # A is your patch-antenna sparse matrix (CSC or CSR OK)
-    row_norm = np.abs(A).sum(axis=1).A1          # 1-D NumPy array
-    scale     = 1.0 / np.maximum(row_norm, 1e-99)  # avoid divide-by-zero
-
-    D = diags(scale)      # diagonal scaling matrix  (same format as A)
-    A_scaled = D @ A         # left-scale the system
-    b_scaled = D @ b         # don't forget to scale the RHS the same way
-    return A_scaled, b_scaled
 
 def superlu_info() -> None:
     """Prints relevant SuperLU backend information
@@ -120,7 +114,9 @@ def real_to_complex_block(x):
     return x_r + 1j * x_i
 
 class Sorter:
-    
+    """ A Generic class that executes a sort on the indices.
+    It must implement a sort and unsort method.
+    """
     def __init__(self):
         pass
 
@@ -134,7 +130,9 @@ class Sorter:
         return x
 
 class Preconditioner:
-    
+    """A Generic class defining a preconditioner as attribute .M based on the
+    matrix A and b. This must be generated in the .init(A,b) method.
+    """
     def __init__(self):
         self.M: np.ndarray = None
 
@@ -145,7 +143,14 @@ class Preconditioner:
         pass
 
 class Solver:
+    """ A generic class representing a solver for the problem Ax=b
     
+    A solver class has two class attributes.
+     - real_only: defines if the solver can only deal with real numbers. In this case
+    the solve routine will automatically provide A and b in real number format.
+     - req_sorter: defines if this solver requires the use of a sorter algorithm. By setting
+     it to False, the SolveRoutine will not use the default sorting algorithm.
+    """
     real_only: bool = False
     req_sorter: bool = False
     def __init__(self):
@@ -155,15 +160,15 @@ class Solver:
         return f'{self.__class__.__name__}'
     
     def solve(self, A: lil_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False) -> tuple[np.ndarray, int]:
-        return gmres(A, b, M=precon.M), 0
+        raise NotImplementedError("This classes Ax=B solver method is not implemented.")
     
     def eig(self, A: lil_matrix, B: np.ndarray, nmodes: int = 6, target_k0: float = None, which: str = 'LM'):
-        raise NotImplementedError("This classes eigs method is not implemented.")
+        raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
         
 ## SORTERS
 
 class ReverseCuthillMckee(Sorter):
-
+    """ Implements the Reverse Cuthill-Mckee sorting."""
     def __init__(self):
         super().__init__()
         self.perm = None
@@ -188,7 +193,7 @@ class ReverseCuthillMckee(Sorter):
 ## Preconditioners
 
 class ILUPrecon(Preconditioner):
-
+    """ Implements the incomplete LU preconditioner on matrix A. """
     def __init__(self):
         super().__init__()
         self.M = None
@@ -202,8 +207,9 @@ class ILUPrecon(Preconditioner):
 
 ## Solvers
 
+# Iterative
 class SolverBicgstab(Solver):
-
+    """ Implements the Bi-Conjugate Gradient Stabilized method"""
     def __init__(self):
         super().__init__()
         self.atol = 1e-5
@@ -226,6 +232,7 @@ class SolverBicgstab(Solver):
         return x, info
 
 class SolverGCROTMK(Solver):
+    """ Implements the GCRO-T(m,k) Iterative solver. """
     def __init__(self):
         super().__init__()
         self.atol = 1e-5
@@ -248,6 +255,7 @@ class SolverGCROTMK(Solver):
         return x, info
 
 class SolverGMRES(Solver):
+    """ Implements the GMRES solver. """
     real_only = False
     def __init__(self):
         super().__init__()
@@ -270,7 +278,9 @@ class SolverGMRES(Solver):
             x, info = gmres(A, b, atol=self.atol, callback=self.callback, callback_type='pr_norm')
         return x, info
 
+# Direct
 class SolverSuperLU(Solver):
+    """ Implements Scipi's direct SuperLU solver."""
     req_sorter: bool = False
     real_only: bool = False
     def __init__(self):
@@ -288,13 +298,13 @@ class SolverSuperLU(Solver):
         with threadpool_limits(limits={'blas': 1, 'openmp': 1, 'openblas': 1}):
             if not reuse_factorization:
                 self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.01, options=self.options)
-            #logger.debug(f'A={A.nnz}, L={self.lu.L.nnz} ({self.lu.L.nnz/A.nnz:.2f}), U={self.lu.U.nnz} ({self.lu.L.nnz/A.nnz:.2f})')
             x = self.lu.solve(b)
 
         return x, 0
 
 
-class SolverSP(Solver):
+class SolverUMFPACK(Solver):
+    """ Implements the UMFPACK Sparse SP solver."""
     req_sorter = False
     real_only = False
     def __init__(self):
@@ -304,14 +314,15 @@ class SolverSP(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
 
-    def solve(self, A, b, precon):
-        logger.info('Calling SP Solver')
+    def solve(self, A, b, precon, reuse_factorization: bool = False):
+        logger.info('Calling UMFPACK Solver')
         self.A = A
         self.b = b
         x = spsolve(A, b)
         return x, 0
     
 class SolverPardiso(Solver):
+    """ Implements the PARDISO solver through PyPardiso. """
     real_only: bool = True
     req_sorter: bool = False
 
@@ -328,6 +339,8 @@ class SolverPardiso(Solver):
         x = pardiso_solve(A, b)
         return x, 0
     
+## Direct EIGENMODE solvers
+
 class SolverLAPACK(Solver):
 
     def __init__(self):
@@ -361,7 +374,7 @@ class SolverLAPACK(Solver):
         return lam, vecs
     
 class SolverARPACK(Solver):
-
+    """ Implements the Scipy ARPACK iterative eigenmode solver."""
     def __init__(self):
         super().__init__()
 
@@ -379,7 +392,11 @@ class SolverARPACK(Solver):
 ### ROUTINE
 
 class SolveRoutine:
+    """ A generic class describing a solve routine.
+    A solve routine contains all the relevant sorter preconditioner and solver objects
+    and goes through a sequence of steps to solve a linear system or find eigenmodes.
 
+    """
     def __init__(self, 
                  sorter: Sorter, 
                  precon: Preconditioner, 
@@ -420,6 +437,19 @@ class SolveRoutine:
         return self.direct_solver
     
     def get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
+        """Returns the relevant eigenmode Solver object given a certain matrix and source vector
+
+        This is the default implementation for the SolveRoutine Class.
+        
+        Args:
+            A (np.ndarray): The Matrix to solve for
+            b (np.ndarray): the vector to solve for
+            direct (bool): If the direct solver should be used.
+
+        Returns:
+            Solver: Returns the solver object
+
+        """
         return self.direct_eig_solver
     
     def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
@@ -526,6 +556,8 @@ class SolveRoutine:
 
 
 class AutomaticRoutine(SolveRoutine):
+    """ Defines the Automatic Routine for EMerge.
+    """
 
     def get_solver(self, A: np.ndarray, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
@@ -553,7 +585,8 @@ class AutomaticRoutine(SolveRoutine):
             return self.direct_solver
 
 class ParallelRoutine(SolveRoutine):
-
+    """ Defines the Parallel solve routine to be used in the multithreaded environment.
+    """
     def __init__(self):
         self.sorter: Sorter = ReverseCuthillMckee()
         self.precon: Preconditioner = None

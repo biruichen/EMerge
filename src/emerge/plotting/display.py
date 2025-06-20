@@ -1,5 +1,5 @@
 from ..mesh3d import Mesh3D
-from ..geo3d import GMSHObject, GMSHSurface, GMSHVolume
+from ..geometry import GeoObject, GeoSurface, GeoVolume
 from ..selection import Selection
 from ..bc import PortBC
 from typing import Iterable, Literal
@@ -13,7 +13,7 @@ class BaseDisplay:
     def show(self):
         raise NotImplementedError('This method is not implemented')
         
-    def add_object(self, obj: GMSHObject | Selection | Iterable,*args, **kwargs):
+    def add_object(self, obj: GeoObject | Selection | Iterable,*args, **kwargs):
         raise NotImplementedError('This method is not implemented')
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):

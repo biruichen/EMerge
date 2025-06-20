@@ -22,7 +22,7 @@ from numba import njit, f8
 from .mesher import Mesher
 from typing import Union, List, Tuple, Callable
 from collections import defaultdict
-from .geo3d import GMSHVolume
+from .geometry import GeoVolume
 from .mth.optimized import outward_normal
 from loguru import logger
 
@@ -355,7 +355,7 @@ class Mesh3D:
         self.defined = True
     ## Higher order functions
 
-    def retreive(self, material_selector: Callable, volumes: list[GMSHVolume]) -> np.ndarray:
+    def retreive(self, material_selector: Callable, volumes: list[GeoVolume]) -> np.ndarray:
         '''Retrieve the material properties of the geometry'''
         arry = np.zeros((3,3,self.n_tets,), dtype=np.complex128)
 

@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from ..geo3d import GMSHVolume
+from ..geometry import GeoVolume
 from .shapes import Box, Sphere, Alignment, Plate
 from ..material import Material, AIR
 import gmsh
@@ -30,7 +30,7 @@ def _add_pml_layer(center: tuple[float, float, float],
                    Nlayers: int,
                    exponent: float,
                    deltamax: float,
-                   material: Material) -> list[GMSHVolume]:
+                   material: Material) -> list[GeoVolume]:
     px, py, pz = center
     W,D,H = dims
     dx, dy, dz = direction
@@ -136,7 +136,7 @@ def pmlbox(width: float,
             left: bool = False,
             right: bool = False,
             front: bool = False,
-            back: bool = False) -> list[GMSHVolume]:
+            back: bool = False) -> list[GeoVolume]:
     
     px, py, pz = position
     if alignment == Alignment.CORNER:

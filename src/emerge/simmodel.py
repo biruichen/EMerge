@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 from .mesher import Mesher, unpack_lists
-from .geo3d import GMSHObject
+from .geometry import GeoObject
 import gmsh
 from .physics.edm.emfreq3d import Electrodynamics3D
 from .mesh3d import Mesh3D
@@ -27,7 +27,7 @@ import numpy as np
 from .selection import Selector, FaceSelection, Selection
 import sys
 from .logsettings import logger_format
-from .modeling.modeler import Modeler
+from .geo.modeler import Modeler
 from .plotting.display import BaseDisplay
 
 
@@ -58,7 +58,7 @@ class Simulation3D:
         self.select: Selector = Selector()
         self.modeler: Modeler = Modeler()
         self.display: BaseDisplay = None
-        self._geometries: list[GMSHObject] = []
+        self._geometries: list[GeoObject] = []
         self.set_loglevel(loglevel)
 
         ## STATES
@@ -98,7 +98,7 @@ class Simulation3D:
     
        
     
-    def define_geometry(self, *geometries: list[GMSHObject]) -> None:
+    def define_geometry(self, *geometries: list[GeoObject]) -> None:
         """Provide the physics engine with the geometries that are contained and ought to be included
         in the simulation. Please make sure to include all geometries. Its currently unclear how the
         system behaves if only a part of all geometries are included.
@@ -141,7 +141,7 @@ class Simulation3D:
         
         Parameters
         ----------
-        obj: GMSHObject
+        obj: GeoObject
         tags: list[int]
         
         Returns:

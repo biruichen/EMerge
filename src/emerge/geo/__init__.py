@@ -20,4 +20,4 @@ from .pmlbox import pmlbox
 from .horn import Horn
 from .shapes import Cyllinder, CoaxCyllinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox
 from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system
-from .extrude import XYPolygon, Prism
+from .extrude import XYPolygon, GeoPrism

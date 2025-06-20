@@ -171,7 +171,7 @@ class _FacePointer:
         # self.n = self.n / np.linalg.norm(self.n)
 
 
-class GMSHObject:
+class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
     dim: int = -1
@@ -182,7 +182,7 @@ class GMSHObject:
         self.mesh_multiplier: float = 1.0
         self.max_meshsize: float = 1e9
         self._unset_constraints: bool = False
-        self._embeddings: list[GMSHObject] = []
+        self._embeddings: list[GeoObject] = []
         self._face_pointers: dict[str, _FacePointer] = dict()
         self._tools: dict[int, dict[str, _FacePointer]] = dict()
         self._key = _GENERATOR.new()
@@ -206,17 +206,17 @@ class GMSHObject:
         elif self.dim==3:
             return DomainSelection(self.tags)
     @staticmethod
-    def merged(objects: list[GMSHObject]) -> list[GMSHObject]:
+    def merged(objects: list[GeoObject]) -> list[GeoObject]:
         dim = objects[0].dim
         tags = []
         for obj in objects:
             tags.extend(obj.tags)
         if dim==2:
-            out = GMSHSurface(tags)
+            out = GeoSurface(tags)
         elif dim==3:
-            out = GMSHVolume(tags)
+            out = GeoVolume(tags)
         else:
-            out = GMSHObject(tags)
+            out = GeoObject(tags)
         out.material = objects[0].material
         return out
     
@@ -240,12 +240,12 @@ class GMSHObject:
         self.tags = newtags
         logger.debug(f'Replaced {self.old_tags} with {self.tags}')
     
-    def update_tags(self, tag_mapping: dict[int,dict]) -> GMSHObject:
-        ''' Update the tag definition of a GMSHObject after fragementation.'''
+    def update_tags(self, tag_mapping: dict[int,dict]) -> GeoObject:
+        ''' Update the tag definition of a GeoObject after fragementation.'''
         self.replace_tags(tag_mapping[self.dim])
         return self
     
-    def _take_pointers(self, *others: GMSHObject) -> GMSHObject:
+    def _take_pointers(self, *others: GeoObject) -> GeoObject:
         for other in others:
             self._face_pointers.update(other._face_pointers)
             self._tools.update(other._tools)
@@ -265,13 +265,13 @@ class GMSHObject:
             keys = keys.union(set(dct.keys()))
         return keys
     
-    def _take_tools(self, *objects: GMSHObject) -> GMSHObject:
+    def _take_tools(self, *objects: GeoObject) -> GeoObject:
         for obj in objects:
             self._tools[obj._key] = obj._face_pointers
             self._tools.update(obj._tools)
         return self
     
-    def _face_tags(self, name: FaceNames, tool: GMSHObject = None) -> list[int]:
+    def _face_tags(self, name: FaceNames, tool: GeoObject = None) -> list[int]:
         names = self._all_pointer_names
         if name not in names:
             raise ValueError(f'The face {name} does not exist in {self}')
@@ -302,7 +302,7 @@ class GMSHObject:
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
         return FaceSelection([t for d,t in dimtags if t not in tags])
     
-    def face(self, name: FaceNames, tool: GMSHObject = None) -> FaceSelection:
+    def face(self, name: FaceNames, tool: GeoObject = None) -> FaceSelection:
         """Returns the FaceSelection for a given face name.
         
         The face name must be defined for the type of geometry.
@@ -334,15 +334,15 @@ class GMSHObject:
             raise ValueError('Can only generate faces for objects of dimension 2 or higher.')
 
     @staticmethod
-    def from_dimtags(dim: int, tags: list[int]) -> GMSHVolume | GMSHSurface | GMSHObject:
+    def from_dimtags(dim: int, tags: list[int]) -> GeoVolume | GeoSurface | GeoObject:
         if dim==2:
-            return GMSHSurface(tags)
+            return GeoSurface(tags)
         if dim==3:
-            return GMSHVolume(tags)
-        return GMSHObject(tags)
+            return GeoVolume(tags)
+        return GeoObject(tags)
     
-class GMSHVolume(GMSHObject):
-    '''GMSHVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
+class GeoVolume(GeoObject):
+    '''GeoVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
     specific geometry data.'''
     dim = 3
     def __init__(self, tag: int | list[int]):
@@ -356,8 +356,8 @@ class GMSHVolume(GMSHObject):
     def select(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
-class GMSHSurface(GMSHObject):
-    '''GMSHVolume is an interface to the GMSH CAD kernel. It does not reprsent Emerge
+class GeoSurface(GeoObject):
+    '''GeoVolume is an interface to the GMSH CAD kernel. It does not reprsent Emerge
     specific geometry data.'''
     dim = 2
 
@@ -372,7 +372,7 @@ class GMSHSurface(GMSHObject):
         else:
             self.tags: list[int] = [tag,]
 
-class Polygon(GMSHSurface):
+class GeoPolygon(GeoSurface):
     
     def __init__(self,
                  tags: list[int]):
