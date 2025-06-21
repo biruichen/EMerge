@@ -490,7 +490,10 @@ class Electrodynamics3D:
 
         return group1, group2
     
-    def frequency_domain_par(self, njobs: int = 2) -> EMSimData:
+    def frequency_domain_par(self, 
+                             njobs: int = 2, 
+                             harddisc_threshold: int = 100_000,
+                             harddisc_path: str = 'EMergeSparse') -> EMSimData:
         ''' Executes the frequency domain study.'''
         T0 = time.time()
         mesh = self.mesh
@@ -549,7 +552,7 @@ class Electrodynamics3D:
             # Assembling matrix problem
             freqdata = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
 
-            job = SimJob(freqdata.A, freqdata.b, freq, True)
+            job = SimJob(freqdata.A, freqdata.b, freq, True, harddisc_threshold, harddisc_path)
             job.port_vectors = freqdata.port_vectors
             job.solve_ids = freqdata.solve_ids
             job.erttri = ertri.copy()
