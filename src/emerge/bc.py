@@ -761,7 +761,32 @@ class LumpedPort(PortBC):
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
     
+###
 
+class PMC(BoundaryCondition):
+    pass
+
+class Periodic(BoundaryCondition):
+
+    def __init__(self, 
+                 selection1: FaceSelection,
+                 selection2: FaceSelection,
+                 dv: tuple[float,float,float],
+                 ):
+        self.face1: BoundaryCondition = BoundaryCondition(selection1)
+        self.face2: BoundaryCondition = BoundaryCondition(selection2)
+        super().__init__(FaceSelection(selection1.tags + selection2.tags))
+        self.dv: tuple[float,float,float] = dv
+        self.ux: float = 0
+        self.uy: float = 0
+        self.uz: float = 0
+
+    def phi(self, k0) -> complex:
+        dx, dy, dz = self.dv
+        return np.exp(1j*k0*(self.ux*dx+self.uy*dy+self.uz*dz))
+    
+
+    
 #### LEGACY CODE
 
 # class ABC(BoundaryCondition):

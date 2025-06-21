@@ -290,8 +290,9 @@ class SolverSuperLU(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         self._perm_c = None
-        self.options: dict[str, str] = dict(SymmetricMode=True, ConditionNumber=True)
+        self.options: dict[str, str] = dict(SymmetricMode=True)
         self.lu = None
+        self.user_api = threadpool_info()[0]['user_api']
         
     def solve(self, A, b, precon, reuse_factorization: bool = False):
         logger.info('Calling SuperLU Solver')
@@ -575,6 +576,9 @@ class AutomaticRoutine(SolveRoutine):
 
         """
         N = A.shape[0]
+        if N < 10_000:
+            self.use_preconditioner = False
+            return SolverSuperLU()
         if N > 5_000_000 or not self.use_direct:
             logger.warning('Using Iterative Solver due to large matrix size.' \
             'This simulation likely wont converge due to a lack of good preconditioner support.')
