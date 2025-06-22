@@ -1,6 +1,6 @@
 import emerge as em
 import numpy as np
-from emerge.plotting.pyvista import PVDisplay
+from emerge.plot.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 mm = 0.001
 mil = 0.0254*mm
@@ -57,7 +57,7 @@ with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
 
     m.mesher.set_boundary_size(stripline, 0.7*mm)
 
-    m.generate_mesh('pcbmesh.msh')
+    m.generate_mesh()
 
     m.view(use_gmsh=True)
     port1 = em.bc.ModalPort(p1, 1, True)

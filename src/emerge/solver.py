@@ -17,14 +17,14 @@
 
 
 from __future__ import annotations
-from scipy.sparse import lil_matrix, csc_matrix, diags
+from scipy.sparse import lil_matrix, csc_matrix
 from scipy.sparse.csgraph import reverse_cuthill_mckee
 from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigsh, splu
 from scipy.linalg import eig
 from scipy import sparse, show_config
 import numpy as np
 from loguru import logger
-from threadpoolctl import threadpool_limits, threadpool_info
+from threadpoolctl import threadpool_info
 import platform
 import time
 
@@ -51,6 +51,7 @@ def superlu_info() -> None:
         print(f'     - Internal API: {info["internal_api"]}')
         print(f'     - Num threads: {info["num_threads"]}')
     blas_dep = show_config(mode='dicts')['Build Dependencies']['blas']
+    print('')
     print('   Scipy BLAS Build Dependencies info:')
     for key in blas_dep:
         print(f'     - {key}: {blas_dep[key]}')
@@ -290,15 +291,14 @@ class SolverSuperLU(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         self._perm_c = None
-        self.options: dict[str, str] = dict(SymmetricMode=True, ConditionNumber=True)
+        self.options: dict[str, str] = dict(SymmetricMode=True)
         self.lu = None
         
     def solve(self, A, b, precon, reuse_factorization: bool = False):
         logger.info('Calling SuperLU Solver')
-        with threadpool_limits(limits={'blas': 1, 'openmp': 1, 'openblas': 1}):
-            if not reuse_factorization:
-                self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.01, options=self.options)
-            x = self.lu.solve(b)
+        if not reuse_factorization:
+            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.01, options=self.options)
+        x = self.lu.solve(b)
 
         return x, 0
 
@@ -410,6 +410,7 @@ class SolveRoutine:
 
         self.iterative_solver: Solver = iterative_solver
         self.direct_solver: Solver = direct_solver
+        self.fast_direct_solver: Solver = SolverSuperLU()
 
         self.iterative_eig_solver: Solver = iterative_eig_solver
         self.direct_eig_solver: Solver = direct_eig_solver
@@ -434,7 +435,7 @@ class SolveRoutine:
             Solver: Returns the direct solver
 
         """
-        return self.direct_solver
+        return self.fast_direct_solver
     
     def get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
@@ -575,6 +576,9 @@ class AutomaticRoutine(SolveRoutine):
 
         """
         N = A.shape[0]
+        if N < 10_000:
+            self.use_preconditioner = False
+            return self.fast_direct_solver
         if N > 5_000_000 or not self.use_direct:
             logger.warning('Using Iterative Solver due to large matrix size.' \
             'This simulation likely wont converge due to a lack of good preconditioner support.')

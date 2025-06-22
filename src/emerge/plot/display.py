@@ -29,3 +29,11 @@ class BaseDisplay:
               scalemode: Literal['lin','log'] = 'lin'):
         
         raise NotImplementedError('This method is not implemented')
+    
+    def add_surf(self, x: np.ndarray,
+                 y: np.ndarray,
+                 z: np.ndarray,
+                 field: np.ndarray,
+                 opacity: float = 1.0):
+        
+        raise NotImplementedError('This method is not implemented')

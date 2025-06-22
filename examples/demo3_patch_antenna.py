@@ -1,6 +1,6 @@
 import emerge as em
 import numpy as np
-from emerge.plotting.pyvista import PVDisplay
+from emerge.plot.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 
 mm = 0.001
