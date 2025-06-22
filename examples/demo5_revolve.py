@@ -1,5 +1,5 @@
 import emerge as em
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 
 with em.Simulation3D('Revolve test', PVDisplay) as m:
 

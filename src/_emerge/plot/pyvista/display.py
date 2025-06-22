@@ -15,14 +15,13 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from ...mesh3d import Mesh3D, SurfaceMesh
-from ...geometry import GeoObject, GeoSurface, GeoVolume
+from ...mesh3d import Mesh3D
+from ...geometry import GeoObject
 from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection
 from ...bc import PortBC
 import numpy as np
 import pyvista as pv
-from typing import Iterable, Literal, Callable
-from functools import wraps
+from typing import Iterable, Literal
 from ..display import BaseDisplay
 
 def _logscale(dx, dy, dz):
@@ -188,6 +187,13 @@ class PVDisplay(BaseDisplay):
         self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
+        """Adds a scatter point cloud
+
+        Args:
+            xs (np.ndarray): The X-coordinate
+            ys (np.ndarray): The Y-coordinate
+            zs (np.ndarray): The Z-coordinate
+        """
         cloud = pv.PolyData(np.array([xs,ys,zs]).T)
         self._plot.add_points(cloud)
 
@@ -229,11 +235,22 @@ class PVDisplay(BaseDisplay):
         Emag = F/np.max(Fnorm.flatten())*d*3
         self._plot.add_arrows(np.array([xf,yf,zf]).T, Emag)
 
-    def add_surf(self, x: np.ndarray,
+    def add_surf(self, 
+                 x: np.ndarray,
                  y: np.ndarray,
                  z: np.ndarray,
                  field: np.ndarray,
                  opacity: float = 1.0):
+        """Add a surface plot to the display
+        The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
+
+        Args:
+            x (np.ndarray): The x-coordinates
+            y (np.ndarray): The y-coordinates
+            z (np.ndarray): The z-coordinates
+            field (np.ndarray): The field to display
+            opacity (float, optional): The opacity. Defaults to 1.0.
+        """
         grid = pv.StructuredGrid(x,y,z)
         self._plot.add_mesh(grid, scalars=field.T, opacity=opacity)
 
@@ -241,7 +258,18 @@ class PVDisplay(BaseDisplay):
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,
               scale: float = 1,
               scalemode: Literal['lin','log'] = 'lin'):
-        
+        """Add a quiver plot to the display
+
+        Args:
+            x (np.ndarray): The X-coordinates
+            y (np.ndarray): The Y-coordinates
+            z (np.ndarray): The Z-coordinates
+            dx (np.ndarray): The arrow X-magnitude
+            dy (np.ndarray): The arrow Y-magnitude
+            dz (np.ndarray): The arrow Z-magnitude
+            scale (float, optional): The arrow scale. Defaults to 1.
+            scalemode (Literal['lin','log'], optional): Wether to scale lin or log. Defaults to 'lin'.
+        """
         x = x.flatten()
         y = y.flatten()
         z = z.flatten()
@@ -260,23 +288,3 @@ class PVDisplay(BaseDisplay):
             Vec[:,1] = dy
             Vec[:,2] = dz
         self._plot.add_arrows(Coo, Vec)
-
-    def cutplane(self, 
-                     N: int,
-                     x: float=None,
-                     y: float=None,
-                     z: float=None):
-        xb, yb, zb = self.mesh.bounds
-        xs = np.linspace(xb[0], xb[1], N)
-        ys = np.linspace(yb[0], yb[1], N)
-        zs = np.linspace(zb[0], zb[1], N)
-        if x is not None:
-            Y,Z = np.meshgrid(ys, zs)
-            X = x*np.ones_like(Y)
-        if y is not None:
-            X,Z = np.meshgrid(xs, zs)
-            Y = y*np.ones_like(X)
-        if z is not None:
-            X,Y = np.meshgrid(xs, ys)
-            Z = z*np.ones_like(Y)
-        

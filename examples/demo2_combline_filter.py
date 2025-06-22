@@ -1,6 +1,6 @@
 import emerge as em
 import numpy as np
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 """ DEMO: COMBLINE FILTER
 
@@ -47,7 +47,6 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
     # The filter consists of quarter lamba cylindrical pins inside an airbox.
     # First we create the airbox
     box = em.geo.Box(Lbox, a, b, position=(0,-a/2,0))
-
 
     # Next we create 5 cyllinders using the Modeler class.
     # The modeler class also implements a method chaining interface. In this example we stick to simpler features.

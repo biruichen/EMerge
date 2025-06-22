@@ -1,5 +1,5 @@
 import emerge as em
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -15,7 +15,7 @@ mm = 0.001
 th = 1
 with em.Simulation3D('Stripline_test', PVDisplay, loglevel='DEBUG') as m:
     # As usual we start by creating our layouter
-    ly = em.geo.PCBLayouter(th, mm, em.cs.GCS, em.material.ROGERS_4350B)
+    ly = em.PCBLayouter(th, mm, em.cs.GCS, em.material.ROGERS_4350B)
 
     # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
     # None of the transmission lines are conciously matched in any way, this is just about the routing
