@@ -548,11 +548,7 @@ class RectangularWaveguide(PortBC):
             self.cs: CoordinateSystem = cs
 
     def get_amplitude(self, k0: float) -> float:
-        w = k0*299792458
-        lc = 2*self.dims[0]
-        wc = 299792458 * 2 * np.pi / lc
-        Q = np.sqrt(1-wc**2/w**2)
-        Zte = 377
+        Zte = 376.73031341259
         amplitude= np.sqrt(self.power*4*Zte/(self.dims[0]*self.dims[1]))
         return amplitude
     

@@ -10,12 +10,12 @@ mil = 0.0254
 um = 0.000001
 PI = np.pi
 
-with em.Simulation3D("myfile", PVDisplay, load_file=True) as m:
+with em.Simulation3D(#FILE#, PVDisplay, load_file=True) as m:
     
     fdata = m.physics.freq_data
 
-    f, S11 = fdata.axis('freq').S(1,1)
-    f, S21 = fdata.axis('freq').S(2,1)
+    f, S11 = fdata.ax('freq').S(1,1)
+    f, S21 = fdata.ax('freq').S(2,1)
     plt.plot_sp(f/1e9, [S11, S21])
 
     m.display.add_object(m['box'])

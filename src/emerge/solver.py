@@ -96,10 +96,8 @@ def complex_to_real_block(A, b):
     """Return (Â,  b̂) real-augmented representation of A x = b."""
     A_r = sparse.csr_matrix(A.real)
     A_i = sparse.csr_matrix(A.imag)
-
     #  [ ReA  -ImA ]
     #  [ ImA   ReA ]
-    n = A.shape[0]
     upper = sparse.hstack([A_r, -A_i])
     lower = sparse.hstack([A_i,  A_r])
     A_hat = sparse.vstack([upper, lower]).tocsr()
