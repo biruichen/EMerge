@@ -98,6 +98,6 @@ with em.Simulation3D('Stripline_test', PVDisplay, loglevel='DEBUG') as m:
     # In the latest version, you can use the cutplane method of the dataset class
     # which is equivalent to the interpolate method except it automatically generates
     # the point cloud based on a plane x,y or z coordinate.
-    m.display.add_quiver(*data.item(11).cutplane(ds=0.001, z=-0.00025).quiver('E'))
-    m.display.add_surf(*data.item(11).cutplane(ds=0.001, z=-0.00075).surf('Ez','real'))
+    m.display.add_quiver(*data.item(11).cutplane(ds=0.001, z=-0.00025).vector('E'))
+    m.display.add_surf(*data.item(11).cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'))
     m.display.show()

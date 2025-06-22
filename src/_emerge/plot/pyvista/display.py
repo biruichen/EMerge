@@ -288,3 +288,17 @@ class PVDisplay(BaseDisplay):
             Vec[:,1] = dy
             Vec[:,2] = dz
         self._plot.add_arrows(Coo, Vec)
+
+    def add_contour(self,
+                     X: np.ndarray,
+                     Y: np.ndarray,
+                     Z: np.ndarray,
+                     V: np.ndarray,
+                     Nlevels: int = 5):
+        Vf = V.flatten()
+        vmin = np.min(Vf)
+        vmax = np.max(Vf)
+        grid = pv.StructuredGrid(X,Y,Z)
+        grid['values'] = V.flatten(order='F')
+        contour = grid.contour(isosurfaces=np.linspace(vmin, vmax, Nlevels))
+        self._plot.add_mesh(contour, opacity=0.25)

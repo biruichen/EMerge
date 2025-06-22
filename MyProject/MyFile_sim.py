@@ -14,7 +14,7 @@ wga = 22.86*mm
 wgb = 10.16*mm
 wgl = 50*mm
 
-with em.Simulation3D(#FILE#, PVDisplay, save_file=True) as m:
+with em.Simulation3D("MyFile", PVDisplay, save_file=True) as m:
     m['box'] = em.geo.Box(wga,wgl,wgb,(0,0,0))
     
     m.define_geometry()

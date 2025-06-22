@@ -50,6 +50,6 @@ with em.Simulation3D('Periodic', PVDisplay, loglevel='DEBUG') as m:
 
     m.display.add_object(wg)
     m.display.add_object(box)
-    m.display.add_surf(*data.item(0).cutplane(3*mm, y=0).surf('Ey','real'))
-    m.display.add_surf(*data.item(0).cutplane(3*mm, x=0).surf('Ey','real'))
+    m.display.add_surf(*data.item(0).cutplane(3*mm, y=0).scalar('Ey','real'))
+    m.display.add_surf(*data.item(0).cutplane(3*mm, x=0).scalar('Ey','real'))
     m.display.show()
