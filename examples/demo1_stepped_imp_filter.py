@@ -119,6 +119,10 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     f, S12 = sol.ax('freq').S(1,2)
     f, S22 = sol.ax('freq').S(2,2)
     
+    from emerge.plot import smith
+
+    smith(f,S11)
+
     plt.plot(f/1e9, 20*np.log10(np.abs(S11)))
     plt.plot(f/1e9, 20*np.log10(np.abs(S21)))
     plt.plot(f/1e9, 20*np.log10(np.abs(S12)))
