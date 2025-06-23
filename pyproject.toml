@@ -22,6 +22,20 @@ dependencies = [
 [project.scripts]
 emerge = "_emerge.cli:main"
 
+[tool.hatch.build.targets.wheel]
+only-include = ["src/_emerge", "src/emerge"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/_emerge" = "_emerge"
+"src/emerge"  = "emerge"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/_emerge", "src/emerge"]
+
+[tool.hatch.build.targets.sdist.sources]
+"src/_emerge" = "_emerge"
+"src/emerge"  = "emerge"
+
 [project.optional-dependencies]
 pypardiso = [
   "pypardiso @ git+https://github.com/haasad/PyPardiso.git",
@@ -39,3 +53,4 @@ no-build-isolation-package = ["cchardet"]
 [project.urls]
 Homepage = "https://github.com/FennisRobert/EMerge"
 Issues = "https://github.com/FennisRobert/EMerge/issues"
+
