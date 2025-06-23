@@ -28,7 +28,18 @@ from typing import Callable
 ## TODO: TEMPORARY SOLUTION FIX THIS
 
 class FieldFunctionClass:
-    """"""
+    """ This Class serves as a picklable class so that ModalPort boundary conditions
+    can actually be stored with the Simulation3D class. Functions aren't picklable in 
+    Python. 
+    
+    I am not happy with the existence of this class, it feels too ad-hoc but for now it
+    is the simplest way. It stores all actually required information needed to do a
+    surface field interpolation without needing to store the Mesh3D and SurfaceMesh class
+    objects plus the NedelecLegrange2 classes with the Simulation3D. 
+
+    As it stands currently, only the GMSH mesh is stored plus the geometry objects. The
+    mesh is reconstructed as it is deterministic.
+    """
     def __init__(self, 
                  field: np.ndarray,
                  cs: CoordinateSystem,

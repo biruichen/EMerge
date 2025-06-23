@@ -99,13 +99,16 @@ class Electrodynamics3D:
         self.mode_data: dict[int, EMSimData] = dict()
 
     def pack_data(self) -> dict:
-        datapack = dict(freq_data = self.freq_data,
+        datapack = dict(basis = self.basis,
+                        freq_data = self.freq_data,
                         mode_data = self.mode_data)
         return datapack
     
     def load_data(self, datapack: dict) -> None:
         self.freq_data = datapack['freq_data']
         self.mode_data = datapack['mode_data']
+        self.basis = datapack['basis']
+        self.mesh = self.basis.mesh
 
     def set_order(self, order: int) -> None:
         """Sets the order of the basis functions used. Currently only supports second order.

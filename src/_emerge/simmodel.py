@@ -103,7 +103,7 @@ class Simulation3D:
         # Pack and save data
         physics = self.physics.pack_data()
         objects = self.obj
-        dataset = dict(physics=physics, objects=objects)
+        dataset = dict(physics=physics, objects=objects, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
         joblib.dump(dataset, str(data_path))
         logger.info(f"Saved simulation data to: {data_path}")
