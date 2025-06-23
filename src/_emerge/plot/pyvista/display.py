@@ -24,6 +24,51 @@ import pyvista as pv
 from typing import Iterable, Literal
 from ..display import BaseDisplay
 
+from matplotlib.colors import ListedColormap
+### Color scale
+
+# Define the colors we want to use
+col1 = np.array([57, 179, 227, 255])/255
+col2 = np.array([22, 36, 125, 255])/255
+col3 = np.array([33, 33, 33, 255])/255
+col4 = np.array([173, 76, 7, 255])/255
+col5 = np.array([250, 75, 148, 255])/255
+
+def gen_cmap(mesh, N: int = 256):
+    # build a linear grid of data‐values (not strictly needed for pure colormap)
+    vmin, vmax = mesh['values'].min(), mesh['values'].max()
+    mapping = np.linspace(vmin, vmax, N)
+    
+    # prepare output
+    newcolors = np.empty((N, 4))
+    
+    # normalized positions of control points: start, middle, end
+    control_pos = np.array([0.0, 0.25, 0.5, 0.75, 1]) * (vmax - vmin) + vmin
+    # stack control colors
+    controls = np.vstack([col1, col2, col3, col4, col5])
+    
+    # interp each RGBA channel independently
+    for chan in range(4):
+        newcolors[:, chan] = np.interp(mapping, control_pos, controls[:, chan])
+    
+    return ListedColormap(newcolors)
+
+
+
+def setdefault(options: dict, **kwargs) -> dict:
+    """Shorthand for overwriting non-existent keyword arguments with defaults
+
+    Args:
+        options (dict): The kwargs dict
+
+    Returns:
+        dict: the kwargs dict
+    """
+    for key in kwargs.keys():
+        if key not in options:
+            options[key] = kwargs[key]
+    return options
+
 def _logscale(dx, dy, dz):
     """
     Logarithmically scales vector magnitudes so that the largest remains unchanged
@@ -178,11 +223,7 @@ class PVDisplay(BaseDisplay):
     ## OBLIGATORY METHODS
     def add_object(self, obj: GeoObject | Selection | Iterable, *args, **kwargs):
 
-        if "color" not in kwargs:
-            kwargs["color"] = obj.color
-        
-        if "opacity" not in kwargs:
-            kwargs["opacity"] = obj.opacity
+        kwargs = setdefault(kwargs, color=obj.color, opacity=obj.opacity)
 
         self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
 
@@ -240,7 +281,8 @@ class PVDisplay(BaseDisplay):
                  y: np.ndarray,
                  z: np.ndarray,
                  field: np.ndarray,
-                 opacity: float = 1.0):
+                 opacity: float = 1.0,
+                 **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
 
@@ -251,8 +293,11 @@ class PVDisplay(BaseDisplay):
             field (np.ndarray): The field to display
             opacity (float, optional): The opacity. Defaults to 1.0.
         """
+        
         grid = pv.StructuredGrid(x,y,z)
-        self._plot.add_mesh(grid, scalars=field.T, opacity=opacity)
+        grid['values'] = field.flatten(order='F')
+        kwargs = setdefault(kwargs, cmap=gen_cmap(grid))
+        self._plot.add_mesh(grid, opacity=opacity, **kwargs)
 
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,

@@ -1,0 +1,38 @@
+import emerge as em
+from emerge.pyvista import PVDisplay
+import numpy as np
+
+# Constants
+cm = 0.01
+mm = 0.001
+mil = 0.0254
+um = 0.000001
+PI = np.pi
+
+# Variable definitions
+wga = 22.86*mm
+wgb = 10.16*mm
+wgl = 50*mm
+
+with em.Simulation3D("MyFile", PVDisplay, save_file=True) as m:
+    m['box'] = em.geo.Box(wga,wgl,wgb,(0,0,0))
+    
+    m.define_geometry()
+
+    m.physics.set_frequency_range(8e9,9e9,11)
+
+    m.generate_mesh()
+
+    m.view()
+
+    # Set boundary conditions
+    port1 = em.bc.RectangularWaveguide(m['box'].face('front'), 1)
+    port2 = em.bc.RectangularWaveguide(m['box'].face('back'), 2)
+    
+
+    # Assign boundary conditions
+    m.physics.assign(port1)
+    m.physics.assign(port2)
+
+    # Run simulation steps
+    m.physics.frequency_domain()

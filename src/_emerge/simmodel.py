@@ -125,6 +125,7 @@ class Simulation3D:
         datapack = joblib.load(str(data_path))
         self.physics.load_data(datapack['physics'])
         self.obj = datapack['objects']
+        self.mesh = datapack['mesh']
         logger.info(f"Loaded simulation data from: {data_path}")
 
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:

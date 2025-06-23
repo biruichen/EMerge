@@ -74,7 +74,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     m.physics.set_resolution(0.05)
     
     # And we define our frequency range
-    m.physics.set_frequency_range(1e9, 2e9, 11)
+    m.physics.set_frequency_range(1e9, 2e9, 21)
 
     # EMerge also has a convenient interface to improve surface meshing quality. 
     # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
@@ -115,19 +115,20 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
     sol = m.physics.frequency_domain()
     
+    fd = np.linspace(1e9, 2e9, 1001)
     f, S11 = sol.ax('freq').S(1,1)
     f, S21 = sol.ax('freq').S(2,1)
     f, S12 = sol.ax('freq').S(1,2)
     f, S22 = sol.ax('freq').S(2,2)
-    
+
     from _emerge.plot import smith
 
-    smith(f,S11)
+    smith(fd,S11)
 
-    plt.plot(f/1e9, 20*np.log10(np.abs(S11)))
-    plt.plot(f/1e9, 20*np.log10(np.abs(S21)))
-    plt.plot(f/1e9, 20*np.log10(np.abs(S12)))
-    plt.plot(f/1e9, 20*np.log10(np.abs(S22)))
+    plt.plot(fd/1e9, 20*np.log10(np.abs(S11)))
+    plt.plot(fd/1e9, 20*np.log10(np.abs(S21)))
+    plt.plot(fd/1e9, 20*np.log10(np.abs(S12)))
+    plt.plot(fd/1e9, 20*np.log10(np.abs(S22)))
     plt.legend(['S11','S21','S12','S22'])
     plt.grid(True)
     plt.show()

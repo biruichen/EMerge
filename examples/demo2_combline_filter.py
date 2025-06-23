@@ -76,12 +76,13 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
     m.view()
 
     # We define our frequency range and a fine sampling.
-    m.physics.set_frequency_range(6e9, 8e9, 4)
-    m.physics.resolution = 0.04
+    m.physics.set_frequency_range(6e9, 8e9, 21)
+
+    m.physics.resolution = 0.05
 
     # To improve simulation quality we refine the faces at the top of the cylinders.
     for stub in stubs:
-        m.mesher.set_boundary_size(box.face('back', tool=stub), 0.0002)
+        m.mesher.set_boundary_size(box.face('back', tool=stub), 0.002)
 
     # Finally we may create our mesh.
     m.generate_mesh()
@@ -99,8 +100,9 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
     m.physics.modal_analysis(port2, 1, TEM=True)
     
     # At last we can compute the frequency domain study
-    data = m.physics.frequency_domain()
+    data = m.physics.frequency_domain(parallel=True)
 
+    f = np.linspace(6e9, 8e9, 401)
     # We plot our S-parameters using the Pyescher module (that I created).
     f, S11 = data.ax('freq').S(1,1)
     f, S21 = data.ax('freq').S(2,1)
@@ -125,7 +127,7 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
 
     # The E-field can be interpolated by selecting a desired solution and then interpolating it.
 
-    Ex, Ey, Ez = data.item(3).interpolate(X,Y,Z,data.item(3).freq).E
+    Ex, Ey, Ez = data.item(3).interpolate(X,Y,Z).E
 
     # We can add the objects we want and fields using the shown methods.
     m.display.add_object(box, opacity=0.1, show_edges=True)

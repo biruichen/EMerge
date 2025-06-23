@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 from typing import Sequence, Type, Literal
 from loguru import logger
+from .adaptive_freq import SparamModel
 EMField = Literal[
     "er", "ur", "freq", "k0",
     "_Spdata", "_Spmapping", "_field", "_basis",
@@ -295,7 +296,6 @@ class _DataSetProxy:
         yax = []
         field = object.__getattribute__(self, '_field')
         if callable(getattr(self._dss[0], name)):
-            
             def wrapped(*args, **kwargs):
                 
                 for ds in self._dss:
@@ -374,6 +374,23 @@ class EMSimData(SimData[EMDataSet]):
         """
         # find the real DataSet
         return _DataSetProxy(field, self.datasets)
+
+    def model_S(self, i: int, j: int, Npoles: int = 10, inc_real: bool = False) -> SparamModel:
+        """Returns an S-parameter model object that can be sampled at a dense frequency range.
+        The S-parameter model object uses vector fitting inside the datasets frequency points
+        to determine a model for the linear system.
+
+        Args:
+            i (int): The first S-parameter index
+            j (int): The second S-parameter index
+            Npoles (int, optional): The number of poles to use (approx 2x divice order). Defaults to 10.
+            inc_real (bool, optional): Wether to allow for a real-pole. Defaults to False.
+
+        Returns:
+            SparamModel: The SparamModel object
+        """
+        fs, S = self.ax('freq').S(i,j)
+        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real)
 
     def export_touchstone(self, 
                           filename: str,
