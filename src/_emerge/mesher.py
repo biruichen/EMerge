@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import gmsh
-from .material import Material, AIR
+from .material import Material
 from .geometry import GeoVolume, GeoObject, GeoSurface
 from .selection import Selection, FaceSelection
 import numpy as np

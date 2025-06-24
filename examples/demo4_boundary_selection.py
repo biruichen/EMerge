@@ -44,14 +44,16 @@ with em.Simulation3D('Test Mode', PVDisplay) as m:
     # Then define a capacitive iris cutout
     cutout = em.geo.Box(2*mm, wga, wgb/2, position=(-L/2, -wga/2, -wgb/2))
 
-    # remove the cutout from the box
-    wg_box = em.geo.remove(wg_box, cutout)
+    # remove the cutout from the box. Notice that we use a different name.
+    # Geometry properties are not persistent after boolean operations so we 
+    # need the information of previous boxes.
+    wg_box_new = em.geo.remove(wg_box, cutout)
 
     # define an air-box to radiat in.
     airbox = em.geo.Box(L/2, L, L, position=(0,-L/2, -L/2))
 
     # Now define the geometry
-    m.define_geometry(wg_box, airbox)
+    m.define_geometry(wg_box_new, airbox)
 
     # Lets define a frequency range for our simulation. This is needed
     # If we want to mesh our model.
@@ -64,9 +66,11 @@ with em.Simulation3D('Test Mode', PVDisplay) as m:
 
     # The box is defined in XYZ space. The sides left/right correspond to the
     # X-axis, The sides top/down to the Z-axis and front/back to the Y-axis.
-    feed_port = wg_box.face('left')
+    # We have to provide which original object we want to pick the left side from.
+    feed_port = wg_box_new.face('left', tool=wg_box)
 
-    # We can also select the outside and exclude a given face.
+    # We can also select the outside and exclude a given face. Because our airbox
+    # is not modified, we don't have to work with tools.
     radiation_boundary = airbox.outside('left')
     
     # Lets view our result
@@ -75,12 +79,10 @@ with em.Simulation3D('Test Mode', PVDisplay) as m:
     # As you can see, the appropriate faces have been selected.
     # You can also see that the bottom side of the resultant box
     # which has been split in two can still be selected because of the selection system.
-
-    m.view(selections=[wg_box.face('bottom'),])
+    m.view(selections=[wg_box_new.face('bottom', tool=wg_box),])
     
-    # You can even access faces of the original tool objects using the optional argument tool.
-
-    m.view(selections=[wg_box.face('left', tool=cutout),])
+    # You can also access faces of the original tool objects.
+    m.view(selections=[wg_box_new.face('left', tool=cutout),])
 
     # Another way to select the radiation boundary on the right is by using the 
     # selction interface.
@@ -119,10 +121,9 @@ with em.Simulation3D('Test Mode', PVDisplay) as m:
     # First the S11 plot
     f, S11 = data.ax('freq').S(1,1)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(f/1e9, 20*np.log10(np.abs(S11)))
-    plt.show()
+    from emerge.plot import plot_ff_polar, plot_sp
+
+    plot_sp(f/1e9, S11, labels=['S11'])
 
     # First we need to create a boundary mesh
     rad_surf = m.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
@@ -133,11 +134,8 @@ with em.Simulation3D('Test Mode', PVDisplay) as m:
     theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
     phi = 0*theta
     k0 =  data.item(0).k0
-    E, H = em.physics.edm.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
+    E, H = em.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
 
+    
     # Finally we create the plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='polar')
-    ax.set_theta_zero_location('N')
-    ax.plot(theta, em.norm(E), label='E-field', color='blue')
-    plt.show()
+    plot_ff_polar(theta, em.norm(E))

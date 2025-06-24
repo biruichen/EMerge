@@ -32,12 +32,14 @@ logger.add(sys.stderr, format=logger_format)
 logger.debug('Importing modules')
 
 from _emerge.simmodel import Simulation3D
-from _emerge.material import Material, FR4, AIR, VACUUM, COPPER
+from _emerge.material import Material
 from _emerge import bc
 from _emerge.solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
-from _emerge.cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
+from _emerge.cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE, GCS
 from _emerge.coord import Line
 from _emerge import geo
 from _emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
 from _emerge.mth.common_functions import norm
+from _emerge.physics.edm.sc import stratton_chu
+from . import lib
 logger.debug('Importing complete!')

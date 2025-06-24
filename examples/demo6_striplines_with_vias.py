@@ -9,13 +9,12 @@ This demonstration shows how to add vias with the PCB router. Make sure to go th
 PCB related demos (demo1 and demo3) to get more information on the PCBLayouter.
 
 """
-em.superlu_info()
 
 mm = 0.001
 th = 1
-with em.Simulation3D('Stripline_test', PVDisplay, loglevel='DEBUG') as m:
+with em.Simulation3D('Stripline_test', PVDisplay) as m:
     # As usual we start by creating our layouter
-    ly = em.PCBLayouter(th, mm, em.cs.GCS, em.material.ROGERS_4350B)
+    ly = em.geo.PCBLayouter(th, mm, em.GCS, em.lib.ROGERS_4350B)
 
     # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
     # None of the transmission lines are conciously matched in any way, this is just about the routing
@@ -84,12 +83,9 @@ with em.Simulation3D('Stripline_test', PVDisplay, loglevel='DEBUG') as m:
     freq, S11 = data.ax('freq').S(1,1)
     freq, S21 = data.ax('freq').S(2,1)
 
-    plt.plot(freq/1e9, 20*np.log10(np.abs(S11)))
-    plt.plot(freq/1e9, 20*np.log10(np.abs(S21)))
-    plt.legend(['S11','S21'])
-    plt.grid(True)
-    plt.show()
+    from emerge.plot import plot_sp
 
+    plot_sp(freq/1e9, [S11, S21], labels=['S11','S21'])
 
     m.display.add_object(diel, opacity=0.2)
     m.display.add_object(trace)

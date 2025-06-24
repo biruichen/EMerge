@@ -25,7 +25,7 @@ er = 3.38
 f1 = 1.54e9
 f2 = 1.6e9
 
-with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
+with em.Simulation3D('MySimulation', PVDisplay) as model:
     dielectric = em.geo.Box(wsub, hsub, th, position=(-wsub/2, -hsub/2, -th))
 
     air = em.geo.Box(wsub, hsub, Hair, position=(-wsub/2, -hsub/2, 0))
@@ -68,20 +68,16 @@ with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
     pec = em.bc.PEC(rpatch)
 
     model.physics.assign(port, pec, abc)
-    model.physics.solveroutine.direct_solver = em.solver.SolverSuperLU()
     data = model.physics.frequency_domain()
 
     xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))
 
     freqs, S11 = data.ax('freq').S(1,1)
     
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(freqs/1e9, 20*np.log10(np.abs(S11)))
-    ax.set_xlabel('Frequency (GHz)')
-    ax.set_ylabel('S-parameter (dB)')
-    ax.grid(True)
-    plt.show()
+    from emerge.plot import plot_sp, smith, plot_ff_polar, plot_ff
+
+    plot_sp(freqs/1e9, S11)
+    smith(freqs, S11)
     
     topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
 
@@ -89,18 +85,7 @@ with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
     
     theta = np.linspace(-np.pi, 1*np.pi, 201)
     phi = 0*theta
-    E, H = em.physics.edm.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
+    E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
     
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.plot(theta, em.norm(E))
-    plt.show()
-    
-    ### Create a polar farfield plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='polar')
-    ax.set_theta_zero_location('N')
-
-    ax.plot(theta, em.norm(E), label='E-field', color='blue')
-    plt.show()
+    plot_ff(theta, em.norm(E))
+    plot_ff_polar(theta, em.norm(E))

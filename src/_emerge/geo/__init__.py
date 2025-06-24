@@ -21,3 +21,4 @@ from .horn import Horn
 from .shapes import Cyllinder, CoaxCyllinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox
 from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system
 from .extrude import XYPolygon, GeoPrism
+from .stl import STLObject

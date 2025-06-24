@@ -1,7 +1,7 @@
 import emerge as em
 import numpy as np
 from emerge.pyvista import PVDisplay
-import matplotlib.pyplot as plt
+
 """ DEMO: COMBLINE FILTER
 
 In this demo we will look at the design of a combline filter in EMerge. The filter design was taken from
@@ -42,7 +42,7 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
+with em.Simulation3D('Combline_DEMO', PVDisplay) as m:
 
     # The filter consists of quarter lamba cylindrical pins inside an airbox.
     # First we create the airbox
@@ -82,7 +82,7 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
 
     # To improve simulation quality we refine the faces at the top of the cylinders.
     for stub in stubs:
-        m.mesher.set_boundary_size(box.face('back', tool=stub), 0.002)
+        m.mesher.set_boundary_size(box.face('back', tool=stub), 0.0002)
 
     # Finally we may create our mesh.
     m.generate_mesh()
@@ -102,20 +102,18 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
     # At last we can compute the frequency domain study
     data = m.physics.frequency_domain(parallel=True)
 
-    f = np.linspace(6e9, 8e9, 401)
-    # We plot our S-parameters using the Pyescher module (that I created).
-    f, S11 = data.ax('freq').S(1,1)
-    f, S21 = data.ax('freq').S(2,1)
+    # Next we will use the Vector Fitting algorithm to model our S-parameters with a Rational function
 
-    plt.plot(f/1e9, 20*np.log10(np.abs(S11)))
-    plt.plot(f/1e9, 20*np.log10(np.abs(S21)))
-    plt.legend(['S11','S21'])
-    plt.xlabel('Frequency (GHz)')
-    plt.ylabel('Sparam (dB)')
-    plt.grid(True)
-    plt.show()
+    fdense = np.linspace(6e9, 9e9, 2001)
+
+    S11 = data.model_S(1,1)(fdense)
+    S21 = data.model_S(2,1)(fdense)
+
+    from emerge.plot import plot_sp
+
+    plot_sp(fdense/1e9, [S11, S21], labels=['S11','S21'])
     
-    # We can also plot the fild inside. First we create a grid of sample point coordinates
+    # We can also plot the field inside. First we create a grid of sample point coordinates
     xs = np.linspace(0, Lbox, 41)
     ys = np.linspace(-a/2, a/2, 11)
     zs = np.linspace(0, b, 15)

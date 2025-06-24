@@ -1,7 +1,6 @@
 import emerge as em
-import numpy as np
 from emerge.pyvista import PVDisplay
-import matplotlib.pyplot as plt
+
 mm = 0.001
 mil = 0.0254*mm
 W = 20
@@ -37,6 +36,7 @@ with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
     
     pcb.new(l0,140,10,(0,-1)).straight(60)
     pcb.new(*pcb.stored_coords['p2'],10, (0,1)).straight(60)
+
     stripline = pcb.compile_paths(merge=True)
     
     pcb.determine_bounds(topmargin=150, bottommargin=150)
@@ -55,7 +55,7 @@ with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
 
     m.define_geometry(stripline, diel, p1, p2, air)
 
-    m.mesher.set_boundary_size(stripline, 0.7*mm)
+    m.mesher.set_boundary_size(stripline, 1*mm)
 
     m.generate_mesh()
 
@@ -78,13 +78,11 @@ with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
     d.add_portmode(port2, port2.modes[0].k0, 21)
     d.show()
 
-    data = m.physics.frequency_domain()
+    data = m.physics.frequency_domain(parallel=True, njobs=3)
     
     f, S11 = data.ax('freq').S(1,1)
     f, S21 = data.ax('freq').S(2,1)
 
-    plt.plot(f/1e9, 20*np.log10(np.abs(S11)))
-    plt.plot(f/1e9, 20*np.log10(np.abs(S21)))
-    plt.grid(True)
-    plt.legend(['S11','S21'])
-    plt.show()
+    from emerge.plot import plot_sp
+
+    plot_sp(f/2e9, [S11, S21], labels=['S11','S21'])
