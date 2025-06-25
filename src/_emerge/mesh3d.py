@@ -363,10 +363,9 @@ class Mesh3D:
         ys = self.centers[1,:]
         zs = self.centers[2,:]
         
-        for volume in volumes:
+        for volume in sorted(volumes, key=lambda x: x._priority):
         
             for dimtag in volume.dimtags:
-                
                 etype, etag_list, ntags = gmsh.model.mesh.get_elements(*dimtag)
                 for etags in etag_list:
                     tet_ids = [self.tet_t2i[t] for t in etags]

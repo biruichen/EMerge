@@ -189,6 +189,10 @@ class Simulation3D:
 
         gmsh.model.occ.synchronize()
         self.mesher.set_mesh_size(self.physics.get_discretizer(), self.physics.resolution)
+
+        print('DIM2:', gmsh.model.get_entities(2))
+        print('DIM3:', gmsh.model.get_entities(3))
+
         gmsh.model.mesh.generate(3)
         self.mesh.update()
         gmsh.model.occ.synchronize()

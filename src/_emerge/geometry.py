@@ -187,6 +187,7 @@ class GeoObject:
         self._tools: dict[int, dict[str, _FacePointer]] = dict()
         self._key = _GENERATOR.new()
         self._aux_data: dict[str, Any] = dict()
+        self._priority: int = 10
 
     @property
     def color(self) -> tuple[int,int,int]:
@@ -205,6 +206,7 @@ class GeoObject:
             return FaceSelection(self.tags)
         elif self.dim==3:
             return DomainSelection(self.tags)
+    
     @staticmethod
     def merged(objects: list[GeoObject]) -> list[GeoObject]:
         dim = objects[0].dim
@@ -288,6 +290,24 @@ class GeoObject:
         logger.info(f'Selected face {tags}.')
         return tags
 
+    def set_material(self, material: Material) -> GeoObject:
+        self.material = material
+        return self
+    
+    def set_priority(self, level: int) -> GeoObject:
+        """Defines the material assignment priority level of this geometry.
+        By default all objects have priority level 10. If you assign a lower number,
+        in cases where multiple geometries occupy the same volume, the highest priority
+        will be chosen.
+
+        Args:
+            level (int): The priority level
+
+        Returns:
+            GeoObject: The same object
+        """
+        self._priority = level
+        return self
     def outside(self, *exclude: FaceNames, tags: list[int] = None) -> FaceSelection:
         """Returns the complete set of outside faces.
 
