@@ -17,7 +17,7 @@
 
 import numpy as np
 from typing import TypeVar, Generic, Type, Any
-
+from loguru import logger
 T = TypeVar('T', bound='DataSet')
 
 
@@ -44,6 +44,15 @@ class DataSet:
                 return False
         return True
     
+    def _reldist(self, **vars):
+        value = 0
+        for name, value in vars.items():
+            if name not in self.__dict__:
+                value += np.inf
+            else:
+                value += abs((self.__dict__[name] - value)/value)
+        return value
+    
     def _getvalue(self, name: str) -> Any | None:
         return self.__dict__.get(name, None)
 
@@ -53,6 +62,7 @@ class SimData(Generic[T]):
 
     """
     datatype: type = DataSet
+    
     def __init__(self):
         self.datasets: list[T] = []
         self._injections: dict = {}
@@ -94,9 +104,20 @@ class SimData(Generic[T]):
                 collect.append(data)
         if len(collect)==1:
             return collect[0]
-        elif len(collect)> 1:
+        elif len(collect)>1:
             return collect
-        return None
+        raise ValueError(f'Could not find datapoint {vars}')
+    
+    def find(self, **vars: float) -> T:
+        """Look up the closes DataSet object for a given permutation of global variables.
+
+        Returns:
+            T: The dataset item that is closest in value relative
+        """
+        closest = sorted(self.datasets, key=lambda x: x._reldist(**vars))[0]
+        valstr = ', '.join(f'{name}={closest.__dict__[name]}' for name in vars.keys())
+        logger.debug(f'Found dataset = {valstr}')
+        return closest
     
     def collect(
         self,

@@ -196,7 +196,7 @@ class MPLDisplay(BaseDisplay):
         z = self._mesh.nodes[2,:]
         surf = self._ax.plot_trisurf(
                 x, y, z,triangles=tris.T,
-                color=obj.color + (opacity,),
+                color=obj.color_rgb + (opacity,),
                 linewidth=0.2,
                 antialiased=True,
                 shade=True

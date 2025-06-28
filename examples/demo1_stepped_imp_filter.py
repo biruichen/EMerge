@@ -22,7 +22,7 @@ Hair = 60
 ## Material definition
 
 # We can define the material using the Material class. Just supply the dielectric properties and you are done!
-pcbmat = em.Material(er=2.2, tand=0.00)
+pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
@@ -101,7 +101,7 @@ m.physics.modal_analysis(port1, 1, True, TEM=True)
 m.physics.modal_analysis(port2, 1, True, TEM=True)
 
 # Finally we import the display class to view the resultant modes
-m.display.add_object(pcb)
+m.display.add_object(pcb, opacity=0.1)
 m.display.add_object(polies)
 m.display.add_portmode(port1, 21)
 m.display.add_portmode(port2, 21)

@@ -20,9 +20,13 @@ from ...dataset import SimData, DataSet
 from ...elements.femdata import FEMBasis
 from dataclasses import dataclass
 import numpy as np
-from typing import Sequence, Type, Literal
+from typing import Literal
 from loguru import logger
 from .adaptive_freq import SparamModel
+from ...cs import Axis, _parse_axis
+from ...selection import FaceSelection
+from ...geometry import GeoSurface
+
 EMField = Literal[
     "er", "ur", "freq", "k0",
     "_Spdata", "_Spmapping", "_field", "_basis",
@@ -30,6 +34,58 @@ EMField = Literal[
     "Hx", "Hy", "Hz",
     "mode", "beta",
 ]
+
+def arc_on_plane(ref_dir, normal, angle_range_deg, num_points=100):
+    """
+    Generate theta/phi coordinates of an arc on a plane.
+
+    Parameters
+    ----------
+    ref_dir : tuple (dx, dy, dz)
+        Reference direction (angle zero) lying in the plane.
+    normal : tuple (nx, ny, nz)
+        Plane normal vector.
+    angle_range_deg : tuple (deg_start, deg_end)
+        Start and end angle of the arc in degrees.
+    num_points : int
+        Number of points along the arc.
+
+    Returns
+    -------
+    theta : ndarray
+        Array of theta angles (radians).
+    phi : ndarray
+        Array of phi angles (radians).
+    """
+    d = np.array(ref_dir, dtype=float)
+    n = np.array(normal, dtype=float)
+
+    # Normalize normal
+    n = n / np.linalg.norm(n)
+
+    # Project d into the plane
+    d_proj = d - np.dot(d, n) * n
+    if np.linalg.norm(d_proj) < 1e-12:
+        raise ValueError("Reference direction is parallel to the normal vector.")
+
+    e1 = d_proj / np.linalg.norm(d_proj)
+    e2 = np.cross(n, e1)
+
+    # Generate angles along the arc
+    angles_deg = np.linspace(angle_range_deg[0], angle_range_deg[1], num_points)
+    angles_rad = np.deg2rad(angles_deg)
+
+    # Create unit vectors along the arc
+    vectors = np.outer(np.cos(angles_rad), e1) + np.outer(np.sin(angles_rad), e2)
+
+    # Convert to spherical angles
+    ux, uy, uz = vectors[:,0], vectors[:,1], vectors[:,2]
+
+    theta = np.arcsin(uz)         # theta = arcsin(z)
+    phi = np.arctan2(uy, ux)      # phi = atan2(y, x)
+
+    return theta, phi
+
 
 @dataclass
 class Sparam:
@@ -302,7 +358,25 @@ class EMDataSet(DataSet):
             field = field
         return self._x, self._y, self._z, field
     
-class _DataSetProxy:
+    def farfield_2d(self,ref_direction: tuple[float,float,float] | Axis,
+                         plane_normal: tuple[float,float,float] | Axis,
+                         faces: FaceSelection | GeoSurface,
+                         ang_range: tuple[float, float] = (-180, 180),
+                         Npoints: int = 201,
+                         origin: tuple[float, float, float] = (0,0,0),
+                         ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        from .sc import stratton_chu
+        surface = self.basis.mesh.boundary_surface(faces.tags, origin)
+        self.interpolate(*surface.exyz)
+        refdir = _parse_axis(ref_direction).np
+        plane_normal = _parse_axis(plane_normal).np
+
+        theta, phi = arc_on_plane(refdir, plane_normal, ang_range, Npoints)
+        E,H = stratton_chu(self.E, self.H, surface, theta, phi, self.k0)
+        angs = np.linspace(*ang_range, Npoints)*np.pi/180
+        return angs, E ,H
+    
+class _DataSetProxy: 
     """
     A “ghost” wrapper around a real DataSet.
     Any attr/method access is intercepted here first.

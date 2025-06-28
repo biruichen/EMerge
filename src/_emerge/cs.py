@@ -344,8 +344,8 @@ class CoordinateSystem:
         ], dtype=float)
 
         # Rodrigues' rotation formula: R = I + sinθ·K + (1−cosθ)·K²
-        I = np.eye(3, dtype=float)
-        R = I + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
+        Imat = np.eye(3, dtype=float)
+        R = Imat + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
 
         # Rotate each axis and the origin
         new_x = R @ self.xax.vector

@@ -143,8 +143,9 @@ class Simulation3D:
     def view(self, 
              selections: list[Selection] = None, 
              use_gmsh: bool = False,
-             opacity: float = None,
-             show_edges: bool = None) -> None:
+             volume_opacity: float = 0.1,
+             surface_opacity: float = 1,
+             show_edges: bool = True) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
 
@@ -160,6 +161,10 @@ class Simulation3D:
             return
         try:
             for obj in self._geometries:
+                if obj.dim==2:
+                    opacity=surface_opacity
+                elif obj.dim==3:
+                    opacity=volume_opacity
                 self.display.add_object(obj, show_edges=show_edges, opacity=opacity)
             if selections:
                 [self.display.add_object(sel, color='red', opacity=0.7) for sel in selections]

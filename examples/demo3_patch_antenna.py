@@ -46,7 +46,7 @@ rpatch = em.geo.add(rpatch, line)
 
 rpatch.material = em.lib.COPPER # Only for viewing
 
-dielectric.material = em.Material(er, tand=0.0, color=(0.0, 0.5, 0.0), opacity=0.6)
+dielectric.material = em.Material(er, tand=0.0, color="#207020", opacity=0.6)
 model.physics.resolution = 0.2
 
 model.physics.set_frequency_range(1.5e9, 1.7e9, 11)
@@ -58,7 +58,7 @@ model.mesher.set_boundary_size(port, 0.5*mm, 1.1)
 
 model.generate_mesh()
 
-#model.view(selections=[port,], use_gmsh=False)
+model.view(selections=[port,])
 
 port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, active=True, Z0=50)
 
@@ -79,13 +79,13 @@ freqs, S11 = data.ax('freq').S(1,1)
 plot_sp(freqs/1e9, S11)
 smith(freqs, S11)
 
-topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
+# topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
 
-Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
+# Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
 
-theta = np.linspace(-np.pi, 1*np.pi, 201)
-phi = 0*theta
-E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
-
+# theta = np.linspace(-np.pi, 1*np.pi, 201)
+# phi = 0*theta
+# E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
+theta, E, H = data.find(freq=1.6324e9).farfield_2d((0,0,1),(1,0,0), boundary_selection)
 plot_ff(theta, em.norm(E))
 plot_ff_polar(theta, em.norm(E))
