@@ -202,8 +202,8 @@ class Cyllinder(GeoVolume):
                                          height*ax[0], height*ax[1], height*ax[2],
                                          radius)
             super().__init__(cyl)
-            self._add_face_pointer('front', cs.origin, -cs.zax.np)
-            self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
+        self._add_face_pointer('front', cs.origin, -cs.zax.np)
+        self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
             
         self.cs: CoordinateSystem = cs
         self.radius = radius

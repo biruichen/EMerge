@@ -407,7 +407,8 @@ class ModalPort(PortBC):
         else:
             return lambda x,y,z: mode.norm_factor*mode.H_function(x,y,z)
     
-    def add_mode(self, field: np.ndarray,
+    def add_mode(self, 
+                 field: np.ndarray,
                  E_function: Callable,
                  H_function: Callable,
                  beta: float,
@@ -415,20 +416,20 @@ class ModalPort(PortBC):
                  residual: float,
                  TEM: bool,
                  freq: float) -> PortMode:
-        """_summary_
+        """Add a mode function to the ModalPort
 
         Args:
-            field (np.ndarray): _description_
-            E_function (Callable): _description_
-            H_function (Callable): _description_
-            beta (float): _description_
-            k0 (float): _description_
-            residual (float): _description_
-            TEM (bool): _description_
-            freq (float): _description_
+            field (np.ndarray): The field value array
+            E_function (Callable): The E-field callable
+            H_function (Callable): The H-field callable
+            beta (float): The out-of-plane propagation constant 
+            k0 (float): The free space phase constant
+            residual (float): The solution residual
+            TEM (bool): Whether its a TEM mode
+            freq (float): The frequency of the port mode
 
         Returns:
-            PortMode: _description_
+            PortMode: The port mode object.
         """
         mode = PortMode(field, E_function, H_function, k0, beta, residual, TEM=TEM, freq=freq)
         if mode.energy < 1e-4:
@@ -441,7 +442,6 @@ class ModalPort(PortBC):
         return self.cs._basis
     
     def get_beta(self, k0) -> float:
-        ''' Return the out of plane propagation constant. βz.'''
         mode = self.get_mode()
         if mode.TEM:
             beta = mode.beta/mode.k0 * k0
@@ -452,14 +452,6 @@ class ModalPort(PortBC):
         return beta
 
     def get_gamma(self, k0):
-        """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
-
-        Args:
-            k0 (float): The free space propagation constant.
-
-        Returns:
-            complex: The γ-constant
-        """
         return 1j*self.get_beta(k0)
     
     def get_Uinc(self, x_local, y_local, k0) -> np.ndarray:
@@ -470,9 +462,6 @@ class ModalPort(PortBC):
                      y_local: np.ndarray,
                      k0: float,
                      which: Literal['E','H'] = 'E') -> np.ndarray:
-        
-        ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
-
         x_global, y_global, z_global = self.cs.in_global_cs(x_local, y_local, 0*x_local)
 
         Egxyz = self.port_mode_3d_global(x_global,y_global,z_global,k0,which=which)

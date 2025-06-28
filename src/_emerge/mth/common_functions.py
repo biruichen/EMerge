@@ -20,3 +20,14 @@ import numpy as np
 def norm(Field: np.ndarray) -> np.ndarray:
     ''' Computes the complex norm of a field (3,N)'''
     return np.sqrt(np.abs(Field[0,:])**2 + np.abs(Field[1,:])**2 + np.abs(Field[2,:])**2)
+
+def coax_rout(rin: float,
+              eps_r: float = 1,
+              Z0: float = 50) -> float:
+    return rin*10**(Z0*np.sqrt(eps_r)/138)
+
+def coax_rin(rout: float,
+              eps_r: float = 1,
+              Z0: float = 50) -> float:
+    return rout/10**(Z0*np.sqrt(eps_r)/138)
+
