@@ -16,10 +16,10 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from ...elements.nedleg2 import NedelecLegrange2
+from ....elements.nedleg2 import NedelecLegrange2
 from scipy.sparse import coo_matrix
 from numba_progress import ProgressBar, ProgressBarType
-from ...mth.optimized import local_mapping, matinv, compute_distances
+from ....mth.optimized import local_mapping, matinv, compute_distances
 from numba import c16, types, f8, i8, njit, prange
 
 @njit(i8[:,:](i8, i8[:,:], i8[:,:], i8[:,:]), cache=True, nogil=True)
@@ -185,9 +185,7 @@ def _nf2_curl(coeff, coords):
     ys = coords[1,:]
     return b3*(c1*(a2 + b2*xs + c2*ys) - c2*(a1 + b1*xs + c1*ys)) - c3*(b1*(a2 + b2*xs + c2*ys) - b2*(a1 + b1*xs + c1*ys)) - 2*(b1*c2 - b2*c1)*(a3 + b3*xs + c3*ys) + 0*1j
 
-
 ####
-
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:]), cache = True, nogil=True)
 def tri_coefficients(vxs, vys):
 

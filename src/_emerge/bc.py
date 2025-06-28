@@ -434,7 +434,7 @@ class ModalPort(PortBC):
         mode = PortMode(field, E_function, H_function, k0, beta, residual, TEM=TEM, freq=freq)
         if mode.energy < 1e-4:
             logger.debug(f'Ignoring mode due to a low mode energy: {mode.energy}')
-            return
+            return None
         self.modes.append(mode)
         return mode
 

@@ -1,5 +1,6 @@
 import emerge as em
 import numpy as np
+from emerge.plot import plot_sp
 
 """ DEMO: COMBLINE FILTER
 
@@ -108,8 +109,6 @@ fdense = np.linspace(6e9, 9e9, 2001)
 
 S11 = data.model_S(1,1)(fdense)
 S21 = data.model_S(2,1)(fdense)
-
-from emerge.plot import plot_sp
 
 plot_sp(fdense/1e9, [S11, S21], labels=['S11','S21'])
 

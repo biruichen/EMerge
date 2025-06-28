@@ -15,16 +15,11 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from ...mth.tri import ned2_tri_interp, ned2_tri_interp_curl
 import numpy as np
 from ...elements.nedleg2 import NedelecLegrange2
 from ...mth.integrals import surface_integral
 
 
-# S = E x H*
-# Sx = Ey*Hz - Ez*Hy
-# Sy = Ez*Hx - Ex*Hz
-# Sz = Ex*Hy - Ey*Hx
 def compute_avg_power_flux(field: NedelecLegrange2, mode: np.ndarray, k0: float, ur: np.ndarray, beta: float):
 
     Efunc = field.interpolate_Ef(mode)
@@ -39,7 +34,6 @@ def compute_avg_power_flux(field: NedelecLegrange2, mode: np.ndarray, k0: float,
         return nx*Sx + ny*Sy + nz*Sz
 
     Ptot = surface_integral(field.mesh.nodes, field.mesh.tris, S, None, 4)
-    #print(f'Total integrated power = {Ptot}W')
     return Ptot
 
 def compute_peak_power_flux(field: NedelecLegrange2, mode: np.ndarray, k0: float, ur: np.ndarray, beta: float):
@@ -56,5 +50,4 @@ def compute_peak_power_flux(field: NedelecLegrange2, mode: np.ndarray, k0: float
         return nx*Sx + ny*Sy + nz*Sz
 
     Ptot = surface_integral(field.mesh.nodes, field.mesh.tris, S, None, 4)
-    #print(f'Total integrated power = {Ptot}W')
     return Ptot

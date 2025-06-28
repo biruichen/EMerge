@@ -19,7 +19,7 @@
 from __future__ import annotations
 from scipy.sparse import lil_matrix, csc_matrix
 from scipy.sparse.csgraph import reverse_cuthill_mckee
-from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigsh, splu
+from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigs, splu
 from scipy.linalg import eig
 from scipy import sparse, show_config
 import numpy as np
@@ -384,7 +384,7 @@ class SolverARPACK(Solver):
             which: str = 'LM'):
         logger.info(f'Searching around 	β = {target_k0:.2f} rad/m')
         sigma = -(target_k0**2)
-        eigen_values, eigen_modes = eigsh(A, k=nmodes, M=B, sigma=sigma, which=which)
+        eigen_values, eigen_modes = eigs(A, k=nmodes, M=B, sigma=sigma, which=which)
         return eigen_values, eigen_modes
 
 ### ROUTINE
@@ -449,7 +449,10 @@ class SolveRoutine:
             Solver: Returns the solver object
 
         """
-        return self.direct_eig_solver
+        if direct:
+            return self.direct_eig_solver
+        else:
+            return self.iterative_eig_solver
     
     def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
               b: np.ndarray, 
