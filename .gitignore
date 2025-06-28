@@ -20,3 +20,6 @@ meshes/
 **/test_*
 
 version_update.txt
+
+# EMerge data files
+*.emerge
