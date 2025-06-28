@@ -25,7 +25,7 @@ from .logsettings import logger_format
 from .geo.modeler import Modeler
 from .plot.display import BaseDisplay
 
-from typing import Literal, Type
+from typing import Literal, Type, Generator
 from loguru import logger
 import numpy as np
 import sys
@@ -33,10 +33,13 @@ import gmsh
 import inspect
 import joblib
 from pathlib import Path
+from atexit import register
 
 
 class SimulationError(Exception):
     pass
+
+
 
 class Simulation3D:
 
@@ -81,6 +84,8 @@ class Simulation3D:
         self.load_file: bool = load_file
 
         self.obj: dict[str, GeoObject] = dict()
+
+        self._initialize_gmsh()
 
     def __setitem__(self, name: str, value: GeoObject) -> None:
         self.obj[name] = value
@@ -156,8 +161,6 @@ class Simulation3D:
             logger.warning('The provided BaseDisplay class does not support object display. Please make' \
             'sure that this method is properly implemented.')
     
-       
-    
     def define_geometry(self, *geometries: list[GeoObject]) -> None:
         """Provide the physics engine with the geometries that are contained and ought to be included
         in the simulation. Please make sure to include all geometries. Its currently unclear how the
@@ -170,7 +173,6 @@ class Simulation3D:
         self.mesher.submit_objects(self._geometries)
         self.physics._initialize_bcs()
         self._defined_geometries = True
-
     
     def generate_mesh(self):
         """Generate the mesh. 
@@ -216,6 +218,22 @@ class Simulation3D:
         tri_ids = self.mesh.get_triangles(tags)
         return self.mesh.nodes, self.mesh.tris[:,tri_ids]
 
+    def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float], None, None]:
+        paramlist = list(parameters.keys())
+        dims = np.meshgrid(*[parameters[key] for key in paramlist], indexing='ij')
+        dims_flat = [dim.flatten() for dim in dims]
+        for iter in range(dims_flat[0].shape[0]):
+            if clear_mesh:
+                logger.info('Cleaning up mesh.')
+                gmsh.clear()
+            self.physics._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            logger.info(f'Iterating: {self.physics._params}')
+            if len(dims_flat)==1:
+                yield dims_flat[0][iter]
+            else:
+                yield (dim[iter] for dim in dims_flat)
+        
+        
     def step1(self) -> None:
         '''
         Step 1: Initialize the model and create a new geometry.
@@ -267,18 +285,35 @@ class Simulation3D:
         '''
         pass
 
-    def __enter__(self):
+    def __enter__(self) -> Simulation3D:
+        """This method is depricated with the new atexit system. It still exists for backwards compatibility.
+
+        Returns:
+            Simulation3D: the Simulation3D object
+        """
+        return self
+
+    def __exit__(self, type, value, tb):
+        """This method no longer does something. It only serves as backwards compatibility."""
+        return False
+
+    def _initialize_gmsh(self):
         gmsh.initialize()
+
+        register(self._exit_gmsh)
+
         if not self.load_file:
             gmsh.model.add(self.modelname)
         else:
             self.load()
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def _exit_gmsh(self):
         if self.save_file:
             self.save()
         gmsh.finalize()
+        logger.debug('GMSH Shut down successful')
+        
 
 
    

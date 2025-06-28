@@ -5,18 +5,18 @@ from emerge.pyvista import PVDisplay
 
 For now it just shows you how to work with the revolve system.
 """
-with em.Simulation3D('Revolve test', PVDisplay) as m:
+model = em.Simulation3D('Revolve test', PVDisplay)
 
-    poly = em.geo.XYPolygon.rect(0.5, 1, (0.5, 0))
+poly = em.geo.XYPolygon.rect(0.5, 1, (0.5, 0))
 
-    m.view()
+model.view()
 
-    vol = poly.revolve(em.cs.CoordinateSystem(em.XAX, em.ZAX, em.YAX), (0,0,0), (0,0,1))
-    
-    m.define_geometry(vol)
+vol = poly.revolve(em.cs.CoordinateSystem(em.XAX, em.ZAX, em.YAX), (0,0,0), (0,0,1))
 
-    m.physics.set_frequency(0.2e9)
+model.define_geometry(vol)
 
-    m.generate_mesh()
+model.physics.set_frequency(0.2e9)
 
-    m.view()
+model.generate_mesh()
+
+model.view()

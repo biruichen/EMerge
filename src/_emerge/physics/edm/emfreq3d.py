@@ -95,9 +95,11 @@ class Electrodynamics3D:
 
         ## States
         self._bc_initialized: bool = False
-
-        self.freq_data: EMSimData = None
+        self.freq_data: EMSimData = EMSimData()
         self.mode_data: dict[int, EMSimData] = dict()
+
+        ## Data
+        self._params: dict[str, float] = dict()
 
     def pack_data(self) -> dict:
         datapack = dict(basis = self.basis,
@@ -293,7 +295,7 @@ class Electrodynamics3D:
         ermax = np.max(er.flatten())
         urmax = np.max(ur.flatten())
 
-        mode_data = EMSimData(self.basis)
+        mode_data = EMSimData()
         self.mode_data[port.port_number] = mode_data
 
         if freq is None:
@@ -329,7 +331,7 @@ class Electrodynamics3D:
         nmodes_found = eigen_values.shape[0]
 
         for i in range(nmodes_found):
-            data = mode_data.new(freq=freq, ur=ur, er=er, k0=k0, mode=i+1)
+            data = mode_data.new(basis=self.basis, freq=freq, ur=ur, er=er, k0=k0, mode=i+1)
             
             Emode = np.zeros((nlf.n_field,), dtype=np.complex128)
             eigenmode = eigen_modes[:,i]
@@ -525,8 +527,6 @@ class Electrodynamics3D:
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
         
-        self.freq_data = EMSimData(self.basis)
-        
         #### Port settings
 
         all_ports = [bc for bc in self.boundary_conditions if isinstance(bc,PortBC)]
@@ -601,8 +601,8 @@ class Electrodynamics3D:
         for freq, job in zip(self.frequencies, results):
 
             k0 = 2*np.pi*freq/299792458
-            data = self.freq_data.new(freq=freq,
-                                 k0=k0)
+            data = self.freq_data.new(basis=self.basis, freq=freq,
+                                 k0=k0, **self._params)
             
             data.init_sp(port_numbers)
 
@@ -685,9 +685,6 @@ class Electrodynamics3D:
             ertri[:,:,itri] = er[:,:,itet]
             urtri[:,:,itri] = ur[:,:,itet]
             condtri[itri] = cond[itet]
-
-        ### Does this move
-        self.freq_data = EMSimData(self.basis)
         
         #### Port settings
 
@@ -729,7 +726,7 @@ class Electrodynamics3D:
 
             k0 = 2*np.pi*freq/299792458
 
-            data = self.freq_data.new(freq=freq, k0=k0)
+            data = self.freq_data.new(basis=self.basis, freq=freq, k0=k0)
             data.init_sp(port_numbers)
             data.er = np.squeeze(er[0,0,:])
             data.ur = np.squeeze(ur[0,0,:])

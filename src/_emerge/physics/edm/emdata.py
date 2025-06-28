@@ -111,7 +111,7 @@ class EMDataSet(DataSet):
         self._fields: dict[np.ndarray] = dict()
         self._mode_field: np.ndarray = None
         self.excitation: dict[int, complex] = dict()
-        self._basis: FEMBasis = None
+        self.basis: FEMBasis = None
         self.Nports: int = None
         self.Ex: np.ndarray = None
         self.Ey: np.ndarray = None
@@ -191,14 +191,14 @@ class EMDataSet(DataSet):
         xf = xs.flatten()
         yf = ys.flatten()
         zf = zs.flatten()
-        Ex, Ey, Ez = self._basis.interpolate(self._field, xf, yf, zf)
+        Ex, Ey, Ez = self.basis.interpolate(self._field, xf, yf, zf)
         self.Ex = Ex.reshape(shp)
         self.Ey = Ey.reshape(shp)
         self.Ez = Ez.reshape(shp)
 
         
         constants = 1/ (-1j*2*np.pi*self.freq*(self.ur*4*np.pi*1e-7) )
-        Hx, Hy, Hz = self._basis.interpolate_curl(self._field, xf, yf, zf, constants)
+        Hx, Hy, Hz = self.basis.interpolate_curl(self._field, xf, yf, zf, constants)
         self.Hx = Hx.reshape(shp)
         self.Hy = Hy.reshape(shp)
         self.Hz = Hz.reshape(shp)
@@ -213,7 +213,7 @@ class EMDataSet(DataSet):
                      x: float=None,
                      y: float=None,
                      z: float=None) -> EMDataSet:
-        xb, yb, zb = self._basis.bounds
+        xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
         zs = np.linspace(zb[0], zb[1], int((zb[1]-zb[0])/ds))
@@ -238,7 +238,7 @@ class EMDataSet(DataSet):
         Returns:
             This object
         """
-        xb, yb, zb = self._basis.bounds
+        xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
         zs = np.linspace(zb[0], zb[1], int((zb[1]-zb[0])/ds))
@@ -320,10 +320,10 @@ class EMSimData(SimData[EMDataSet]):
     along all sweep axes.
     """
     datatype: type = EMDataSet
-    def __init__(self, basis: FEMBasis):
+    def __init__(self):
         super().__init__()
-        self._basis: FEMBasis = basis
-        self._injections = dict(_basis=basis)
+        #self._basis: FEMBasis = basis
+        self._injections = dict()
         self._axis = 'freq'
 
     def __getitem__(self, field: EMField) -> np.ndarray:
