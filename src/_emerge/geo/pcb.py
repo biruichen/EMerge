@@ -104,6 +104,7 @@ class StripTurn(RouteElement):
         self.angle = angle
         self.corner_type: str = corner_type
         self.dirright = np.array([self.old_direction[1], -self.old_direction[0]])
+        
         if champher_distance is None:
             self.champher_distance = 0.75 * self.width*np.tan(np.abs(angle)/2*np.pi/180)
         else:
@@ -330,6 +331,26 @@ class StripPath:
         self.pcb.stored_striplines[name] = self.end
         return self
     
+    def split(self, 
+              directions: list[tuple[float, float]],
+              widths: list[float] = None) -> list[StripPath]:
+        """Split the current path in N new paths given by a new departure direction
+
+        Args:
+            directions (list[tuple[float, float]]): a list of directions example: [(1,0),(-1,0)]
+            widths (list[float], optional): The width for each new path. Defaults to None.
+
+        Returns:
+            list[StripPath]: A list of new StripPath objects
+        """
+        if widths is None:
+            widths = [self.last.width for _ in directions]
+        x = self.last.x
+        y = self.last.y
+        z = self.z
+        paths = [self.pcb.new(x, y, w, d, z) for w,d in zip(widths, directions)]
+        return paths
+        
     def via(self,
             znew: float,
             radius: float,
@@ -441,9 +462,11 @@ class PCBLayouter:
                  unit: float = 0.001,
                  cs: CoordinateSystem = None,
                  material: Material = AIR,
+                 layers: int = 2,
                  ):
 
         self.thickness: float = thickness
+        self._zs: np.ndarray = np.linspace(-self.thickness, 0, layers)
         self.material: Material = material
         self.width: float = None
         self.length: float = None
@@ -470,6 +493,29 @@ class PCBLayouter:
         self.stored_coords: dict[str,tuple[float, float]] = dict()
         self.stored_striplines: dict[str, StripLine] = dict()
     
+    @property
+    def trace(self) -> GeoPolygon:
+        tags = []
+        for trace in self.traces:
+            tags.extend(trace.tags)
+        return GeoPolygon(tags)
+    
+    @property
+    def all_objects(self) -> list[GeoPolygon]:
+        return self.traces + self.ports
+    
+
+    def z(self, layer: int) -> float:
+        """Returns the z-height of the given layer number counter from 1 (bottom) to N (top)
+
+        Args:
+            layer (int): The layer number (1 to N)
+
+        Returns:
+            float: the z-height
+        """
+        return self._zs[layer-1]
+    
     def _get_z(self, element: RouteElement) -> float:
         """Return the z-height of a given Route Element
 
@@ -483,13 +529,6 @@ class PCBLayouter:
             if path._has(element):
                 return path.z
         return None
-    
-    @property
-    def trace(self) -> GeoPolygon:
-        tags = []
-        for trace in self.traces:
-            tags.extend(trace.tags)
-        return GeoPolygon(tags)
 
     def store(self, name: str, x: float, y:float):
         """Store the x,y coordinate pair one label provided by name
@@ -522,10 +561,6 @@ class PCBLayouter:
         if path_nr >= len(self.paths):
             self.paths.append(StripPath())
         return self.paths[path_nr]
-
-    @property
-    def all_objects(self) -> list[GeoPolygon]:
-        return self.traces + self.ports
     
     def determine_bounds(self, 
                          leftmargin: float = 0,
@@ -553,7 +588,39 @@ class PCBLayouter:
         self.width = (maxx - minx + mr + ml)
         self.length = (maxy - miny + mt + mb)
         self.origin = np.array([-ml+minx, -mb+miny, 0])
-        
+    
+    def plane(self,
+              z: float,
+              width: float = None,
+              height: float = None,
+              origin: tuple[float, float] = None,
+              alignment: Literal['corner','center'] = 'corner') -> GeoSurface:
+        """Generates a generic rectangular plate in the XY grid.
+        If no size is provided, it defaults to the entire PCB size assuming that the bounds are determined.
+
+        Args:
+            z (float): The Z-height for the plate.
+            width (float, optional): The width of the plate. Defaults to None.
+            height (float, optional): The height of the plate. Defaults to None.
+            origin (tuple[float, float], optional): The origin of the plate. Defaults to None.
+            alignment (['corner','center], optional): The alignment of the plate. Defaults to 'corner'.
+
+        Returns:
+            GeoSurface: _description_
+        """
+        if width is None or height is None or origin is None:
+            width = self.width
+            height = self.length
+            origin = (self.origin[0]*self.unit, self.origin[1]*self.unit)
+        origin = origin + (z*self.unit, )
+
+        if alignment == 'center':
+            origin = (origin[0] - width*self.unit/2, origin[1]-height*self.unit/2, origin[2])
+
+        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0))
+        plane = change_coordinate_system(plane, self.cs)
+        return plane
+    
     def gen_pcb(self, 
                 split_z: bool = True,
                 layer_tolerance: float = 1e-6,
@@ -799,3 +866,12 @@ class PCBLayouter:
             polys.material = COPPER
         return polys
                 
+    def microstrip_W(self, Z0: float, thickness: float = None) -> float:
+
+        if thickness is None:
+            thickness = self.thickness
+        
+        er = self.material.er
+        u = 1
+        a = 1 + 1/49 * np.log((u**4 + (u/52)**2)/(u**4 + 0.432)) + 1/18.7 * np.log(1 + (u/18.1)**3)
+        pass
