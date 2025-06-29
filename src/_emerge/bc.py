@@ -176,7 +176,6 @@ class RobinBC(BoundaryCondition):
 
 class PortBC(RobinBC):
     Zvac: float = 376.730313412
-
     def __init__(self, face: FaceSelection | GeoSurface):
         """(DO NOT USE) A generalization of the Port boundary condition.
         
@@ -201,6 +200,10 @@ class PortBC(RobinBC):
     def get_inv_basis(self) -> np.ndarray:
         return self.cs._basis_inv
     
+    @property
+    def portZ0(self) -> complex:
+        return self.Z0
+
     @property
     def modetype(self) -> Literal['TEM','TE','TM']:
         return 'TEM'
@@ -371,7 +374,11 @@ class ModalPort(PortBC):
 
         self._er: np.ndarray = None
         self._ur: np.ndarray = None
-        
+    
+    @property
+    def portZ0(self) -> complex:
+        return self.get_mode().Z0
+    
     @property
     def modetype(self) -> Literal['TEM','TE','TM']:
         return self.get_mode().modetype
@@ -533,6 +540,9 @@ class RectangularWaveguide(PortBC):
             self.cs = Axis(self.selection.normal).construct_cs()
         else:
             self.cs: CoordinateSystem = cs
+
+    def portZ0(self) -> complex:
+        raise NotImplementedError('Rectangular waveguide port impedance computation is currently not yet implemented.')
 
     def get_amplitude(self, k0: float) -> float:
         Zte = 376.73031341259

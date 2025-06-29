@@ -86,6 +86,38 @@ def arc_on_plane(ref_dir, normal, angle_range_deg, num_points=100):
 
     return theta, phi
 
+def renormalise_s(S: np.ndarray,
+                  Zn: np.ndarray,
+                  Z0: complex | float = 50) -> np.ndarray:
+    S   = np.asarray(S,  dtype=complex)
+    Zn  = np.asarray(Zn, dtype=complex)
+    N   = S.shape[0]
+    if S.shape[:2] != (N, N):
+        raise ValueError("S must have shape (N, N, M) with same N on both axes")
+    if Zn.shape != (N,):
+        raise ValueError("Zn must be a length-N vector")
+
+    # Constant matrices that do not depend on frequency
+    Wref      = np.diag(np.sqrt(Zn))          # √Zn on the diagonal
+    W0_inv_sc = 1 / np.sqrt(Z0)               # scalar because Z0 is common
+    I_N       = np.eye(N, dtype=complex)
+
+    M = S.shape[2]
+    S0 = np.empty_like(S)
+
+    for k in range(M):
+        Sk = S[:, :, k]
+
+        # Z  = Wref (I + S) (I – S)⁻¹ Wref
+        Zk = Wref @ (I_N + Sk) @ np.linalg.inv(I_N - Sk) @ Wref
+
+        # A  = W0⁻¹ Z W0⁻¹  → because W0 = √Z0·I → A = Z / Z0
+        Ak = Zk * (W0_inv_sc ** 2)            # same as Zk / Z0
+
+        # S0 = (A – I)(A + I)⁻¹
+        S0[:, :, k] = (Ak - I_N) @ np.linalg.inv(Ak + I_N)
+
+    return S0
 
 @dataclass
 class Sparam:
@@ -492,21 +524,52 @@ class EMSimData(SimData[EMDataSet]):
         fs, S = self.ax('freq').S(i,j)
         return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real)
 
+    def model_S_matrix(self, frequencies: np.ndarray,
+                       Npoles: int = 10,
+                       inc_real: bool = False) -> np.ndarray:
+        """Generates a full S-parameter matrix on the provided frequency points using the Vector Fitting algorithm.
+
+        This function output can be used directly with the .save_matrix() method.
+
+        Args:
+            frequencies (np.ndarray): The sample frequencies
+            Npoles (int, optional): The number of poles to fit. Defaults to 10.
+            inc_real (bool, optional): Wether allow for a real pole. Defaults to False.
+
+        Returns:
+            np.ndarray: The (Np,Np,Nf) S-parameter matrix
+        """
+        Nports = len(self.datasets[0].excitation)
+        nfreq = frequencies.shape[0]
+
+        Smat = np.zeros((Nports,Nports,nfreq), dtype=np.complex128)
+        
+        for i in range(1,Nports+1):
+            for j in range(1,Nports+1):
+                S = self.model_S(i,j)(frequencies)
+                Smat[i-1,j-1,:] = S
+
+        return Smat
+
     def export_touchstone(self, 
                           filename: str,
-                          format: Literal['RI','MA','DB']):
+                          Z0ref: float = None,
+                          format: Literal['RI','MA','DB'] = 'RI'):
         """Export the S-parameter data to a touchstone file
 
         This function assumes that all ports are numbered in sequence 1,2,3,4... etc with
         no missing ports. Otherwise it crashes. Will be update/improved soon with more features.
 
+        Additionally, one may provide a reference impedance. If this argument is provided, a port impedance renormalization
+        will be performed to that common impedance.
+        
         Args:
             filename (str): The File name
+            Z0ref (float): The reference impedance to normalize to. Defaults to None
             format (Literal[DB, RI, MA]): The dataformat used in the touchstone file.
         """
-        from .touchstone import generate_touchstone
+        
         logger.info(f'Exporting S-data to {filename}')
-        # We will assume for now all ports are also numbered 1 to Nports+1
         Nports = len(self.datasets[0].excitation)
         freqs, _ = self.ax('freq').k0
 
@@ -517,6 +580,33 @@ class EMSimData(SimData[EMDataSet]):
                 _, S = self.ax('freq').S(i,j)
                 Smat[:,i-1,j-1] = S
         
-        generate_touchstone(filename, freqs, Smat, data_format=format)
+        self.save_smatrix(filename, Smat, freqs, format, Z0ref=Z0ref)
+
+    def save_smatrix(self, 
+                     filename: str,
+                     Smatrix: np.ndarray,
+                     frequencies: np.ndarray, 
+                     Z0ref: float = None,
+                     format: Literal['RI','MA','DB'] = 'RI') -> None:
+        """Save an S-parameter matrix to a touchstone file.
+        
+        Additionally, a reference impedance may be supplied. In this case, a port renormalization will be performed on the S-matrix.
+
+        Args:
+            filename (str): The filename
+            Smatrix (np.ndarray): The S-parameter matrix with shape (Nport, Nport, Nfreq)
+            frequencies (np.ndarray): The frequencies with size (Nfreq,)
+            Z0ref (float, optional): An optional reference impedance to normalize to. Defaults to None.
+            format (Literal["RI","MA",'DB], optional): The S-parameter format. Defaults to 'RI'.
+        """
+        from .touchstone import generate_touchstone
+
+        if Z0ref is not None:
+            Z0s = [port.Z0 for port in self.datasets[0].port_modes]
+            logger.debug(f'Renormalizing impedances {Z0s}Ω to {Z0ref}Ω')
+            Smatrix = renormalise_s(Smatrix, Z0s, Z0ref).transpose(2,0,1)
+
+
+        generate_touchstone(filename, frequencies, Smatrix, format)
         
         logger.info('Export complete!')

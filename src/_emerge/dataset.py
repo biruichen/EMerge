@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from typing import TypeVar, Generic, Type, Any
+from typing import TypeVar, Generic, Any
 from loguru import logger
 T = TypeVar('T', bound='DataSet')
 

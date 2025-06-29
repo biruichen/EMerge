@@ -647,7 +647,7 @@ class Electrodynamics3D:
                                          mode_number=active_port.mode_number,
                                          k0 = k0,
                                          beta = active_port.get_beta(k0),
-                                         Z0 = active_port.Z0,
+                                         Z0 = active_port.portZ0,
                                          Pout= active_port.power)
             
                 # Set port as active and add the port mode to the forcing vector
@@ -767,7 +767,7 @@ class Electrodynamics3D:
                                          mode_number=port.mode_number,
                                          k0 = k0,
                                          beta = port.get_beta(k0),
-                                         Z0 = port.Z0,
+                                         Z0 = port.portZ0,
                                          Pout= port.power)
             
             for active_port in all_ports:
