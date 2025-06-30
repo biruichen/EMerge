@@ -16,12 +16,11 @@
 # <https://www.gnu.org/licenses/>.
 
 import gmsh
-from .material import Material
 from .geometry import GeoVolume, GeoObject, GeoSurface
 from .selection import Selection, FaceSelection
+from .periodic import PeriodicCell
 import numpy as np
 from typing import Iterable, Callable
-from collections import defaultdict
 from loguru import logger
 from enum import Enum
 
@@ -156,7 +155,17 @@ class Mesher:
                        0,0,1,lattice[2],
                        0,0,0,1]
         gmsh.model.mesh.set_periodic(2, face2.tags, face1.tags, translation)
-        
+    
+    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
+        """Sets the periodic cell information based on the PeriodicCell class object"""
+        if excluded_faces is None:
+            for f1, f2, lat in cell.cell_data():
+                print(f1, f2, lat)
+                self.set_periodic(f1, f2, lat)
+        else:
+            for f1, f2, lat in cell.cell_data():
+                self.set_periodic(f1 - excluded_faces, f2 - excluded_faces, lat)
+
     def _set_size_in_domain(self, tags: list[int], max_size: float) -> None:
         """Define the size of the mesh inside a domain
 
