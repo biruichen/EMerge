@@ -203,11 +203,12 @@ class PVDisplay(BaseDisplay):
         self._do_animate: bool = False
         self._Nsteps: int = None
         self._fps: int = 25
-        self._ruler: ScreenRuler = ScreenRuler(self)
+        self._ruler: ScreenRuler = ScreenRuler(self, 0.001)
         
 
     def show(self):
         """ Shows the Pyvista display. """
+        self._ruler.min_length = min(self._mesh.edge_lengths)
         self._add_aux_items()
         if self._do_animate:
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
@@ -711,19 +712,20 @@ def freeze(function):
 
 class ScreenRuler:
 
-    def __init__(self, display: PVDisplay):
+    def __init__(self, display: PVDisplay, min_length: float):
         self.disp: PVDisplay = display
         self.points: list[tuple] = [(0,0,0),(0,0,0)]
         self.text: pv.Text = None
         self.ruler = None
         self.disp._plot.add_key_event("m", lambda: self.toggle_ruler())
         self.state = False
+        self.min_length: float = min_length
     
     @freeze
     def toggle_ruler(self):
         if not self.state:
             self.state = True
-            self.disp._plot.enable_point_picking(self._add_point, left_clicking=True, tolerance=0.001)
+            self.disp._plot.enable_point_picking(self._add_point, left_clicking=True, tolerance=self.min_length)
         else:
             self.state = False
             self.disp._plot.disable_picking()
