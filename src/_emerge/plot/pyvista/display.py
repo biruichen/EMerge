@@ -738,6 +738,14 @@ class ScreenRuler:
         p1, p2 = self.points
         return ((p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2)
     
+    @property
+    def measurement_string(self) -> str:
+        dist = self.dist
+        p1, p2 = self.points
+        dx = p2[0]-p1[0]
+        dy = p2[1]-p1[1]
+        dz = p2[2]-p1[2]
+        return f'{dist*1000:.2f}mm (dx={1000*dx:.2f}mm, dy={1000*dy:.2f}mm, dz={1000*dz:.2f}mm)'
     
     def set_ruler(self) -> None:
         if self.ruler is None:
@@ -752,5 +760,5 @@ class ScreenRuler:
     @freeze
     def _add_point(self, point: tuple[float, float, float]):
         self.points = [point,self.points[0]]
-        self.text = self.disp._plot.add_text(f'{1000*self.dist:.2f}mm', self.middle, name='RulerText')
+        self.text = self.disp._plot.add_text(self.measurement_string, self.middle, name='RulerText')
         self.set_ruler()
