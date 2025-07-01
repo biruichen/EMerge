@@ -203,6 +203,8 @@ class PVDisplay(BaseDisplay):
         self._do_animate: bool = False
         self._Nsteps: int = None
         self._fps: int = 25
+        self._ruler: ScreenRuler = ScreenRuler(self)
+        
 
     def show(self):
         """ Shows the Pyvista display. """
@@ -211,7 +213,7 @@ class PVDisplay(BaseDisplay):
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
             self._animate()
         else:
-            self._plot.show()
+            self._plot.show(auto_close=False, interactive_update=False, )
         self._reset()
     
     def _reset(self):
@@ -224,6 +226,8 @@ class PVDisplay(BaseDisplay):
         """The private callback function that stops the animation.
         """
         self._stop = True
+
+   
 
     def _animate(self) -> None:
         """Private function that starts the animation loop.
@@ -691,3 +695,62 @@ class PVDisplay(BaseDisplay):
         self._plot.camera.up = saved_camera["view_up"]
         self._plot.camera.view_angle = saved_camera["view_angle"]
         self._plot.camera.clipping_range = saved_camera["clipping_range"]
+
+        
+
+def freeze(function):
+
+    def new_function(self, *args, **kwargs):
+        cam = self.disp._plot.camera_position[:]
+        self.disp._plot.suppress_rendering = True
+        function(self, *args, **kwargs)
+        self.disp._plot.camera_position = cam
+        self.disp._plot.suppress_rendering = False
+        self.disp._plot.render()
+    return new_function
+
+class ScreenRuler:
+
+    def __init__(self, display: PVDisplay):
+        self.disp: PVDisplay = display
+        self.points: list[tuple] = [(0,0,0),(0,0,0)]
+        self.text: pv.Text = None
+        self.ruler = None
+        self.disp._plot.add_key_event("m", lambda: self.toggle_ruler())
+        self.state = False
+    
+    @freeze
+    def toggle_ruler(self):
+        if not self.state:
+            self.state = True
+            self.disp._plot.enable_point_picking(self._add_point, left_clicking=True)
+        else:
+            self.state = False
+            self.disp._plot.disable_picking()
+
+    @property
+    def dist(self) -> float:
+        p1, p2 = self.points
+        return ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2 + (p1[2]-p2[2])**2)**(0.5)
+    
+    @property
+    def middle(self) -> tuple[float, float, float]:
+        p1, p2 = self.points
+        return ((p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2)
+    
+    
+    def set_ruler(self) -> None:
+        if self.ruler is None:
+            self.ruler = self.disp._plot.add_ruler(self.points[0], self.points[1], title=f'{1000*self.dist:.2f}mm')
+        else:
+            p1 = self.ruler.GetPositionCoordinate()
+            p2 = self.ruler.GetPosition2Coordinate()
+            p1.SetValue(*self.points[0])
+            p2.SetValue(*self.points[1])
+            self.ruler.SetTitle(f'{1000*self.dist:.2f}mm')
+    
+    @freeze
+    def _add_point(self, point: tuple[float, float, float]):
+        self.points = [point,self.points[0]]
+        self.text = self.disp._plot.add_text(f'{1000*self.dist:.2f}mm', self.middle, name='RulerText')
+        self.set_ruler()

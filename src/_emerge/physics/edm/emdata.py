@@ -580,7 +580,7 @@ class EMSimData(SimData[EMDataSet]):
                 _, S = self.ax('freq').S(i,j)
                 Smat[:,i-1,j-1] = S
         
-        self.save_smatrix(filename, Smat, freqs, format, Z0ref=Z0ref)
+        self.save_smatrix(filename, Smat, freqs, format=format, Z0ref=Z0ref)
 
     def save_smatrix(self, 
                      filename: str,
