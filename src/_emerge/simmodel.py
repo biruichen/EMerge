@@ -31,15 +31,15 @@ from loguru import logger
 import numpy as np
 import sys
 import gmsh
-import inspect
 import joblib
+import os
+import inspect
 from pathlib import Path
 from atexit import register
-
+import signal
 
 class SimulationError(Exception):
     pass
-
 
 
 class Simulation3D:
@@ -76,6 +76,7 @@ class Simulation3D:
         self.set_loglevel(loglevel)
 
         ## STATES
+        self.__active: bool = False
         self._defined_geometries: bool = False
 
         if display is not None:
@@ -332,24 +333,66 @@ class Simulation3D:
     def __exit__(self, type, value, tb):
         """This method no longer does something. It only serves as backwards compatibility."""
         return False
+    
+    def _install_signal_handlers(self):
+        # on SIGINT (Ctrl-C) or SIGTERM, call our exit routine
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, self._handle_signal)
+    
+    def _handle_signal(self, signum, frame):
+        """
+        Signal handler: do our cleanup, then re-raise
+        the default handler so that exit code / traceback
+        is as expected.
+        """
+        try:
+            # run your atexit-style cleanup
+            self._exit_gmsh()
+        except Exception:
+            # log but don’t block shutdown
+            logger.exception("Error during signal cleanup")
+        finally:
+            # restore default handler and re‐send the signal
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
 
     def _initialize_gmsh(self):
-        gmsh.initialize()
+        """Initializes the GMSH API with proper shutdown routines.
+        """
+        # If GMSH is not yet initialized (Two simulation in a file)
+        if gmsh.isInitialized() == 0:
+            logger.debug('Initializing GMSH')
+            gmsh.initialize()
+            
+            # Set an exit handler for Ctrl+C cases
+            self._install_signal_handlers()
 
-        register(self._exit_gmsh)
+            # Restier the Exit GMSH function on proper program abortion
+            register(self._exit_gmsh)
 
+        # Create a new GMSH model or load it
         if not self.load_file:
             gmsh.model.add(self.modelname)
         else:
             self.load()
+
+        # Set the Simulation state to active
+        self.__active = True
         return self
 
     def _exit_gmsh(self):
+        # If the simulation object state is still active (GMSH is running)
+        if not self.__active:
+            return
+        logger.debug('Exiting program')
+        # Save the file first
         if self.save_file:
             self.save()
+        # Finalize GMSH
         gmsh.finalize()
         logger.debug('GMSH Shut down successful')
-
+        # set the state to active
+        self.__active = False
 
    
 # class Simulation2D:

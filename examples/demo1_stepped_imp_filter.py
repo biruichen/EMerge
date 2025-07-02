@@ -26,7 +26,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG', save_file=True)
+m = em.Simulation3D('Demo1_SIF')
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
