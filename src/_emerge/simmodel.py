@@ -332,6 +332,7 @@ class Simulation3D:
 
     def __exit__(self, type, value, tb):
         """This method no longer does something. It only serves as backwards compatibility."""
+        self._exit_gmsh()
         return False
     
     def _install_signal_handlers(self):
