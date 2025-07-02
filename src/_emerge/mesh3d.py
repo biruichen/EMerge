@@ -25,6 +25,7 @@ from collections import defaultdict
 from .geometry import GeoVolume
 from .mth.optimized import outward_normal
 from loguru import logger
+from functools import cache
 
 @njit(f8(f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
@@ -206,7 +207,6 @@ class Mesh3D:
 
         return np.array(indices)
     
-
     def get_nodes(self, face_tags: Union[int, list[int]]) -> np.ndarray:
         '''Returns a numpyarray of all the nodes that belong to the given face tags'''
         if isinstance(face_tags, int):

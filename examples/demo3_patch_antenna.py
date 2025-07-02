@@ -70,7 +70,7 @@ pec = em.bc.PEC(rpatch)
 
 model.physics.assign(port, pec, abc)
 
-data = model.physics.frequency_domain(parallel=True, njobs=4)
+data = model.physics.frequency_domain()
 
 xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))
 

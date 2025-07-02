@@ -26,6 +26,7 @@ from .adaptive_freq import SparamModel
 from ...cs import Axis, _parse_axis
 from ...selection import FaceSelection
 from ...geometry import GeoSurface
+from ...mesh3d import Mesh3D
 
 EMField = Literal[
     "er", "ur", "freq", "k0",
@@ -118,6 +119,54 @@ def renormalise_s(S: np.ndarray,
         S0[k, :, :] = (Ak - I_N) @ np.linalg.inv(Ak + I_N)
 
     return S0
+
+def generate_ndim(
+    outer_data: dict[str, list[float]],
+    inner_data: list[float],
+    outer_labels: tuple[str, ...]
+) -> np.ndarray:
+    """
+    Generates an N-dimensional grid of values from flattened data, and returns each axis array plus the grid.
+
+    Parameters
+    ----------
+    outer_data : dict of {label: flat list of coordinates}
+        Each key corresponds to one axis label, and the list contains coordinate values for each point.
+    inner_data : list of float
+        Flattened list of data values corresponding to each set of coordinates.
+    outer_labels : tuple of str
+        Order of axes (keys of outer_data) which defines the dimension order in the output array.
+
+    Returns
+    -------
+    *axes : np.ndarray
+        One 1D array for each axis, containing the sorted unique coordinates for that dimension, 
+        in the order specified by outer_labels.
+    grid : np.ndarray
+        N-dimensional array of shape (n1, n2, ..., nN), where ni is the number of unique
+        values along the i-th axis. Missing points are filled with np.nan.
+    """
+    # Convert inner data to numpy array
+    values = np.asarray(inner_data)
+
+    # Determine unique sorted coordinates for each axis
+    axes = [np.unique(np.asarray(outer_data[label])) for label in outer_labels]
+    grid_shape = tuple(axis.size for axis in axes)
+
+    # Initialize grid with NaNs
+    grid = np.full(grid_shape, np.nan, dtype=values.dtype)
+
+    # Build coordinate arrays for each axis
+    coords = [np.asarray(outer_data[label]) for label in outer_labels]
+
+    # Map coordinates to indices in the grid for each axis
+    idxs = [np.searchsorted(axes[i], coords[i]) for i in range(len(axes))]
+
+    # Assign values into the grid
+    grid[tuple(idxs)] = values
+
+    # Return each axis array followed by the grid
+    return (*axes, grid)
 
 @dataclass
 class Sparam:
@@ -413,38 +462,41 @@ class _DataSetProxy:
     A “ghost” wrapper around a real DataSet.
     Any attr/method access is intercepted here first.
     """
-    def __init__(self, field: str, dss: DataSet):
+    def __init__(self, field: tuple[str], dss: DataSet):
         # stash both the SimData (in case you need context)
         # and the real DataSet
         self._field = field
         self._dss = dss
 
     def __getattribute__(self, name: str):
-       
-
         if name in ('_field','_dss'):
             return object.__getattribute__(self, name)
-        xax = []
+        xaxs = {key: [] for key in self._field}
         yax = []
         field = object.__getattribute__(self, '_field')
+        
         if callable(getattr(self._dss[0], name)):
             def wrapped(*args, **kwargs):
-                
+                # Go through all datasets
                 for ds in self._dss:
                     # 1) grab the real attribute
-                    xval = getattr(ds, field)
+                    #xvals = {key: getattr(ds, key) for ky in self._field.keys()}
                     func = getattr(ds, name)
                     
                     yval = func(*args, **kwargs)
-                    xax.append(xval)
+                    for key in self._field:
+                        xaxs[key].append(getattr(ds, key))
+                    #xax.append(xval)
                     yax.append(yval)
-                return np.array(xax), np.array(yax)
+                return generate_ndim(xaxs, yax, self._field)
             return wrapped
         else:
+            xaxs = {key: [] for key in self._field}
             for ds in self._dss:
-                xax.append(getattr(ds, field))
+                for key in self._field:
+                    xaxs[key].append(getattr(ds, key))
                 yax.append(getattr(ds, name))
-            return np.array(xax), np.array(yax)
+            return generate_ndim(xaxs, yax, self._field)
 
 
 class EMSimData(SimData[EMDataSet]):
@@ -454,13 +506,21 @@ class EMSimData(SimData[EMDataSet]):
     datatype: type = EMDataSet
     def __init__(self):
         super().__init__()
-        #self._basis: FEMBasis = basis
         self._injections = dict()
         self._axis = 'freq'
 
     def __getitem__(self, field: EMField) -> np.ndarray:
         return getattr(self, field)
 
+    @property
+    def mesh(self) -> Mesh3D:
+        """Returns the relevant mesh object for this dataset assuming they are all the same.
+
+        Returns:
+            Mesh3D: The mesh object.
+        """
+        return self.datasets[0].basis.mesh
+    
     def howto(self) -> None:
         """To access data in the EMSimData class use the .ax method to extract properties selected
         along an access of global variables. The axes are all global properties that the EMDatasets manage.
@@ -485,7 +545,19 @@ class EMSimData(SimData[EMDataSet]):
 
         """
 
-    def ax(self, field: EMField) -> EMDataSet:
+    def select(self, **axes: EMField) -> EMSimData:
+        """Takes the provided axis points and constructs a new dataset only for those axes values
+
+        Returns:
+            EMSimData: The new dataset
+        """
+        newdata = EMSimData()
+        for dataset in self.datasets:
+            if dataset.equals(**axes):
+                newdata.datasets.append(dataset)
+        return newdata
+    
+    def ax(self, *field: EMField) -> EMDataSet:
         """Return a EMDataSet proxy object that you can request properties for along a provided axis.
 
         The EMSimData class contains a list of EMDataSet objects. Any global variable like .freq of the 
@@ -507,24 +579,24 @@ class EMSimData(SimData[EMDataSet]):
         # find the real DataSet
         return _DataSetProxy(field, self.datasets)
 
-    def model_S(self, i: int, j: int, Npoles: int = 10, inc_real: bool = False) -> SparamModel:
-        """Returns an S-parameter model object that can be sampled at a dense frequency range.
-        The S-parameter model object uses vector fitting inside the datasets frequency points
-        to determine a model for the linear system.
+    def model_S(self, i: int, j: int, freq: np.ndarray, Npoles: int | Literal['auto'] = 'auto', inc_real: bool = False) -> np.ndarray:
+        """Returns an S-parameter model object at a dense frequency range.
+        This method uses vector fitting inside the datasets frequency points to determine a model for the linear system.
 
         Args:
             i (int): The first S-parameter index
             j (int): The second S-parameter index
-            Npoles (int, optional): The number of poles to use (approx 2x divice order). Defaults to 10.
+            freq (np.ndarray): The frequency sample points
+            Npoles (int | 'auto', optional): The number of poles to use (approx 2x divice order). Defaults to 10.
             inc_real (bool, optional): Wether to allow for a real-pole. Defaults to False.
 
         Returns:
             SparamModel: The SparamModel object
         """
         fs, S = self.ax('freq').S(i,j)
-        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real)
+        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real)(freq)
 
-    def model_S_matrix(self, frequencies: np.ndarray,
+    def model_Smat(self, frequencies: np.ndarray,
                        Npoles: int = 10,
                        inc_real: bool = False) -> np.ndarray:
         """Generates a full S-parameter matrix on the provided frequency points using the Vector Fitting algorithm.
@@ -546,7 +618,7 @@ class EMSimData(SimData[EMDataSet]):
         
         for i in range(1,Nports+1):
             for j in range(1,Nports+1):
-                S = self.model_S(i,j)(frequencies)
+                S = self.model_S(i,j,frequencies, Npoles=Npoles, inc_real=inc_real)
                 Smat[:,i-1,j-1] = S
 
         return Smat

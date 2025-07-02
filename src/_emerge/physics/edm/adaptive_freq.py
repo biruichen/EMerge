@@ -50,7 +50,8 @@ Modification history
 """
 
 import numpy as np
-
+from typing import Literal
+from loguru import logger
 def cc(z):
     return z.conjugate()
 
@@ -238,17 +239,39 @@ class SparamModel:
     def __init__(self, 
                  frequencies: np.ndarray,
                  Sparam: np.ndarray,
-                 n_poles: int = 10,
+                 n_poles: int | Literal['auto'] = 10,
                  inc_real: bool = False):
         self.f: np.ndarray = frequencies
         self.S: np.ndarray = Sparam
 
         s = 1j*frequencies
-        poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=n_poles, inc_real=inc_real)
-        self.poles: np.ndarray = poles
-        self.residues: np.ndarray = residues
-        self.d = d
-        self.h = h
+
+        if n_poles == 'auto':
+            fdense = np.linspace(min(self.f), max(self.f), max(201, 10*self.f.shape[0]))
+            success = False
+            for nps in range(1,40):
+                poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=nps, inc_real=inc_real)
+                self.poles: np.ndarray = poles
+                self.residues: np.ndarray = residues
+                self.d = d
+                self.h = h
+
+                S = self(fdense)
+
+                error = np.mean(np.abs(Sparam-self(self.f)))
+                if all(np.abs(S) <= 1.0) and error < 1e-3:
+                    logger.debug(f'Using {nps} poles.')
+                    success = True
+                    break
+            if not success:
+                logger.warning('Could not model S-parameters. Try a denser grid')
+
+        else:
+            poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=n_poles, inc_real=inc_real)
+            self.poles: np.ndarray = poles
+            self.residues: np.ndarray = residues
+            self.d = d
+            self.h = h
     
     def __call__(self, f: np.ndarray) -> np.ndarray:
         return model(1j*f, self.poles, self.residues, self.d, self.h)

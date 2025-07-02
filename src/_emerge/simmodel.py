@@ -186,6 +186,7 @@ class Simulation3D:
         self.mesher.submit_objects(self._geometries)
         self.physics._initialize_bcs()
         self._defined_geometries = True
+        self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
     
     def generate_mesh(self):
         """Generate the mesh. 
@@ -228,21 +229,46 @@ class Simulation3D:
         tri_ids = self.mesh.get_triangles(tags)
         return self.mesh.nodes, self.mesh.tris[:,tri_ids]
 
-    def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float], None, None]:
+    def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float,...], None, None]:
+        """Executes a parameteric sweep iteration.
+
+        The first argument clear_mesh determines if the mesh should be cleared and rebuild in between sweeps. This is usually needed
+        except when you change only port-properties or material properties. The parameters of the sweep can be provided as a set of 
+        keyword arguments. As an example if you defined the axes: width=np.linspace(...) and height=np.linspace(...). You can
+        add them as arguments using .parameter_sweep(True, width=width, height=height).
+
+        The rest of the simulation commands should be inside the iteration scope
+
+        Args:
+            clear_mesh (bool, optional): Wether to clear the mesh in between sweeps. Defaults to True.
+
+        Yields:
+            Generator[tuple[float,...], None, None]: The parameters provided
+
+        Example:
+         >>> for W, H in model.parameter_sweep(True, width=widths, height=heights):
+         >>>    // build simulation
+         >>>    data = model.frequency_domain()
+         >>> // Extract the data
+         >>> widths, heights, frequencies, S21 = data.ax('width','height','freq').S(2,1)
+        """
         paramlist = list(parameters.keys())
         dims = np.meshgrid(*[parameters[key] for key in paramlist], indexing='ij')
         dims_flat = [dim.flatten() for dim in dims]
+        self.physics.cache_matrices = False
         for iter in range(dims_flat[0].shape[0]):
             if clear_mesh:
                 logger.info('Cleaning up mesh.')
                 gmsh.clear()
+                self.mesh = Mesh3D(self.mesher)
+                self.physics.reset()
             self.physics._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
             logger.info(f'Iterating: {self.physics._params}')
             if len(dims_flat)==1:
                 yield dims_flat[0][iter]
             else:
                 yield (dim[iter] for dim in dims_flat)
-        
+        self.physics.cache_matrices = True
         
     def step1(self) -> None:
         '''
@@ -323,7 +349,6 @@ class Simulation3D:
             self.save()
         gmsh.finalize()
         logger.debug('GMSH Shut down successful')
-        
 
 
    
