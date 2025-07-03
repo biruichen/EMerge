@@ -74,6 +74,11 @@ d.show()
 
 data = model.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
+f, S11 = data.ax('freq').S(1,1)
+f, S21 = data.ax('freq').S(2,1)
+
+plot_sp(f/1e9, [S11, S21], labels=['S11','S21'])
+
 f = np.linspace(5.2e9, 6.2e9, 1001)
 
 S11 = data.model_S(1,1,f)

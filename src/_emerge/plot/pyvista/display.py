@@ -223,7 +223,7 @@ class PVDisplay(BaseDisplay):
 
     def show(self):
         """ Shows the Pyvista display. """
-        self._ruler.min_length = max(1e-5, min(self._mesh.edge_lengths))
+        self._ruler.min_length = max(1e-3, min(self._mesh.edge_lengths))
         self._add_aux_items()
         if self._do_animate:
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
