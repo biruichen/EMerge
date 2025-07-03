@@ -52,7 +52,7 @@ p2 = pcb.modal_port(pcb.load('p2'), width_multiplier=5, height=4*th)
 
 model.physics.set_resolution(0.2)
 
-model.physics.set_frequency_range(5.2e9,6.2e9,23)
+model.physics.set_frequency_range(5.2e9,6.2e9,31)
 
 model.define_geometry(stripline, diel, p1, p2, air)
 
@@ -61,21 +61,15 @@ model.mesher.set_boundary_size(stripline, 0.5*mm)
 model.generate_mesh()
 
 model.view(use_gmsh=True)
-port1 = em.bc.ModalPort(p1, 1, True)
-port2 = em.bc.ModalPort(p2, 2, False)
+port1 = em.bc.ModalPort(p1, 1, TEM=True)
+port2 = em.bc.ModalPort(p2, 2, TEM=True)
 pec = em.bc.PEC(stripline)
 
 model.physics.assign(port1, port2, pec)
 
-model.physics.modal_analysis(port1, 1, direct=True, TEM=True, freq=10e9)
-model.physics.modal_analysis(port2, 1, direct=True, TEM=True, freq=10e9)
-
 d = model.display
 d.add_object(diel, color='green', opacity=0.5)
 d.add_object(stripline, color='red')
-d.add_object(p1, color='blue', opacity=0.3)
-d.add_portmode(port1, 21)
-d.add_portmode(port2, 21)
 d.show()
 
 data = model.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)

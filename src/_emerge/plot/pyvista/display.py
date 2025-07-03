@@ -337,8 +337,9 @@ class PVDisplay(BaseDisplay):
         self._plot.add_points(cloud)
 
     def add_portmode(self, port: PortBC, Npoints: int = 10, dv=(0,0,0), XYZ=None,
-                      field: Literal['E','H'] = 'E') -> pv.UnstructuredGrid:
-        k0 = port.get_mode().k0
+                      field: Literal['E','H'] = 'E', k0: float = None, mode_number: int = None) -> pv.UnstructuredGrid:
+        if k0 is None:
+            k0 = port.get_mode(0, mode_number).k0
         if XYZ:
             X,Y,Z = XYZ
         else:

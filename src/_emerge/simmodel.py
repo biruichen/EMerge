@@ -38,6 +38,14 @@ from pathlib import Path
 from atexit import register
 import signal
 
+_GMSH_ERROR_TEXT = """
+--------------------------
+Known problems/solutions:
+(1) - PLC Error:  A segment and a facet intersect at point
+    This can be caused when approximating thin curved volumes. Try to decrease the mesh size for that region.
+--------------------------
+"""
+
 class SimulationError(Exception):
     pass
 
@@ -206,8 +214,12 @@ class Simulation3D:
 
         gmsh.model.occ.synchronize()
         self.mesher.set_mesh_size(self.physics.get_discretizer(), self.physics.resolution)
-
-        gmsh.model.mesh.generate(3)
+        try:
+            gmsh.model.mesh.generate(3)
+        except Exception:
+            logger.error('GMSH Mesh error detected.')
+            print(_GMSH_ERROR_TEXT)
+            raise
         self.mesh.update()
         gmsh.model.occ.synchronize()
         self.physics.mesh = self.mesh

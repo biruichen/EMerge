@@ -92,13 +92,10 @@ model.view()
 
 # We define our modal ports, assign the boundary condition and execute a modal analysis to solve for the
 # coaxial field mode.
-port1 = em.bc.ModalPort(model.select.face.near(-lfeed, 0, h), 1)
-port2 = em.bc.ModalPort(model.select.face.near(Lbox+lfeed, 0, h), 2)
+port1 = em.bc.ModalPort(model.select.face.near(-lfeed, 0, h), 1, TEM=True)
+port2 = em.bc.ModalPort(model.select.face.near(Lbox+lfeed, 0, h), 2, TEM=True)
 
 model.physics.assign(port1, port2)
-
-model.physics.modal_analysis(port1, 1, TEM=True)
-model.physics.modal_analysis(port2, 1, TEM=True)
 
 # At last we can compute the frequency domain study
 data = model.physics.frequency_domain(parallel=True)

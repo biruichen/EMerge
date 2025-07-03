@@ -213,6 +213,7 @@ class Electrodynamics3D:
             raise ValueError('Conductivity values must be above 0. Ignoring assignment')
 
         self.assembler.conductivity_limit = condutivity
+    
     def get_discretizer(self) -> Callable:
         """Returns a discretizer function that defines the maximum mesh size.
 
@@ -247,7 +248,8 @@ class Electrodynamics3D:
             if isinstance(bc, LumpedPort):
                 self.define_lumped_port_integration_points(bc)
  
-    def modal_analysis(self, port: ModalPort, 
+    def modal_analysis(self, 
+                       port: ModalPort, 
                        nmodes: int = 6, 
                        direct: bool = True,
                        TEM: bool = False,
@@ -328,7 +330,7 @@ class Electrodynamics3D:
             if TEM:
                 target_kz = ermean*urmean*1.1*k0
             else:
-                target_kz = ermean*urmean*0.65*k0
+                target_kz = ermean*urmean*0.7*k0
 
         if search:
             k1 = 0.5*k0
@@ -362,7 +364,6 @@ class Electrodynamics3D:
             eigenmode = eigen_modes[:,i]
             Emode[solve_ids] = np.squeeze(eigenmode)
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
-
             beta = min(np.emath.sqrt(-eigen_values[i]).real,kmax.real)
             data._mode_field = Emode
             residuals = -1
@@ -510,11 +511,31 @@ class Electrodynamics3D:
 
         return group1, group2
     
+    def _compute_modes(self, freq: float):
+        """Compute the modal port modes for a given frequency. Used internally by the frequency domain study.
+
+        Args:
+            freq (float): The simulation frequency
+        """
+        k0 = 2*np.pi*freq/299792458
+        for bc in self.boundary_conditions:
+            # Only treat modal ports
+            if not isinstance(bc, ModalPort):
+                continue
+            
+            # If there is a port mode (at least one) and the port does not have mixed materials. No new analysis is needed
+            if not bc.mixed_materials and bc.initialized:
+                continue
+            
+            self.modal_analysis(bc, 1, False, bc.TEM, freq=freq)
+
+
     def frequency_domain_par(self, 
                              njobs: int = 2, 
                              harddisc_threshold: int = None,
                              harddisc_path: str = 'EMergeSparse',
-                             frequency_groups: int = -1) -> EMSimData:
+                             frequency_groups: int = -1,
+                             automatic_modal_analysis: bool = False) -> EMSimData:
         """Executes a parallel frequency domain study
 
         The study is distributed over "njobs" workers.
@@ -531,6 +552,7 @@ class Electrodynamics3D:
             harddisc_threshold (int, optional): The number of DOF limit. Defaults to None.
             harddisc_path (str, optional): The cached matrix path name. Defaults to 'EMergeSparse'.
             frequency_groups (int, optional): The number of frequency points in a solve group. Defaults to -1.
+            automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to False.
 
         Raises:
             SimulationError: An error associated witha a problem during the simulation.
@@ -615,9 +637,11 @@ class Electrodynamics3D:
             for i_group, fgroup in enumerate(freq_groups):
                 logger.debug(f'Precomputing group {i_group}.')
                 jobs = []
+                
                 for freq in fgroup:
                     logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
-                    
+                    if automatic_modal_analysis:
+                        self._compute_modes(freq)
                     # Assembling matrix problem
                     job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
                     job.store_limit = harddisc_threshold
@@ -651,7 +675,7 @@ class Electrodynamics3D:
                                          mode_number=active_port.mode_number,
                                          k0 = k0,
                                          beta = active_port.get_beta(k0),
-                                         Z0 = active_port.portZ0,
+                                         Z0 = active_port.portZ0(k0),
                                          Pout= active_port.power)
             
                 # Set port as active and add the port mode to the forcing vector
@@ -696,8 +720,18 @@ class Electrodynamics3D:
 
         return self.freq_data
     
-    def frequency_domain_single(self) -> EMSimData:
-        ''' Executes the frequency domain study.'''
+    def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> EMSimData:
+        """Execute a frequency domain study without distributed frequency sweep.
+
+        Args:
+            automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to False.
+
+        Raises:
+            SimulationError: _description_
+
+        Returns:
+            EMSimData: The Simulation data.
+        """
         T0 = time.time()
         mesh = self.mesh
         if self._bc_initialized is False:
@@ -749,7 +783,11 @@ class Electrodynamics3D:
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
             logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
+            
             # Assembling matrix problem
+            if automatic_modal_analysis:
+                self._compute_modes(freq)
+            
             job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
             
             logger.debug(f'Routine: {self.solveroutine}')
@@ -771,7 +809,7 @@ class Electrodynamics3D:
                                          mode_number=port.mode_number,
                                          k0 = k0,
                                          beta = port.get_beta(k0),
-                                         Z0 = port.portZ0,
+                                         Z0 = port.portZ0(k0),
                                          Pout= port.power)
             
             for active_port in all_ports:
@@ -822,7 +860,7 @@ class Electrodynamics3D:
                              harddisc_threshold: int = None,
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
-                             frequency_model: tuple[float, float, int] = None,
+                             automatic_modal_analysis: bool = True,
                              ) -> EMSimData:
         """Perform a frequency sweep study
         The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
@@ -830,39 +868,33 @@ class Electrodynamics3D:
         The harddisc_threshold determines the number of Degrees of Freedom beyond which each CSC
         sparse matrix is stored to the harddisc to save RAM (not adviced). The harddisc_path will be
         used as a name for the relative path.
+
         Alternatively, one can choose the number of frequency groups to pre-compute before a sub
         parallel sweep. A multiple of the number of workers is most optimal. Each group iteration will 
         pre-assemble that many frequency points.
-        
-        Finally, the frequency_model parameter may be provided which takes (fmin, fmax, Nfrequencies).
-        A logarithmic sample space will be used as sample points which is optimal for the use of the
-        Vector Fitting feature for the S-parameters.
 
+        The automatic modal analysis argument (default True) tells the frequency domain solver to automatically
+        compute ModalPort modes. The port mode will be recomputed if and only if the mixed_matrial property is True.
+        Otherwise only a single port mode is computed and reused.
+        
         Args:
             parallel (bool, optional): Wether to use parallel processing. Defaults to False.
             njobs (int, optional): The number of parallel jobs. Defaults to 2.
             harddisc_threshold (int, optional): The NDOF threshold. Defaults to None.
             harddisc_path (str, optional): The subdirectory for sparse matrix caching. Defaults to 'EMergeSparse'.
             frequency_groups (int, optional): The number of frequencies to pre-assemble. Defaults to -1.
-            frequency_model (tuple[float, float, int], optional): The (fmin, fmax, N) parameter
-            optimal for Vector Fitting.. Defaults to None.
+            automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to True
 
         Returns:
             EMDataSet: The Resultant dataset.
         """
-        if frequency_model is not None:
-            f_min, f_max, Npts = frequency_model
-            k = np.arange(Npts)
-            xk = -np.cos((2*k+1)/(2*Npts)*np.pi)        # Chebyshev-L1
-            f_points = 0.5*((f_max-f_min)*xk + (f_max+f_min))
-            self.frequencies = np.geomspace(f_min, f_max, Npts)
         if parallel:
             if njobs == 1:
                 logger.warning('Only one parallel thread indicated, defaulting to single threaded.')
                 return self.frequency_domain_single()
-            return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups)
+            return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups, automatic_modal_analysis=automatic_modal_analysis)
         else:
-            return self.frequency_domain_single()
+            return self.frequency_domain_single(automatic_modal_analysis=automatic_modal_analysis)
 
     def _compute_s_data(self, bc: PortBC, 
                        fieldfunction: Callable, 
@@ -900,11 +932,11 @@ class Electrodynamics3D:
             b = np.sqrt(b**2/(2*bc.Z0))
             return b, a
         else:
-            if bc.modetype == 'TEM':
+            if bc.modetype(k0) == 'TEM':
                 const = 1/(np.sqrt((urp[0,0,:] + urp[1,1,:] + urp[2,2,:])/(erp[0,0,:] + erp[1,1,:] + erp[2,2,:])))
-            if bc.modetype == 'TE':
+            if bc.modetype(k0) == 'TE':
                 const = 1/((urp[0,0,:] + urp[1,1,:] + urp[2,2,:])/3)
-            elif bc.modetype == 'TM':
+            elif bc.modetype(k0) == 'TM':
                 const = 1/((erp[0,0,:] + erp[1,1,:] + erp[2,2,:])/3)
             const = np.squeeze(const)
             field_p = sparam_field_power(self.mesh.nodes, tri_vertices, bc, k0, fieldfunction, const)

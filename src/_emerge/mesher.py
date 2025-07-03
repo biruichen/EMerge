@@ -156,6 +156,12 @@ class Mesher:
                        0,0,0,1]
         gmsh.model.mesh.set_periodic(2, face2.tags, face1.tags, translation)
     
+    def set_algorithm(self,
+                      obj: GeoObject,
+                      algorithm: Algorithm3D) -> None:
+        for tag in obj.tags:
+            gmsh.model.mesh.setAlgorithm(obj.dim, tag, algorithm.value)
+            
     def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
         """Sets the periodic cell information based on the PeriodicCell class object"""
         if excluded_faces is None:
