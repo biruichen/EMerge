@@ -2,8 +2,9 @@ from .selection import FaceSelection, SELECTOR_OBJ
 from .cs import GCS, CoordinateSystem, Axis, _parse_axis
 import numpy as np
 from typing import Generator
-from .bc import Periodic
+from .bc import Periodic, FloquetPort
 from .geo.extrude import XYPolygon, GeoPrism
+from .geo import XYPlate, Alignment
 
 
 def _rotnorm(v: np.ndarray) -> np.ndarray:
@@ -23,6 +24,8 @@ class PeriodicCell:
         self.origins: list[tuple[float, float, float]] = origins
         self.vectors: list[Axis] = [_parse_axis(vec) for vec in vectors]
         self._bcs: list[Periodic] = []
+        self._ports: list[FloquetPort] = []
+        self.excluded_faces: FaceSelection = None
 
     def volume(self, z1: float, z2: float) -> GeoPrism:
         """Genereates a volume with the cell geometry ranging from z1 tot z2
@@ -36,6 +39,9 @@ class PeriodicCell:
         """
         raise NotImplementedError('This method is not implemented for this subclass.')
     
+    def floquet_port(self, z: float) -> FloquetPort:
+        raise NotImplementedError('This method is not implemented for this subclass.')
+    
     def cell_data(self) -> Generator[tuple[FaceSelection,FaceSelection,tuple[float, float, float]], None, None]:
         """An iterator that yields the two faces of the hex cell plus a cell periodicity vector
 
@@ -44,7 +50,8 @@ class PeriodicCell:
         """
         raise NotImplementedError('This method is not implemented for this subclass.')
 
-    def bcs(self, exclude_faces: list[FaceSelection] = None) -> list[Periodic]:
+    @property
+    def bcs(self) -> list[Periodic]:
         """Returns a list of Periodic boundary conditions for the given PeriodicCell
 
         Args:
@@ -53,14 +60,15 @@ class PeriodicCell:
         Returns:
             list[Periodic]: The list of Periodic boundary conditions
         """
-        bcs = []
-        for f1, f2, a in self.cell_data():
-            if exclude_faces is not None:
-                f1 = f1 - exclude_faces
-                f2 = f2 - exclude_faces
-            bcs.append(Periodic(f1, f2, a))
-        self._bcs = bcs
-        return bcs
+        if not self._bcs:
+            bcs = []
+            for f1, f2, a in self.cell_data():
+                if self.excluded_faces is not None:
+                    f1 = f1 - self.excluded_faces
+                    f2 = f2 - self.excluded_faces
+                bcs.append(Periodic(f1, f2, a))
+            self._bcs = bcs
+        return self._bcs
     
     def set_scanangle(self, theta: float, phi: float, degree: bool = True) -> None:
         """Sets the scanangle for the periodic condition. (0,0) is defined along the Z-axis
@@ -74,6 +82,7 @@ class PeriodicCell:
             theta = theta*np.pi/180
             phi = phi*np.pi/180
 
+        
         ux = np.sin(theta)*np.cos(phi)
         uy = np.sin(theta)*np.sin(phi)
         uz = np.cos(theta)
@@ -81,6 +90,9 @@ class PeriodicCell:
             bc.ux = ux
             bc.uy = uy
             bc.uz = uz
+        for port in self._ports:
+            port.scan_theta = theta
+            port.scan_phi = phi
 
 class RectCell(PeriodicCell):
     """This class represents the unit cell environment of a regular rectangular tiling.
@@ -130,6 +142,14 @@ class RectCell(PeriodicCell):
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
 
+    def floquet_port(self, port_number: int, z: float) -> tuple[XYPolygon, FloquetPort]:
+        poly = XYPlate(self.width, self.height, position=(0,0,z), alignment=Alignment.CENTER)
+        port = FloquetPort(poly, port_number)
+        port.width = self.width
+        port.height = self.height
+        self._ports.append(port)
+        return poly, port
+    
 class HexCell(PeriodicCell):
 
     def __init__(self,
@@ -206,3 +226,11 @@ class HexCell(PeriodicCell):
         poly = XYPolygon(xs, ys)
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
+    
+    def floquet_port(self, port_number: int, z: float) -> tuple[XYPolygon, FloquetPort]:
+        xs, ys, zs = zip(self.p1, self.p2, self.p3)
+        poly = XYPolygon(xs, ys).geo()
+        port = FloquetPort(poly, port_number)
+        port.area = 1.0
+        self._ports.append(port)
+        return poly, port

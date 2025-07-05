@@ -338,6 +338,94 @@ class PortMode:
         self.norm_factor = np.sqrt(1/np.abs(power))
         logger.info(f'Setting port mode amplitude to: {self.norm_factor} ')
 
+class FloquetPort(PortBC):
+    _include_stiff: bool = True
+    _include_mass: bool = False
+    _include_force: bool = True
+
+    def __init__(self,
+                 face: FaceSelection | GeoSurface,
+                 port_number: int,
+                 cs: CoordinateSystem = None,
+                 power: float = 1.0,
+                 er: float = 1.0):
+        super().__init__(face)
+        self.port_number: int= port_number
+        self.active: bool = True
+        self.power: float = power
+        self.type: str = 'TE'
+        self._field_amplitude: np.ndarray = None
+        self.mode: tuple[int,int] = (1,0)
+        self.cs: CoordinateSystem = cs
+        self.scan_theta: float = 0
+        self.scan_phi: float = 0
+        self.pol_s: complex = 1.0
+        self.pol_p: complex = 0.0
+        self.Zdir: Axis = -1
+        self.area: float = 1
+        if self.cs is None:
+            self.cs = GCS
+
+    def portZ0(self, k0: float = None) -> complex:
+        return 376.73031341259
+
+    def get_amplitude(self, k0: float) -> float:
+        return 1.0
+    
+    def get_beta(self, k0: float) -> float:
+        ''' Return the out of plane propagation constant. βz.'''
+        return k0*np.cos(self.scan_theta)
+    
+    def get_gamma(self, k0: float):
+        """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
+
+        Args:
+            k0 (float): The free space propagation constant.
+
+        Returns:
+            complex: The γ-constant
+        """
+        return 1j*self.get_beta(k0)
+    
+    def get_Uinc(self, x_local: np.ndarray, y_local: np.ndarray, k0: float) -> np.ndarray:
+        return -2*1j*self.get_beta(k0)*self.port_mode_3d(x_local, y_local, k0)
+    
+    def port_mode_3d(self, 
+                     x_local: np.ndarray,
+                     y_local: np.ndarray,
+                     k0: float,
+                     which: Literal['E','H'] = 'E') -> np.ndarray:
+        ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
+
+        kx = k0*np.sin(self.scan_theta)*np.cos(self.scan_phi)
+        ky = k0*np.sin(self.scan_theta)*np.sin(self.scan_phi)
+        kz = k0*np.cos(self.scan_theta)
+        phi = np.exp(-1j*(x_local*kx + y_local*ky))
+
+        P = self.pol_p
+        S = self.pol_s
+
+        E0 = self.get_amplitude(k0)*np.sqrt(2*376.73031341259/(self.area))
+        Ex = E0*(-S*np.sin(self.scan_phi) - P*np.cos(self.scan_theta)*np.cos(self.scan_phi))*phi
+        Ey = E0*(S*np.cos(self.scan_phi) - P*np.cos(self.scan_theta)*np.sin(self.scan_phi))*phi
+        Ez = E0*(-P*E0*np.sin(self.scan_theta))*phi
+        Exyz = np.array([Ex, Ey, Ez])
+        return Exyz
+
+    def port_mode_3d_global(self, 
+                            x_global: np.ndarray,
+                            y_global: np.ndarray,
+                            z_global: np.ndarray,
+                            k0: float,
+                            which: Literal['E','H'] = 'E') -> np.ndarray:
+        '''Compute the port mode field for global xyz coordinates.'''
+        xl, yl, _ = self.cs.in_local_cs(x_global, y_global, z_global)
+        Ex, Ey, Ez = self.port_mode_3d(xl, yl, k0)
+        Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
+        return np.array([Exg, Eyg, Ezg])
+        
+
+        
 class ModalPort(PortBC):
     
     _include_stiff: bool = True
@@ -577,7 +665,7 @@ class RectangularWaveguide(PortBC):
             self.cs: CoordinateSystem = cs
 
     def portZ0(self, k0: float = None) -> complex:
-        raise NotImplementedError('Rectangular waveguide port impedance computation is currently not yet implemented.')
+        return k0*299792458 * 4*np.pi*1e-7/self.get_beta(k0)
 
     def get_amplitude(self, k0: float) -> float:
         Zte = 376.73031341259
@@ -658,6 +746,7 @@ class LumpedPort(PortBC):
                  width: float = None,
                  height: float = None,
                  direction: Axis = None,
+                 Idirection: Axis = None,
                  active: bool = False,
                  power: float = 1,
                  Z0: float = 50):
@@ -684,7 +773,7 @@ class LumpedPort(PortBC):
         if width is None:
             if not isinstance(face, GeoObject):
                 raise ValueError(f'The width, height and direction must be defined. Information cannot be extracted from {face}')
-            width, height, direction = face._data('width','height','dir')
+            width, height, direction, Idirection = face._data('width','height','vdir', 'idir')
             if width is None or height is None or direction is None:
                 raise ValueError(f'The width, height and direction could not be extracted from {face}')
         
@@ -698,8 +787,8 @@ class LumpedPort(PortBC):
         self._field_amplitude: np.ndarray = None
         self.width: float = width
         self.height: float = height
-        self.direction: Axis = direction
-        
+        self.Vdirection: Axis = direction
+        self.Idirection: Axis = Idirection
         self.type = 'TEM'
         
         logger.info('Constructing coordinate system from normal port')
@@ -707,6 +796,7 @@ class LumpedPort(PortBC):
 
         self.vintline: Line = None
         self.v_integration = True
+        self.iintline: Line = None
 
     @property
     def surfZ(self) -> float:
@@ -746,7 +836,7 @@ class LumpedPort(PortBC):
         return 1j*k0*376.7303/self.surfZ
     
     def get_Uinc(self, x_local, y_local, k0) -> np.ndarray:
-        Emag = -1j*2*k0* self.voltage/self.height * (376.7303/self.surfZ)
+        Emag = -1j*2*k0 * self.voltage/self.height * (376.7303/self.surfZ)
         return Emag*self.port_mode_3d(x_local, y_local, k0)
     
     def port_mode_3d(self, 
@@ -756,7 +846,7 @@ class LumpedPort(PortBC):
                      which: Literal['E','H'] = 'E') -> np.ndarray:
         ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
 
-        px, py, pz = self.cs.in_local_basis(*self.direction.np)
+        px, py, pz = self.cs.in_local_basis(*self.Vdirection.np)
         
         Ex = px*np.ones_like(x_local)
         Ey = py*np.ones_like(x_local)
@@ -812,7 +902,7 @@ class Periodic(BoundaryCondition):
 
     def phi(self, k0) -> complex:
         dx, dy, dz = self.dv
-        return np.exp(1j*k0*(self.ux*dx+self.uy*dy+self.uz*dz))
+        return np.exp(-1j*k0*(self.ux*dx+self.uy*dy+self.uz*dz))
     
 
     

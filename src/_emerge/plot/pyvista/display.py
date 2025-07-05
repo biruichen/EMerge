@@ -19,7 +19,7 @@ import time
 from ...mesh3d import Mesh3D
 from ...geometry import GeoObject
 from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection, encode_data, decode_data
-from ...bc import PortBC
+from ...bc import PortBC, ModalPort
 import numpy as np
 import pyvista as pv
 from typing import Iterable, Literal, Callable
@@ -336,16 +336,20 @@ class PVDisplay(BaseDisplay):
         cloud = pv.PolyData(np.array([xs,ys,zs]).T)
         self._plot.add_points(cloud)
 
-    def add_portmode(self, port: PortBC, Npoints: int = 10, dv=(0,0,0), XYZ=None,
-                      field: Literal['E','H'] = 'E', k0: float = None, mode_number: int = None) -> pv.UnstructuredGrid:
-        if k0 is None:
-            k0 = port.get_mode(0, mode_number).k0
+    def add_portmode(self, port: PortBC, 
+                     Npoints: int = 10, 
+                     dv=(0,0,0), 
+                     XYZ=None,
+                     field: Literal['E','H'] = 'E', 
+                     k0: float = None, 
+                     mode_number: int = None) -> pv.UnstructuredGrid:
+        
         if XYZ:
             X,Y,Z = XYZ
         else:
             X,Y,Z = port.selection.sample(Npoints)
             for x,y,z in zip(X,Y,Z):
-                self.add_portmode(port, Npoints, dv, (x,y,z), field)
+                self.add_portmode(port, Npoints, dv, (x,y,z), field, k0=k0, mode_number=mode_number)
             return
         
         X = X+dv[0]
@@ -357,7 +361,24 @@ class PVDisplay(BaseDisplay):
 
         d = _min_distance(xf, yf, zf)
 
-        F = port.port_mode_3d_global(xf,yf,zf, k0, which=field)
+        if port.vintline is not None:
+            xs, ys, zs = port.vintline.cpoint
+            p_line = pv.Line(
+                pointa=(xs[0], ys[0], zs[0]),
+                pointb=(xs[-1], ys[-1], zs[-1]),
+            )
+            self._plot.add_mesh(
+                p_line,
+                color='red',
+                pickable=False,
+                line_width=3.0,
+            )
+        
+        if k0 is None:
+            if isinstance(port, ModalPort):
+                k0 = port.get_mode(0).k0
+        
+        F = port.port_mode_3d_global(xf,yf,zf,k0, which=field)
 
         Fx = F[0,:].reshape(X.shape).T
         Fy = F[1,:].reshape(X.shape).T
@@ -370,8 +391,9 @@ class PVDisplay(BaseDisplay):
             F = np.real(F.T)
             Fnorm = np.sqrt(Fx.real**2 + Fy.real**2 + Fz.real**2)
 
-        grid = pv.StructuredGrid(X,Y,Z)
-        self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8, pickable=False)
+        #grid = pv.StructuredGrid(X,Y,Z)
+        self.add_surf(X,Y,Z,Fnorm)
+        #self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8, pickable=False)
 
         Emag = F/np.max(Fnorm.flatten())*d*3
         self._plot.add_arrows(np.array([xf,yf,zf]).T, Emag)
@@ -523,7 +545,7 @@ class PVDisplay(BaseDisplay):
             "view_angle": self._plot.camera.view_angle,
             "clipping_range": self._plot.camera.clipping_range
         }
-                
+        self._plot.add_logo_widget('src/_img/logo.jpeg',position=(0.89,0.89), size=(0.1,0.1))    
         bounds = self._plot.bounds
         max_size = max([abs(dim) for dim in [bounds.x_max, bounds.x_min, bounds.y_max, bounds.y_min, bounds.z_max, bounds.z_min]])
         length = self.set.plane_ratio*max_size*2
@@ -852,7 +874,7 @@ class ScreenRuler:
         dx = p2[0]-p1[0]
         dy = p2[1]-p1[1]
         dz = p2[2]-p1[2]
-        return f'{dist*1000:.2f}mm (dx={1000*dx:.2f}mm, dy={1000*dy:.2f}mm, dz={1000*dz:.2f}mm)'
+        return f'{dist*1000:.2f}mm (dx={1000.*dx:.4f}mm, dy={1000.*dy:.4f}mm, dz={1000.*dz:.4f}mm)'
     
     def set_ruler(self) -> None:
         if self.ruler is None:

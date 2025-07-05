@@ -25,6 +25,7 @@ from .logsettings import logger_format
 from .geo.modeler import Modeler
 from .plot.display import BaseDisplay
 from .plot.pyvista import PVDisplay
+from .dataset import SimData
 
 from typing import Literal, Type, Generator
 from loguru import logger
@@ -57,7 +58,8 @@ class Simulation3D:
                  display: Type[BaseDisplay] = None,
                  loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
-                 save_file: bool = False):
+                 save_file: bool = False,
+                 logfile: bool = False,):
         """Generate a Simulation3D class object.
 
         As a minimum a file name should be provided. Additionally you may provide it with any
@@ -91,11 +93,15 @@ class Simulation3D:
             self.display = display(self.mesh)
         else:
             self.display = PVDisplay(self.mesh)
+        if logfile:
+            self.set_logfile(logfile)
 
         self.save_file: bool = save_file
         self.load_file: bool = load_file
-
+        self.data: SimData = None
         self.obj: dict[str, GeoObject] = dict()
+
+        
 
         self._initialize_gmsh()
 
@@ -143,12 +149,22 @@ class Simulation3D:
         self.physics.load_data(datapack['physics'])
         self.obj = datapack['objects']
         self.mesh = datapack['mesh']
+        self.data = self.physics.get_data()
         logger.info(f"Loaded simulation data from: {data_path}")
 
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:
+        """Set the loglevel for loguru.
+
+        Args:
+            loglevel ('DEBUG','INFO','WARNING','ERROR'): The loglevel
+        """
         handler = {"sink": sys.stdout, "level": loglevel, "format": logger_format}
         logger.configure(handlers=[handler])
 
+    def set_logfile(self) -> None:
+        """Adds a file output for the logger."""
+        logger.add(str(self.modelpath / 'logging.log'), mode='w', level='DEBUG', format=logger_format, colorize=False, backtrace=True, diagnose=True)
+        
     def view(self, 
              selections: list[Selection] = None, 
              use_gmsh: bool = False,
@@ -189,8 +205,7 @@ class Simulation3D:
         system behaves if only a part of all geometries are included.
 
         """
-        if not geometries:
-            geometries = list(self.obj.values())
+        geometries = geometries + tuple(self.obj.values())
         self._geometries = unpack_lists(geometries)
         self.mesher.submit_objects(self._geometries)
         self.physics._initialize_bcs()
@@ -220,7 +235,7 @@ class Simulation3D:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
-        self.mesh.update()
+        self.mesh.update(self.mesher.periodic_cell.bcs)
         gmsh.model.occ.synchronize()
         self.physics.mesh = self.mesh
 
@@ -282,57 +297,6 @@ class Simulation3D:
             else:
                 yield (dim[iter] for dim in dims_flat)
         self.physics.cache_matrices = True
-        
-    def step1(self) -> None:
-        '''
-        Step 1: Initialize the model and create a new geometry.
-
-        >>> with em.Simulation3D("My Model") as model:
-                object1 = em.modeler.Box(...)
-                object2 = em.modeler.CoaxCyllinder(...)
-                model.define_geometry(...)
-        '''
-        pass
-    def step2(self) -> None:
-        '''
-        Step 2: Create the mesh
-
-        example:
-        >>> model.generate_mesh()
-        '''
-        pass
-    def step3(self) -> None:
-        '''
-        Step 3: Setup the physics
-
-        >>> model.physics.resolution = 0.2
-        >>> model.physics.assign(*bcs)
-        >>> model.physics.set_frequency(np.linspace(f1, f2, N))
-        >>> data = model.run_frequency_domain()
-        '''
-        pass
-    def step4(self) -> None:
-        '''
-        Step 4: Post processing
-
-        The data is provided as a set of data defined for global variables. Each simulation run gets
-        A value for these global variables. Therefor, you can select which variable you want as your inner axis.
-
-        example:
-        >>> freq, S21 = data.ax('freq').S(2,1)
-
-        Returns the S21 parameter AND the frequency for which it is  known.
-        '''
-
-    def howto_ff(self) -> None:
-        '''
-        >>> topsurf = model.mesh.boundary_surface(model.select.face.near(0, 0, H).tags)
-        >>> Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
-        >>> theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
-        >>> phi = 0*theta
-        >>> E, H = em.physics.edm.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).glob('k0')[0])
-        '''
-        pass
 
     def __enter__(self) -> Simulation3D:
         """This method is depricated with the new atexit system. It still exists for backwards compatibility.
@@ -408,77 +372,3 @@ class Simulation3D:
         self.__active = False
 
    
-# class Simulation2D:
-#     def __init__(self, modelname: str):
-#         self.modelname = modelname
-#         self.geo: Geometry = Geometry()
-#         self.physics: EMFreqDomain2D = EMFreqDomain2D(self.geo)
-#         self.mesh: Mesh2D = None
-#         self.resolution: float = 0.2
-
-#     
-#     def define_geometry(self, polygons: list[shp.Polygon]) -> None:
-#         self.geo._merge_polygons(polygons)
-#         self.geo.compile()
-#         self.physics._initialize_bcs()
-
-#     
-#     def generate_mesh(self, name: str = None, element_order: int = 2) -> Mesh2D:
-#         logger.info('Generating mesh')
-#         discretizer = self.physics.get_discretizer()
-#         logger.info('Updating mesh point disscretization size.')
-#         self.geo.update_point_ds(discretizer, self.resolution)
-#         logger.info('Calling GMSH mesh routine.')
-#         self.geo._commit_gmsh()
-#         if name is None:
-#             name = self.modelname + '_mesh'
-#         logger.info('Generating Mesh2D object')
-#         self.mesh = Mesh2D(name, element_order=element_order)
-#         logger.info('Mesh complete')
-#         return self.mesh
-    
-#     
-#     def update_boundary_conditions(self):
-#         logger.info('Updating boundary conditions')
-#         for bc in self.physics.boundary_conditions:
-#             logger.debug(f'Parsing BC: {bc}')
-#             if bc.dimension is BCDimension.EDGE:
-#                 vertices = []
-#                 for tag in bc.tags:
-#                     vertices.append(self.mesh.get_edge(tag))
-#                 bc.node_indices = [np.array(_list, dtype=np.int32) for _list in _stitch_lists(vertices)]
-#             elif bc.dimension is BCDimension.NODE:
-#                 vertices = []
-#                 for tag in bc.tags:
-#                     vertices.append(self.mesh.get_point(tag))
-#                 bc.node_indices = vertices
-#             else:
-#                 raise NotImplementedError(f'Boundary condition type {bc.dimension} is not implemented yet.')
-    
-#     def run_frequency_domain(self, solver: callable = None) -> FEMBasis:
-#         logger.info('Starting frequency domain simulation routine.')
-#         if self.mesh is None:
-#             logger.info('No mesh detected.')
-#             self.generate_mesh()
-#         self.update_boundary_conditions()
-#         self.physics.solve(self.mesh, solver=solver)
-        
-#         return self.physics.solution
-
-#     def run_eigenmodes(self, nsolutions: int = 6) -> FEMBasis:
-#         logger.info('Starting eigenmode simulation routine.')
-#         if self.mesh is None:
-#             logger.info('No mesh detected.')
-#             self.generate_mesh()
-#         self.update_boundary_conditions()
-#         self.physics.eigenmode(self.mesh, num_sols=nsolutions)
-#         return self.physics.solution
-    
-#     def __enter__(self):
-#         gmsh.initialize()
-#         gmsh.model.add(self.modelname)
-#         return self
-
-#     def __exit__(self, exc_type, exc_value, traceback):
-#         gmsh.finalize()
-

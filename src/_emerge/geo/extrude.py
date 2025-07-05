@@ -155,6 +155,10 @@ class XYPolygon:
 
         self.fillets: list[tuple[float, int]] = []
 
+    @property
+    def area(self) -> float:
+        return 0.5*np.abs(np.dot(self.x,np.roll(self.y,1))-np.dot(self.y,np.roll(self.x,1)))
+
     def extend(self, xpts: list[float], ypts: list[float]) -> XYPolygon:
         """Adds a series for x and y coordinates to the existing polygon.
 
@@ -245,6 +249,11 @@ class XYPolygon:
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]
         return GeoPrism(tags, surftags[0], surftags)
+    
+    def geo(self, cs: CoordinateSystem = None) -> GeoPolygon:
+        if cs is None:
+            cs = GCS
+        return self._finalize(cs) 
     
     def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> GeoPrism:
         """Applies a revolution to the XYPolygon along the coordinate system Z-axis

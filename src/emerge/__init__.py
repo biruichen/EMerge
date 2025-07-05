@@ -48,4 +48,6 @@ from _emerge.physics.edm.sc import stratton_chu
 from _emerge.periodic import RectCell, HexCell
 from _emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
+from _emerge.howto import _HowtoClass
+howto = _HowtoClass()
 logger.debug('Importing complete!')
