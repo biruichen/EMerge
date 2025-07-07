@@ -329,7 +329,6 @@ class Assembler:
             mask = mask[keep_indices]
             solve_ids = np.argwhere(mask==1).flatten()
 
-        logger.debug(f'Assembly complete!')
         logger.debug(f'Number of tets: {mesh.n_tets}')
         logger.debug(f'Number of DoF: {K.shape[0]}')
         simjob = SimJob(K, b, k0*299792458/(2*np.pi), True)

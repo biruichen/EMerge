@@ -222,8 +222,10 @@ class Mesh3D:
         return np.array(sorted(list(set(nodes))))
     
     
-    def update(self, periodic_bcs: list[Periodic]):
-
+    def update(self, periodic_bcs: list[Periodic] = None):
+        if periodic_bcs is None:
+            periodic_bcs = []
+            
         nodes, lin_coords, _  = gmsh.model.mesh.get_nodes()
         
         coords = lin_coords.reshape(-1, 3).T

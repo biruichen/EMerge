@@ -60,15 +60,14 @@ model.generate_mesh()
 
 #model.view(selections=[port,])
 
-port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, Idirection=em.XAX, active=True, Z0=50)
+port = model.mw.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, Idirection=em.XAX, active=True, Z0=50)
 
 boundary_selection = air.outside('bottom')
 
-abc = em.bc.AbsorbingBoundary(boundary_selection)
+abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
 
-pec = em.bc.PEC(rpatch)
+pec = model.mw.bc.PEC(rpatch)
 
-model.mw.assign(port, pec, abc)
 
 data = model.mw.frequency_domain()
 

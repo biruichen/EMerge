@@ -545,7 +545,7 @@ class PVDisplay(BaseDisplay):
             "view_angle": self._plot.camera.view_angle,
             "clipping_range": self._plot.camera.clipping_range
         }
-        self._plot.add_logo_widget('src/_img/logo.jpeg',position=(0.89,0.89), size=(0.1,0.1))    
+        #self._plot.add_logo_widget('src/_img/logo.jpeg',position=(0.89,0.89), size=(0.1,0.1))    
         bounds = self._plot.bounds
         max_size = max([abs(dim) for dim in [bounds.x_max, bounds.x_min, bounds.y_max, bounds.y_min, bounds.z_max, bounds.z_min]])
         length = self.set.plane_ratio*max_size*2
