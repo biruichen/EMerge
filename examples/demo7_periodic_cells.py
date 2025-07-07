@@ -73,13 +73,13 @@ model['wg'] = em.geo.Box(wga,wgb,fl, (-wga/2, -wgb/2,-fl) )
 # Beause we stored our geometry in our model object using the get and set-item notation. We don't have to pass the items anymore.
 model.define_geometry()
 
-model.physics.set_frequency_range(2.8e9,3.3e9,5)
-model.physics.set_resolution(0.1)
+model.mw.set_frequency_range(2.8e9,3.3e9,5)
+model.mw.set_resolution(0.1)
 
 # To make sure that we can run a periodic simulation we must tell the mesher that
 # it has to copy the meshing on each face that is duplcated. We can simply pass our periodic
 # cell to the mesher using the set_periodic_cell() method.
-model.mesher.set_periodic_cell(periodic_cell)
+model.set_periodic_cell(periodic_cell)
 
 # Then we create our mesh and view the result
 model.generate_mesh()
@@ -88,16 +88,10 @@ model.view()
 # Now lets define our boundary conditions
 # First the waveguide port
 wg = model['wg']
-wgbc = em.bc.RectangularWaveguide(wg.face('bottom'), 1)
+wgbc = model.mw.bc.RectangularWaveguide(wg.face('bottom'), 1)
 
 # And then the absorbing boundary at the top
-abc = em.bc.AbsorbingBoundary(model['box'].face('back'))
-
-# We can simply create the necessary periodic boundary conditions using the bcs() property of our cell.
-periodic_bcs = periodic_cell.bcs
-
-# Finally we assign the boundary conditions. 
-model.physics.assign(wgbc, abc, *periodic_bcs)
+abc = model.mw.bc.AbsorbingBoundary(model['box'].face('back'))
 
 # We can use the set_scanangle method to set the appropriate phases for the boundary. The scan angle is defined as following
 # kx = sin(θ)·cos(ϕ)
@@ -107,7 +101,7 @@ model.physics.assign(wgbc, abc, *periodic_bcs)
 periodic_cell.set_scanangle(30,45)
 
 # And at last we run our simulation and view the results.
-data = model.physics.frequency_domain()
+data = model.mw.frequency_domain()
 
 model.display.add_object(wg)
 model.display.add_object(model['box'])

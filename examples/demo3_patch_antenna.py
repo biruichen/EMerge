@@ -47,9 +47,9 @@ rpatch = em.geo.add(rpatch, line)
 rpatch.material = em.lib.COPPER # Only for viewing
 
 dielectric.material = em.Material(er, tand=0.0, color="#207020", opacity=0.6)
-model.physics.resolution = 0.2
+model.mw.resolution = 0.2
 
-model.physics.set_frequency_range(1.5e9, 1.7e9, 11)
+model.mw.set_frequency_range(1.5e9, 1.7e9, 11)
 
 model.define_geometry([dielectric, air, rpatch, port])
 
@@ -68,9 +68,9 @@ abc = em.bc.AbsorbingBoundary(boundary_selection)
 
 pec = em.bc.PEC(rpatch)
 
-model.physics.assign(port, pec, abc)
+model.mw.assign(port, pec, abc)
 
-data = model.physics.frequency_domain()
+data = model.mw.frequency_domain()
 
 xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))
 

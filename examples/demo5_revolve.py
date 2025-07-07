@@ -15,7 +15,7 @@ vol = poly.revolve(em.cs.CoordinateSystem(em.XAX, em.ZAX, em.YAX), (0,0,0), (0,0
 
 model.define_geometry(vol)
 
-model.physics.set_frequency(0.2e9)
+model.mw.set_frequency(0.2e9)
 
 model.generate_mesh()
 

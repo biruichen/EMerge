@@ -69,10 +69,10 @@ pcb = layouter.gen_pcb(True, merge=True)
 m.define_geometry(pcb, polies, p1, p2)
 
 # We set our desired resolution (fraction of the wavelength)
-m.physics.set_resolution(0.15)
+m.mw.set_resolution(0.15)
 
 # And we define our frequency range
-m.physics.set_frequency_range(0.2e9, 8e9, 41)
+m.mw.set_frequency_range(0.2e9, 8e9, 41)
 
 # EMerge also has a convenient interface to improve surface meshing quality. 
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
@@ -88,12 +88,9 @@ m.generate_mesh()
 m.view()
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
-port1 = em.bc.ModalPort(p1, 1, TEM=True)
-port2 = em.bc.ModalPort(p2, 2, TEM=True)
-pec = em.bc.PEC(polies)
-
-m.physics.assign(port1, port2, pec)
-
+port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)
+port2 = m.mw.bc.ModalPort(p2, 2, TEM=True)
+pec = m.mw.bc.PEC(polies)
 
 ## OPTIONAL
 # If we want to view the port mode we have to first know it. The modes are computed using a modal analysis.
@@ -103,8 +100,8 @@ if False:
     # Make sure to set the TEM property to True so that
     # EMerge knows to handle the port mode as a TEM boundary. This also includes the automatic
     # determination of a voltage integration line used for computing the port impedance.
-    m.physics.modal_analysis(port1, 1, TEM=True)
-    m.physics.modal_analysis(port2, 1, TEM=True)
+    m.mw.modal_analysis(port1, 1, TEM=True)
+    m.mw.modal_analysis(port2, 1, TEM=True)
 
     # Finally we import the display class to view the resultant modes
     m.display.add_object(pcb, opacity=0.1)
@@ -114,7 +111,7 @@ if False:
     m.display.show()
 
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-sol = m.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
 f, S11 = sol.ax('freq').S(1,1)
 f, S21 = sol.ax('freq').S(2,1)

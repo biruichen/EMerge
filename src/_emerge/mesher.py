@@ -106,6 +106,11 @@ class Mesher:
         boundary = self.domain_boundary_face_tags
         return [tag for tag in alltags if tag not in boundary]
     
+    def _get_periodic_bcs(self) -> list[Periodic]:
+        if self.periodic_cell is None:
+            return []
+        return self.periodic_cell._bcs
+    
     def _check_ready(self) -> None:
         if self.max_size is None or self.min_size is None:
             raise MeshError('Either maximum or minimum mesh size is undefined. Make sure \
@@ -154,7 +159,7 @@ class Mesher:
         
         gmsh.model.occ.synchronize()
 
-    def _set_periodic_face(self, 
+    def _set_mesh_periodicity(self, 
                      face1: FaceSelection,
                      face2: FaceSelection,
                      lattice: tuple[float,float,float]):
@@ -174,10 +179,10 @@ class Mesher:
         """Sets the periodic cell information based on the PeriodicCell class object"""
         if excluded_faces is None:
             for f1, f2, lat in cell.cell_data():
-                self._set_periodic_face(f1, f2, lat)
+                self._set_mesh_periodicity(f1, f2, lat)
         else:
             for f1, f2, lat in cell.cell_data():
-                self._set_periodic_face(f1 - excluded_faces, f2 - excluded_faces, lat)
+                self._set_mesh_periodicity(f1 - excluded_faces, f2 - excluded_faces, lat)
         self.periodic_cell = cell
 
     def _set_size_in_domain(self, tags: list[int], max_size: float) -> None:

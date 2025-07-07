@@ -240,7 +240,8 @@ class SparamModel:
                  frequencies: np.ndarray,
                  Sparam: np.ndarray,
                  n_poles: int | Literal['auto'] = 10,
-                 inc_real: bool = False):
+                 inc_real: bool = False,
+                 maxpoles: int = 40):
         self.f: np.ndarray = frequencies
         self.S: np.ndarray = Sparam
 
@@ -249,7 +250,7 @@ class SparamModel:
         if n_poles == 'auto':
             fdense = np.linspace(min(self.f), max(self.f), max(201, 10*self.f.shape[0]))
             success = False
-            for nps in range(1,40):
+            for nps in range(1,maxpoles):
                 poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=nps, inc_real=inc_real)
                 self.poles: np.ndarray = poles
                 self.residues: np.ndarray = residues
@@ -259,7 +260,7 @@ class SparamModel:
                 S = self(fdense)
 
                 error = np.mean(np.abs(Sparam-self(self.f)))
-                if all(np.abs(S) <= 1.0) and error < 1e-3:
+                if all(np.abs(S) <= 1.0) and error < 1e-2:
                     logger.debug(f'Using {nps} poles.')
                     success = True
                     break

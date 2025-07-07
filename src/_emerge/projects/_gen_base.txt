@@ -19,7 +19,7 @@ with em.Simulation3D(#FILE#, PVDisplay, save_file=True) as m:
     
     m.define_geometry()
 
-    m.physics.set_frequency_range(8e9,9e9,11)
+    m.mw.set_frequency_range(8e9,9e9,11)
 
     m.generate_mesh()
 
@@ -31,8 +31,8 @@ with em.Simulation3D(#FILE#, PVDisplay, save_file=True) as m:
     
 
     # Assign boundary conditions
-    m.physics.assign(port1)
-    m.physics.assign(port2)
+    m.mw.assign(port1)
+    m.mw.assign(port2)
 
     # Run simulation steps
-    m.physics.frequency_domain()
+    m.mw.frequency_domain()

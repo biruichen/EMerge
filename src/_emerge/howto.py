@@ -95,7 +95,7 @@ class _HowtoClass:
         
         Then you should pass them to the physics object with comma separation
         and/or list comprehension (*bcs)
-        >>> model.physics.assign(bc1, bc2, bc3, *bcs)
+        >>> model.mw.assign(bc1, bc2, bc3, *bcs)
 
         """
 
@@ -103,20 +103,20 @@ class _HowtoClass:
         """
         You can run a frequency domain study by simply calling:\
         
-        >>> results = model.physics.frequency_domain(...)
+        >>> results = model.mw.frequency_domain(...)
 
         You can distribute your frequency sweep across multiple threads using
         
-        >>> results = model.physics.frequency_domain(parallel=True, njobs=3)
+        >>> results = model.mw.frequency_domain(parallel=True, njobs=3)
 
-        The frequency domain study will return an EMSimData object that contains all data.
+        The frequency domain study will return an MWSimData object that contains all data.
         """
         pass
 
     def access_data(self):
         """
-        Data from a frequency domain study is contained in the EMSimData object.
-        Each simulation iteration is a separate EMDataSet object with all relevant parameters included.
+        Data from a frequency domain study is contained in the MWSimData object.
+        Each simulation iteration is a separate MWDataSet object with all relevant parameters included.
 
         You can select an individual dataset based on the iteration number using:
         >>> dataset = results.item(3)
@@ -171,7 +171,7 @@ class _HowtoClass:
         The data from a simulation can be found in:
 
         >>> results = model.data
-        >>> results = model.physics.freq_data # the same
+        >>> results = model.mw.freq_data # the same
 
 
         """
@@ -199,7 +199,7 @@ class _HowtoClass:
         A farfield can be computed in any simulation but it only really
         represents something if the model has an absorbing boundary or PML.
         To compute the farfield on a single arc we will use the farfield_2d
-        method of the EMDataSet class
+        method of the MWDataSet class
 
         >>> theta, E, H = data.find(freq=1e9).farfield_2d(refdir, planedir, faces)
 

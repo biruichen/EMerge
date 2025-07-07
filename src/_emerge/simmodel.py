@@ -18,15 +18,15 @@
 from __future__ import annotations
 from .mesher import Mesher, unpack_lists
 from .geometry import GeoObject
-from .physics.edm.emfreq3d import Electrodynamics3D
+from .physics.microwave.microwave_3d import Microwave3D
 from .mesh3d import Mesh3D
 from .selection import Selector, FaceSelection, Selection
 from .logsettings import logger_format
-from .geo.modeler import Modeler
+from .geo.builder import Builder
 from .plot.display import BaseDisplay
 from .plot.pyvista import PVDisplay
 from .dataset import SimData
-
+from .periodic import PeriodicCell
 from typing import Literal, Type, Generator
 from loguru import logger
 import numpy as np
@@ -59,7 +59,8 @@ class Simulation3D:
                  loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
                  save_file: bool = False,
-                 logfile: bool = False,):
+                 logfile: bool = False,
+                 microwave: bool = True):
         """Generate a Simulation3D class object.
 
         As a minimum a file name should be provided. Additionally you may provide it with any
@@ -77,17 +78,18 @@ class Simulation3D:
         self.modelname = modelname
         self.modelpath = base_path / (modelname.lower()+'_data')
         self.mesher: Mesher = Mesher()
-        self.physics: Electrodynamics3D = Electrodynamics3D(self.mesher)
+        
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
-        self.modeler: Modeler = Modeler()
         self.display: PVDisplay = None
+        self.geo: Builder = Builder()
         self._geometries: list[GeoObject] = []
         self.set_loglevel(loglevel)
 
         ## STATES
         self.__active: bool = False
         self._defined_geometries: bool = False
+        self._cell: PeriodicCell = None
 
         if display is not None:
             self.display = display(self.mesh)
@@ -100,8 +102,9 @@ class Simulation3D:
         self.load_file: bool = load_file
         self.data: SimData = None
         self.obj: dict[str, GeoObject] = dict()
-
         
+        ## Physics
+        self.mw: Microwave3D = Microwave3D(self.mesher)
 
         self._initialize_gmsh()
 
@@ -124,7 +127,7 @@ class Simulation3D:
         logger.info(f"Saved mesh to: {mesh_path}")
 
         # Pack and save data
-        physics = self.physics.pack_data()
+        physics = self.mw.pack_data()
         objects = self.obj
         dataset = dict(physics=physics, objects=objects, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
@@ -146,10 +149,10 @@ class Simulation3D:
 
         # Load data
         datapack = joblib.load(str(data_path))
-        self.physics.load_data(datapack['physics'])
+        self.mw.load_data(datapack['physics'])
         self.obj = datapack['objects']
         self.mesh = datapack['mesh']
-        self.data = self.physics.get_data()
+        self.data = self.mw.get_data()
         logger.info(f"Loaded simulation data from: {data_path}")
 
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:
@@ -199,16 +202,20 @@ class Simulation3D:
             logger.warning('The provided BaseDisplay class does not support object display. Please make' \
             'sure that this method is properly implemented.')
     
+    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
+        """Sets the periodic cell information based on the PeriodicCell class object"""
+        self.mw.bc._cell = cell
+        self._cell = cell
+
     def define_geometry(self, *geometries: list[GeoObject]) -> None:
         """Provide the physics engine with the geometries that are contained and ought to be included
         in the simulation. Please make sure to include all geometries. Its currently unclear how the
         system behaves if only a part of all geometries are included.
 
         """
-        geometries = geometries + tuple(self.obj.values())
+        geometries = geometries + tuple(self.obj.values()) + tuple(self.geo.all_geometries())
         self._geometries = unpack_lists(geometries)
         self.mesher.submit_objects(self._geometries)
-        self.physics._initialize_bcs()
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
     
@@ -223,21 +230,32 @@ class Simulation3D:
             ValueError: ValueError if no frequencies are defined.
         """
         if not self._defined_geometries:
-            raise SimulationError('No geometries are defined. Make sure to call .define_geometries(...) first.')
-        if self.physics.frequencies is None:
+            self.define_geometry()
+        
+        # Set the cell periodicity in GMSH
+        if self._cell is not None:
+            self.mesher.set_periodic_cell(self._cell)
+        
+        # Check if frequencies are defined: TODO: Replace with a more generic check
+        if self.mw.frequencies is None:
             raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
 
         gmsh.model.occ.synchronize()
-        self.mesher.set_mesh_size(self.physics.get_discretizer(), self.physics.resolution)
+
+        # Set the mesh size
+        self.mesher.set_mesh_size(self.mw.get_discretizer(), self.mw.resolution)
         try:
             gmsh.model.mesh.generate(3)
         except Exception:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
-        self.mesh.update(self.mesher.periodic_cell.bcs)
+
+        self.mw._initialize_bcs()
+        
+        self.mesh.update(self.mesher._get_periodic_bcs())
         gmsh.model.occ.synchronize()
-        self.physics.mesh = self.mesh
+        self.mw.mesh = self.mesh
 
     def get_boundary(self, face: FaceSelection = None, tags: list[int] = None) -> tuple[np.ndarray, np.ndarray]:
         ''' Return boundary data. 
@@ -283,20 +301,20 @@ class Simulation3D:
         paramlist = list(parameters.keys())
         dims = np.meshgrid(*[parameters[key] for key in paramlist], indexing='ij')
         dims_flat = [dim.flatten() for dim in dims]
-        self.physics.cache_matrices = False
+        self.mw.cache_matrices = False
         for iter in range(dims_flat[0].shape[0]):
             if clear_mesh:
                 logger.info('Cleaning up mesh.')
                 gmsh.clear()
                 self.mesh = Mesh3D(self.mesher)
-                self.physics.reset()
-            self.physics._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
-            logger.info(f'Iterating: {self.physics._params}')
+                self.mw.reset()
+            self.mw._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            logger.info(f'Iterating: {self.mw._params}')
             if len(dims_flat)==1:
                 yield dims_flat[0][iter]
             else:
                 yield (dim[iter] for dim in dims_flat)
-        self.physics.cache_matrices = True
+        self.mw.cache_matrices = True
 
     def __enter__(self) -> Simulation3D:
         """This method is depricated with the new atexit system. It still exists for backwards compatibility.

@@ -54,7 +54,7 @@ box = em.geo.Box(Lbox, a, b, position=(0,-a/2,0))
 # The modeler class allows us to create a parameter series using the modeler.series() method. We provid it with quantities.
 # We can do this for multiple at the same time (as you can also see with the position). The modeler class
 # will recognize the multiple quantities and simply create 5 different cyllinders, one for each parameter pair.
-stubs = model.modeler.cyllinder(W/2, model.modeler.series(C1, lr1, lr2, lr1, C1), position=(model.modeler.series(x1, x2, x3, x4, x5), 0, 0), NPoly=10)
+stubs = model.geo.modeler.cyllinder(W/2, model.geo.modeler.series(C1, lr1, lr2, lr1, C1), position=(model.geo.modeler.series(x1, x2, x3, x4, x5), 0, 0), NPoly=10)
 
 # Next we create the in and output feed cyllinders for the coaxial cable. We will use the Nsections feature in order to guarantee a better
 # adherence to the boundary.
@@ -77,9 +77,9 @@ model.define_geometry(box, feed1out, feed2out)
 model.view()
 
 # We define our frequency range and a fine sampling.
-model.physics.set_frequency_range(6e9, 8e9, 21)
+model.mw.set_frequency_range(6e9, 8e9, 21)
 
-model.physics.resolution = 0.05
+model.mw.resolution = 0.05
 
 # To improve simulation quality we refine the faces at the top of the cylinders.
 for stub in stubs:
@@ -92,13 +92,11 @@ model.view()
 
 # We define our modal ports, assign the boundary condition and execute a modal analysis to solve for the
 # coaxial field mode.
-port1 = em.bc.ModalPort(model.select.face.near(-lfeed, 0, h), 1, TEM=True)
-port2 = em.bc.ModalPort(model.select.face.near(Lbox+lfeed, 0, h), 2, TEM=True)
-
-model.physics.assign(port1, port2)
+port1 = model.mw.bc.ModalPort(model.select.face.near(-lfeed, 0, h), 1, TEM=True)
+port2 = model.mw.bc.ModalPort(model.select.face.near(Lbox+lfeed, 0, h), 2, TEM=True)
 
 # At last we can compute the frequency domain study
-data = model.physics.frequency_domain(parallel=True)
+data = model.mw.frequency_domain(parallel=True)
 
 # Next we will use the Vector Fitting algorithm to model our S-parameters with a Rational function
 

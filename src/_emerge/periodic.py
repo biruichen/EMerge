@@ -1,10 +1,10 @@
+from .cs import Axis, _parse_axis, GCS
 from .selection import FaceSelection, SELECTOR_OBJ
-from .cs import GCS, CoordinateSystem, Axis, _parse_axis
-import numpy as np
+from .geo import GeoPrism, XYPolygon, Alignment
+from .bc import BoundaryCondition
 from typing import Generator
-from .bc import Periodic, FloquetPort
-from .geo.extrude import XYPolygon, GeoPrism
-from .geo import XYPlate, Alignment
+from .bc import Periodic
+import numpy as np
 
 
 def _rotnorm(v: np.ndarray) -> np.ndarray:
@@ -16,6 +16,23 @@ def _rotnorm(v: np.ndarray) -> np.ndarray:
     ax = ax/np.linalg.norm(ax)
     return ax
 
+def _pair_selection(f1: FaceSelection, f2: FaceSelection, translation: tuple[float, float, float]):
+    if len(f1.tags) == 1:
+        return [f1,], [f2,]
+    c1s = [np.array(c) for c in f1.centers]
+    c2s = [np.array(c) for c in f2.centers]
+    ds = np.array(translation)
+    f1s = []
+    f2s = []
+    for t1, c1 in zip(f1.tags, c1s):
+        for t2, c2 in zip(f2.tags, c2s):
+            if np.linalg.norm((c1 + ds)-c2) < 1e-6:
+                f1s.append(FaceSelection([t1,]))
+                f2s.append(FaceSelection([t2,]))
+    return f1s, f2s
+
+
+
 class PeriodicCell:
 
     def __init__(self, 
@@ -23,9 +40,14 @@ class PeriodicCell:
                  vectors: list[tuple[float, float, float] | Axis]):
         self.origins: list[tuple[float, float, float]] = origins
         self.vectors: list[Axis] = [_parse_axis(vec) for vec in vectors]
-        self._bcs: list[Periodic] = []
-        self._ports: list[FloquetPort] = []
         self.excluded_faces: FaceSelection = None
+        self._bcs: list[Periodic] = []
+        self._ports: list[BoundaryCondition] = []
+
+        self.__post_init__()
+
+    def __post_init__(self):
+        pass
 
     def volume(self, z1: float, z2: float) -> GeoPrism:
         """Genereates a volume with the cell geometry ranging from z1 tot z2
@@ -37,9 +59,6 @@ class PeriodicCell:
         Returns:
             GeoPrism: The resultant prism
         """
-        raise NotImplementedError('This method is not implemented for this subclass.')
-    
-    def floquet_port(self, z: float) -> FloquetPort:
         raise NotImplementedError('This method is not implemented for this subclass.')
     
     def cell_data(self) -> Generator[tuple[FaceSelection,FaceSelection,tuple[float, float, float]], None, None]:
@@ -68,7 +87,7 @@ class PeriodicCell:
                     f2 = f2 - self.excluded_faces
                 bcs.append(Periodic(f1, f2, a))
             self._bcs = bcs
-        return self._bcs
+        return self._bcs + self._ports
     
     def set_scanangle(self, theta: float, phi: float, degree: bool = True) -> None:
         """Sets the scanangle for the periodic condition. (0,0) is defined along the Z-axis
@@ -123,15 +142,17 @@ class RectCell(PeriodicCell):
         self.fright = ((width/2, 0, 0), v1)
 
     def cell_data(self):
-        f1 = SELECTOR_OBJ.inplane(*self.fleft[0], *self.fleft[1])
-        f2 = SELECTOR_OBJ.inplane(*self.fright[0], *self.fright[1])
+        f1s = SELECTOR_OBJ.inplane(*self.fleft[0], *self.fleft[1])
+        f2s = SELECTOR_OBJ.inplane(*self.fright[0], *self.fright[1])
         vec = (self.fright[0][0]-self.fleft[0][0], self.fright[0][1]-self.fleft[0][1], self.fright[0][2]-self.fleft[0][2])
-        yield f1, f2, vec
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+            yield f1, f2, vec
 
-        f1 = SELECTOR_OBJ.inplane(*self.fbot[0], *self.fbot[1])
-        f2 = SELECTOR_OBJ.inplane(*self.ftop[0], *self.ftop[1])
+        f1s = SELECTOR_OBJ.inplane(*self.fbot[0], *self.fbot[1])
+        f2s = SELECTOR_OBJ.inplane(*self.ftop[0], *self.ftop[1])
         vec = (self.ftop[0][0]-self.fbot[0][0], self.ftop[0][1]-self.fbot[0][1], self.ftop[0][2]-self.fbot[0][2])
-        yield f1, f2, vec
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+            yield f1, f2, vec
 
     def volume(self, 
                z1: float,
@@ -141,14 +162,6 @@ class RectCell(PeriodicCell):
         poly = XYPolygon(xs, ys)
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
-
-    def floquet_port(self, port_number: int, z: float) -> tuple[XYPolygon, FloquetPort]:
-        poly = XYPlate(self.width, self.height, position=(0,0,z), alignment=Alignment.CENTER)
-        port = FloquetPort(poly, port_number)
-        port.width = self.width
-        port.height = self.height
-        self._ports.append(port)
-        return poly, port
     
 class HexCell(PeriodicCell):
 
@@ -194,26 +207,30 @@ class HexCell(PeriodicCell):
         o = self.o1[:-1]
         n = self.f11[1][:-1]
         w = nrm(self.p2-self.p1)/2
-        f1 = SELECTOR_OBJ.inplane(*self.f11[0], *self.f11[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2 = SELECTOR_OBJ.inplane(*self.f12[0], *self.f12[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
+        f1s = SELECTOR_OBJ.inplane(*self.f11[0], *self.f11[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
+        f2s = SELECTOR_OBJ.inplane(*self.f12[0], *self.f12[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p1 + self.p2)
-        yield f1, f2, vec
+
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+            yield f1, f2, vec
 
         o = self.o2[:-1]
         n = self.f21[1][:-1]
         w = nrm(self.p3-self.p2)/2
-        f1 = SELECTOR_OBJ.inplane(*self.f21[0], *self.f21[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2 = SELECTOR_OBJ.inplane(*self.f22[0], *self.f22[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
+        f1s = SELECTOR_OBJ.inplane(*self.f21[0], *self.f21[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
+        f2s = SELECTOR_OBJ.inplane(*self.f22[0], *self.f22[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p2 + self.p3)
-        yield f1, f2, vec
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+            yield f1, f2, vec
         
         o = self.o3[:-1]
         n = self.f31[1][:-1]
         w = nrm(-self.p1-self.p3)/2
-        f1 = SELECTOR_OBJ.inplane(*self.f31[0], *self.f31[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2 = SELECTOR_OBJ.inplane(*self.f32[0], *self.f32[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
+        f1s = SELECTOR_OBJ.inplane(*self.f31[0], *self.f31[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
+        f2s = SELECTOR_OBJ.inplane(*self.f32[0], *self.f32[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p3 - self.p1)
-        yield f1, f2, vec
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+            yield f1, f2, vec
 
     def volume(self, 
                z1: float,
@@ -227,10 +244,3 @@ class HexCell(PeriodicCell):
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
     
-    def floquet_port(self, port_number: int, z: float) -> tuple[XYPolygon, FloquetPort]:
-        xs, ys, zs = zip(self.p1, self.p2, self.p3)
-        poly = XYPolygon(xs, ys).geo()
-        port = FloquetPort(poly, port_number)
-        port.area = 1.0
-        self._ports.append(port)
-        return poly, port

@@ -50,9 +50,9 @@ diel.material = mat
 p1 = pcb.modal_port(pcb.load('p1'), width_multiplier=5, height=4*th)
 p2 = pcb.modal_port(pcb.load('p2'), width_multiplier=5, height=4*th)
 
-model.physics.set_resolution(0.2)
+model.mw.set_resolution(0.2)
 
-model.physics.set_frequency_range(5.2e9,6.2e9,31)
+model.mw.set_frequency_range(5.2e9,6.2e9,31)
 
 model.define_geometry(stripline, diel, p1, p2, air)
 
@@ -61,18 +61,16 @@ model.mesher.set_boundary_size(stripline, 0.5*mm)
 model.generate_mesh()
 
 model.view(use_gmsh=True)
-port1 = em.bc.ModalPort(p1, 1, TEM=True)
-port2 = em.bc.ModalPort(p2, 2, TEM=True)
-pec = em.bc.PEC(stripline)
-
-model.physics.assign(port1, port2, pec)
+port1 = model.mw.bc.ModalPort(p1, 1, TEM=True)
+port2 = model.mw.bc.ModalPort(p2, 2, TEM=True)
+pec = model.mw.bc.PEC(stripline)
 
 d = model.display
 d.add_object(diel, color='green', opacity=0.5)
 d.add_object(stripline, color='red')
 d.show()
 
-data = model.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+data = model.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
 f, S11 = data.ax('freq').S(1,1)
 f, S21 = data.ax('freq').S(2,1)
