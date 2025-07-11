@@ -114,6 +114,12 @@ class Mesh3D:
 
         ## States
         self.defined = False
+
+
+        ## Memory
+        self.ftag_to_tri: dict[int, list[int]] = dict()
+        self.ftag_to_node: dict[int, list[int]] = dict()
+        self.vtag_to_tet:  dict[int, list[int]] = dict()
     
     @property
     def n_edges(self) -> int:
@@ -161,11 +167,10 @@ class Mesh3D:
     
     def boundary_triangles(self, dimtags: list[tuple[int, int]] = None) -> np.ndarray:
         if dimtags is None:
-            domain_tag, face_tags, node_tags = gmsh.model.mesh.get_elements(2)
-            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
-            node_tags = np.squeeze(np.array(node_tags)).reshape(-1,3).T
-            indices = [self.get_tri(node_tags[0,i], node_tags[1,i], node_tags[2,i]) for i in range(node_tags.shape[1])]
-            return np.array(indices)
+            outputtags = []
+            for tags in self.ftag_to_tri.values():
+                outputtags.extend(tags)
+            return np.array(outputtags)
         else:
             dts = []
             for dimtag in dimtags:
@@ -173,9 +178,7 @@ class Mesh3D:
                     dts.append(dimtag)
                 elif dimtag[0]==3:
                     dts.extend(gmsh.model.get_boundary(dimtags))
-                
             return self.get_triangles([tag[1] for tag in dts])
-
         
 
     def get_tetrahedra(self, vol_tags: Union[int, list[int]]) -> np.ndarray:
@@ -184,23 +187,16 @@ class Mesh3D:
         
         indices = []
         for voltag in vol_tags:
-            domain_tag, v_tags, node_tags = gmsh.model.mesh.get_elements(3, voltag)
-            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
-            node_tags = np.squeeze(np.array(node_tags)).reshape(-1,4).T
-            indices.extend([self.get_tet(node_tags[0,i], node_tags[1,i], node_tags[2,i], node_tags[3,i]) for i in range(node_tags.shape[1])])
+            indices.extend(self.vtag_to_tet[voltag])
         return np.array(indices)
     
     def get_triangles(self, face_tags: Union[int, list[int]]) -> np.ndarray:
         '''Returns a numpyarray of all the triangles that belong to the given face tags'''
         if isinstance(face_tags, int):
             face_tags = [face_tags,]
-        
         indices = []
         for facetag in face_tags:
-            domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, facetag)
-            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
-            node_tags = np.squeeze(np.array(node_tags)).reshape(-1,3).T
-            indices.extend([self.get_tri(node_tags[0,i], node_tags[1,i], node_tags[2,i]) for i in range(node_tags.shape[1])])
+            indices.extend(self.ftag_to_tri[facetag])
         if any([(i is None) for i in indices]):
             logger.error('Clearing None indices: ', [i for i, ind in enumerate(indices) if ind is None])
             logger.error('This is usually a sign of boundaries sticking out of domains. Please check your Geometry.')
@@ -215,9 +211,7 @@ class Mesh3D:
         
         nodes = []
         for facetag in face_tags:
-            domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, facetag)
-            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
-            nodes.extend(node_tags)
+            nodes.extend(self.ftag_to_node[facetag])
         
         return np.array(sorted(list(set(nodes))))
     
@@ -371,7 +365,26 @@ class Mesh3D:
         self.edge_lengths = np.sqrt(np.sum((self.nodes[:,self.edges[0,:]] - self.nodes[:,self.edges[1,:]])**2, axis=0))
         self.areas = np.array([area(self.nodes[:,self.tris[0,i]], self.nodes[:,self.tris[1,i]], self.nodes[:,self.tris[2,i]]) for i in range(self.tris.shape[1])])
 
+
+        ## Tag bindings
+        face_dimtags = gmsh.model.get_entities(2)
+        for d,t in face_dimtags:
+            domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, t)
+            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
+            self.ftag_to_node[t] = node_tags
+            node_tags = np.squeeze(np.array(node_tags)).reshape(-1,3).T
+            self.ftag_to_tri[t] = [self.get_tri(node_tags[0,i], node_tags[1,i], node_tags[2,i]) for i in range(node_tags.shape[1])]
+
+        vol_dimtags = gmsh.model.get_entities(3)
+        for d,t in vol_dimtags:
+            domain_tag, v_tags, node_tags = gmsh.model.mesh.get_elements(3, t)
+            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
+            node_tags = np.squeeze(np.array(node_tags)).reshape(-1,4).T
+            self.vtag_to_tet[t] = [self.get_tet(node_tags[0,i], node_tags[1,i], node_tags[2,i], node_tags[3,i]) for i in range(node_tags.shape[1])]
+
         self.defined = True
+
+
     ## Higher order functions
 
     def _derive_node_map(self, bc: Periodic) -> tuple[dict[int, int], np.ndarray, np.ndarray]:
@@ -392,9 +405,20 @@ class Mesh3D:
         def gen_key(coord, mult):
             return tuple([int(round(c*mult)) for c in coord])
         
+        ftag_to_node = dict()
+        face_dimtags = gmsh.model.get_entities(2)
 
-        node_ids_1 = self.get_nodes(bc.face1.tags)
-        node_ids_2 = self.get_nodes(bc.face2.tags)
+        node_ids_1 = []
+        node_ids_2 = []
+        for d,t in face_dimtags:
+            domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, t)
+            node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
+            if t in bc.face1.tags:
+                node_ids_1.extend(node_tags)
+            if t in bc.face2.tags:
+                node_ids_2.extend(node_tags)
+            ftag_to_node[t] = node_tags
+            
         dv = np.array(bc.dv)
         nodemapdict = defaultdict(lambda: [None, None])
         
@@ -504,11 +528,9 @@ class Mesh3D:
     def boundary_surface(self, 
                          face_tags: Union[int, list[int]], 
                          origin: tuple[float, float, float]) -> SurfaceMesh:
-        
         tri_ids = self.get_triangles(face_tags)
-
-        return SurfaceMesh(self, tri_ids, origin)#self.nodes[:,unique_nodes], new_tris, origin=origin, nodemap=mapper, original=self, original_tris=ids)
-
+        return SurfaceMesh(self, tri_ids, origin)
+    
 class SurfaceMesh:
 
     def __init__(self,

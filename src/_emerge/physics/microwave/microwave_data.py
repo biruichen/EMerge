@@ -16,11 +16,11 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from ...dataset import SimData, DataSet
+from ...simulation_data import BaseDataset, PhysicsData
 from ...elements.femdata import FEMBasis
 from dataclasses import dataclass
 import numpy as np
-from typing import Literal
+from typing import Literal, Any
 from loguru import logger
 from .adaptive_freq import SparamModel
 from ...cs import Axis, _parse_axis
@@ -233,35 +233,58 @@ class PortProperties:
     Z0: float | None = None
     Pout: float | None = None
     mode_number: int = 1
-    
-class MWDataSet(DataSet):
-    """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
 
+
+class MWData(PhysicsData):
+    scalar: BaseDataset[MWScalar, MWScalarNdim]
+    field:   BaseDataset[MWField, None]
+
+    def __init__(self):
+        super().__init__()
+        self.scalar = BaseDataset[MWScalar, MWScalarNdim](MWScalar, MWScalarNdim, True)
+        self.field = BaseDataset[MWField, None](MWField, None, False)
+
+class MWField:
     
-    """
-    def __init__(self, **vars):
+    def __init__(self):
         self.er: np.ndarray = None
         self.ur: np.ndarray = None
         self.freq: float = None
-        self.k0: float = None
-        self.Sp: Sparam = None
-        self._fields: dict[np.ndarray] = dict()
+        self.basis: FEMBasis = None
+        self._fields: dict[int, np.ndarray] = dict()
         self._mode_field: np.ndarray = None
         self.excitation: dict[int, complex] = dict()
-        self.basis: FEMBasis = None
         self.Nports: int = None
+        self.port_modes: list[PortProperties] = []
         self.Ex: np.ndarray = None
         self.Ey: np.ndarray = None
         self.Ez: np.ndarray = None
         self.Hx: np.ndarray = None
         self.Hy: np.ndarray = None
         self.Hz: np.ndarray = None
-        self.port_modes: list[PortProperties] = []
-        self.mode: int = None
-        self.beta: int = None
 
-        super().__init__(**vars)
-
+    def add_port_properties(self, 
+                            port_number: int,
+                            mode_number: int,
+                            k0: float,
+                            beta: float,
+                            Z0: float,
+                            Pout: float) -> None:
+        self.port_modes.append(PortProperties(port_number=port_number,
+                                              mode_number=mode_number,
+                                              k0 = k0,
+                                              beta=beta,
+                                              Z0=Z0,
+                                              Pout=Pout))
+    
+    @property
+    def mesh(self) -> Mesh3D:
+        return self.basis.mesh
+    
+    @property
+    def k0(self) -> float:
+        return self.freq*2*np.pi/299792458
+    
     @property
     def _field(self) -> np.ndarray:
         if self._mode_field is not None:
@@ -269,6 +292,7 @@ class MWDataSet(DataSet):
         return sum([self.excitation[mode.port_number]*self._fields[mode.port_number] for mode in self.port_modes]) 
     
     def set_field_vector(self) -> None:
+        """Defines the default excitetion coefficients for the current dataset"""
         self.excitation = {key: 0.0 for key in self._fields.keys()}
         self.excitation[self.port_modes[0].port_number] = 1.0 + 0j
 
@@ -306,27 +330,7 @@ class MWDataSet(DataSet):
         ''' Return the magnetic field as a tuple of numpy arrays '''
         return self.Hx, self.Hy, self.Hz
     
-    def init_sp(self, portnumbers: list[int | float]) -> None:
-        self.Sp = Sparam(portnumbers)
-
-    def add_port_properties(self, 
-                            port_number: int,
-                            mode_number: int,
-                            k0: float,
-                            beta: float,
-                            Z0: float,
-                            Pout: float) -> None:
-        self.port_modes.append(PortProperties(port_number=port_number,
-                                              mode_number=mode_number,
-                                              k0 = k0,
-                                              beta=beta,
-                                              Z0=Z0,
-                                              Pout=Pout))
-        
-    def write_S(self, i1: int | float, i2: int | float, value: complex) -> None:
-        self.Sp[i1,i2] = value
-
-    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> MWDataSet:
+    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> MWField:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
         shp = xs.shape
         xf = xs.flatten()
@@ -353,7 +357,7 @@ class MWDataSet(DataSet):
                      ds: float,
                      x: float=None,
                      y: float=None,
-                     z: float=None) -> MWDataSet:
+                     z: float=None) -> MWField:
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
@@ -370,7 +374,7 @@ class MWDataSet(DataSet):
         self.interpolate(X,Y,Z)
         return self
     
-    def grid(self, ds: float) -> MWDataSet:
+    def grid(self, ds: float) -> MWField:
         """Interpolate a uniform grid sampled at ds
 
         Args:
@@ -387,10 +391,6 @@ class MWDataSet(DataSet):
         self.interpolate(X,Y,Z)
         return self
     
-    def S(self, i1: int, i2: int) -> complex:
-        ''' Returns the S-parameter S(i1,i2)'''
-        return self.Sp(i1, i2)
-
     def vector(self, field: Literal['E','H'], metric: Literal['real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
         """Returns the X,Y,Z,Fx,Fy,Fz data to be directly cast into plot functions.
 
@@ -456,134 +456,57 @@ class MWDataSet(DataSet):
         E,H = stratton_chu(self.E, self.H, surface, theta, phi, self.k0)
         angs = np.linspace(*ang_range, Npoints)*np.pi/180
         return angs, E ,H
-    
-class _DataSetProxy: 
-    """
-    A “ghost” wrapper around a real DataSet.
-    Any attr/method access is intercepted here first.
-    """
-    def __init__(self, field: tuple[str], dss: DataSet):
-        # stash both the SimData (in case you need context)
-        # and the real DataSet
-        self._field = field
-        self._dss = dss
 
-    def __getattribute__(self, name: str):
-        if name in ('_field','_dss'):
-            return object.__getattribute__(self, name)
-        xaxs = {key: [] for key in self._field}
-        yax = []
-        field = object.__getattribute__(self, '_field')
-        
-        if callable(getattr(self._dss[0], name)):
-            def wrapped(*args, **kwargs):
-                # Go through all datasets
-                for ds in self._dss:
-                    # 1) grab the real attribute
-                    #xvals = {key: getattr(ds, key) for ky in self._field.keys()}
-                    func = getattr(ds, name)
-                    
-                    yval = func(*args, **kwargs)
-                    for key in self._field:
-                        xaxs[key].append(getattr(ds, key))
-                    #xax.append(xval)
-                    yax.append(yval)
-                return generate_ndim(xaxs, yax, self._field)
-            return wrapped
-        else:
-            xaxs = {key: [] for key in self._field}
-            for ds in self._dss:
-                for key in self._field:
-                    xaxs[key].append(getattr(ds, key))
-                yax.append(getattr(ds, name))
-            return generate_ndim(xaxs, yax, self._field)
-
-
-class MWSimData(SimData[MWDataSet]):
-    """The MWSimData class contains all EM simulation data from a Time Harmonic simulation
-    along all sweep axes.
+class MWScalar:
+    """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
     """
-    datatype: type = MWDataSet
+    _fields: list[str] = ['freq','k0','Sp','beta']
+    _copy: list[str] = ['_portmap','_portnumbers']
+
     def __init__(self):
-        super().__init__()
-        self._injections = dict()
-        self._axis = 'freq'
+        self.freq: float = None
+        self.k0: float = None
+        self.Sp: np.ndarray = None
+        self.beta: float = None
 
-    def __getitem__(self, field: EMField) -> np.ndarray:
-        return getattr(self, field)
+        self._portmap: dict[int, float|int] = dict()
+        self._portnumbers: list[int | float] = []
 
-    @property
-    def mesh(self) -> Mesh3D:
-        """Returns the relevant mesh object for this dataset assuming they are all the same.
+    def init_sp(self, portnumbers: list[int | float]) -> None:
+        """Initialize the S-parameter dataset with the given number of ports."""
+        self._portnumbers = portnumbers
+        i = 0
+        for n in portnumbers:
+            self._portmap[n] = i
+            i += 1
 
-        Returns:
-            Mesh3D: The mesh object.
-        """
-        return self.datasets[0].basis.mesh
+        self.Sp = np.zeros((i,i), dtype=np.complex128)
+        
+    def write_S(self, i1: int | float, i2: int | float, value: complex) -> None:
+        self.Sp[self._portmap[i1], self._portmap[i2]] = value
+
+    def S(self, i1: int, i2: int) -> np.ndarray:
+        return self.Sp[self._portmap[i1], self._portmap[i2]]
     
-    def howto(self) -> None:
-        """To access data in the MWSimData class use the .ax method to extract properties selected
-        along an access of global variables. The axes are all global properties that the MWDataSets manage.
-        
-        For example the following would return all S(2,1) parameters along the frequency axis.
-        
-        >>> freq, S21 = dataset.ax('freq').S(2,1)
+class MWScalarNdim:
+    _fields: list[str] = ['freq','k0','Sp','beta']
+    _copy: list[str] = ['_portmap','_portnumbers']
+    def __init__(self):
+        self.freq: np.ndarray = None
+        self.k0: np.ndarray = None
+        self.Sp: np.ndarray = None
+        self.beta: np.ndarray = None
+        self._portmap: dict[int, float|int] = dict()
+        self._portnumbers: list[int | float] = []
 
-        Alternatively, one can manually select any solution indexed in order of generation using.
-
-        >>> S21 = dataset.item(3).S(2,1)
-
-        To find the E or H fields at any coordinate, one can use the Dataset's .interpolate method. 
-        This method returns the same Dataset object after which the computed fields can be accessed.
-
-        >>> Ex = dataset.item(3).interpolate(xs,ys,zs).Ex
-
-        Lastly, to find the solutions for a given frequency or other value, you can also just call the dataset
-        class:
-        
-        >>> Ex, Ey, Ez = dataset(freq=1e9).interpolate(xs,ys,zs).E
-
-        """
-
-    def select(self, **axes: EMField) -> MWSimData:
-        """Takes the provided axis points and constructs a new dataset only for those axes values
-
-        Returns:
-            MWSimData: The new dataset
-        """
-        newdata = MWSimData()
-        for dataset in self.datasets:
-            if dataset.equals(**axes):
-                newdata.datasets.append(dataset)
-        return newdata
+    def S(self, i1: int, i2: int) -> np.ndarray:
+        return self.Sp[...,self._portmap[i1], self._portmap[i2]]
     
-    def ax(self, *field: EMField) -> MWDataSet:
-        """Return a MWDataSet proxy object that you can request properties for along a provided axis.
-
-        The MWSimData class contains a list of MWDataSet objects. Any global variable like .freq of the 
-        MWDataSet object can be used as inner-axes after which the outer axis can be selected as if
-        you are extract a single one.
-
-        Args:
-            field (EMField): The global field variable to select the data along
-
-        Returns:
-            MWDataSet: An MWDataSet object (actually a proxy for)
-
-        Example:
-        The following will select all S11 parameters along the frequency axis:
-
-        >>> freq, S11 = dataset.ax('freq').S(1,1)
-
-        """
-        # find the real DataSet
-        return _DataSetProxy(field, self.datasets)
-
     def model_S(self, i: int, j: int, 
-                freq: np.ndarray, 
-                Npoles: int | Literal['auto'] = 'auto', 
-                inc_real: bool = False,
-                maxpoles: int = 30) -> np.ndarray:
+            freq: np.ndarray, 
+            Npoles: int | Literal['auto'] = 'auto', 
+            inc_real: bool = False,
+            maxpoles: int = 30) -> np.ndarray:
         """Returns an S-parameter model object at a dense frequency range.
         This method uses vector fitting inside the datasets frequency points to determine a model for the linear system.
 
@@ -597,12 +520,11 @@ class MWSimData(SimData[MWDataSet]):
         Returns:
             SparamModel: The SparamModel object
         """
-        fs, S = self.ax('freq').S(i,j)
-        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
+        return SparamModel(self.freq, self.S(i,j), n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
 
     def model_Smat(self, frequencies: np.ndarray,
-                       Npoles: int = 10,
-                       inc_real: bool = False) -> np.ndarray:
+                        Npoles: int = 10,
+                        inc_real: bool = False) -> np.ndarray:
         """Generates a full S-parameter matrix on the provided frequency points using the Vector Fitting algorithm.
 
         This function output can be used directly with the .save_matrix() method.
@@ -620,19 +542,19 @@ class MWSimData(SimData[MWDataSet]):
 
         Smat = np.zeros((nfreq,Nports,Nports), dtype=np.complex128)
         
-        for i in range(1,Nports+1):
-            for j in range(1,Nports+1):
+        for i in self._portnumbers:
+            for j in self._portnumbers:
                 S = self.model_S(i,j,frequencies, Npoles=Npoles, inc_real=inc_real)
                 Smat[:,i-1,j-1] = S
 
         return Smat
 
     def export_touchstone(self, 
-                          filename: str,
-                          Z0ref: float = None,
-                          format: Literal['RI','MA','DB'] = 'RI',
-                          custom_comments: list[str] = None,
-                          funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ'):
+                            filename: str,
+                            Z0ref: float = None,
+                            format: Literal['RI','MA','DB'] = 'RI',
+                            custom_comments: list[str] = None,
+                            funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ'):
         """Export the S-parameter data to a touchstone file
 
         This function assumes that all ports are numbered in sequence 1,2,3,4... etc with
@@ -646,7 +568,7 @@ class MWSimData(SimData[MWDataSet]):
             Z0ref (float): The reference impedance to normalize to. Defaults to None
             format (Literal[DB, RI, MA]): The dataformat used in the touchstone file.
             custom_comments : list[str], optional. List of custom comment strings to add to the touchstone file header.
-                                                   Each string will be prefixed with "! " automatically.
+                                                    Each string will be prefixed with "! " automatically.
         """
         
         logger.info(f'Exporting S-data to {filename}')
@@ -663,13 +585,13 @@ class MWSimData(SimData[MWDataSet]):
         self.save_smatrix(filename, Smat, freqs, format=format, Z0ref=Z0ref, custom_comments=custom_comments, funit=funit)
 
     def save_smatrix(self, 
-                     filename: str,
-                     Smatrix: np.ndarray,
-                     frequencies: np.ndarray, 
-                     Z0ref: float = None,
-                     format: Literal['RI','MA','DB'] = 'RI',
-                     custom_comments: list[str] = None,
-                     funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ') -> None:
+                        filename: str,
+                        Smatrix: np.ndarray,
+                        frequencies: np.ndarray, 
+                        Z0ref: float = None,
+                        format: Literal['RI','MA','DB'] = 'RI',
+                        custom_comments: list[str] = None,
+                        funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ') -> None:
         """Save an S-parameter matrix to a touchstone file.
         
         Additionally, a reference impedance may be supplied. In this case, a port renormalization will be performed on the S-matrix.
@@ -681,7 +603,7 @@ class MWSimData(SimData[MWDataSet]):
             Z0ref (float, optional): An optional reference impedance to normalize to. Defaults to None.
             format (Literal["RI","MA",'DB], optional): The S-parameter format. Defaults to 'RI'.
             custom_comments : list[str], optional. List of custom comment strings to add to the touchstone file header.
-                                                   Each string will be prefixed with "! " automatically.
+                                                    Each string will be prefixed with "! " automatically.
         """
         from .touchstone import generate_touchstone
 
@@ -694,3 +616,84 @@ class MWSimData(SimData[MWDataSet]):
         generate_touchstone(filename, frequencies, Smatrix, format, custom_comments, funit)
         
         logger.info('Export complete!')
+        
+# class MWSimData(SimData[MWConstants]):
+#     """The MWSimData class contains all EM simulation data from a Time Harmonic simulation
+#     along all sweep axes.
+#     """
+#     datatype: type = MWConstants
+#     def __init__(self):
+#         super().__init__()
+#         self._injections = dict()
+#         self._axis = 'freq'
+
+#     def __getitem__(self, field: EMField) -> np.ndarray:
+#         return getattr(self, field)
+
+#     @property
+#     def mesh(self) -> Mesh3D:
+#         """Returns the relevant mesh object for this dataset assuming they are all the same.
+
+#         Returns:
+#             Mesh3D: The mesh object.
+#         """
+#         return self.datasets[0].basis.mesh
+    
+#     def howto(self) -> None:
+#         """To access data in the MWSimData class use the .ax method to extract properties selected
+#         along an access of global variables. The axes are all global properties that the MWDataSets manage.
+        
+#         For example the following would return all S(2,1) parameters along the frequency axis.
+        
+#         >>> freq, S21 = dataset.ax('freq').S(2,1)
+
+#         Alternatively, one can manually select any solution indexed in order of generation using.
+
+#         >>> S21 = dataset.item(3).S(2,1)
+
+#         To find the E or H fields at any coordinate, one can use the Dataset's .interpolate method. 
+#         This method returns the same Dataset object after which the computed fields can be accessed.
+
+#         >>> Ex = dataset.item(3).interpolate(xs,ys,zs).Ex
+
+#         Lastly, to find the solutions for a given frequency or other value, you can also just call the dataset
+#         class:
+        
+#         >>> Ex, Ey, Ez = dataset(freq=1e9).interpolate(xs,ys,zs).E
+
+#         """
+
+#     def select(self, **axes: EMField) -> MWSimData:
+#         """Takes the provided axis points and constructs a new dataset only for those axes values
+
+#         Returns:
+#             MWSimData: The new dataset
+#         """
+#         newdata = MWSimData()
+#         for dataset in self.datasets:
+#             if dataset.equals(**axes):
+#                 newdata.datasets.append(dataset)
+#         return newdata
+    
+#     def ax(self, *field: EMField) -> MWConstants:
+#         """Return a MWDataSet proxy object that you can request properties for along a provided axis.
+
+#         The MWSimData class contains a list of MWDataSet objects. Any global variable like .freq of the 
+#         MWDataSet object can be used as inner-axes after which the outer axis can be selected as if
+#         you are extract a single one.
+
+#         Args:
+#             field (EMField): The global field variable to select the data along
+
+#         Returns:
+#             MWDataSet: An MWDataSet object (actually a proxy for)
+
+#         Example:
+#         The following will select all S11 parameters along the frequency axis:
+
+#         >>> freq, S11 = dataset.ax('freq').S(1,1)
+
+#         """
+#         # find the real DataSet
+#         return _DataSetProxy(field, self.datasets)
+

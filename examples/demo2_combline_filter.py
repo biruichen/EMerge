@@ -102,8 +102,8 @@ data = model.mw.frequency_domain(parallel=True)
 
 fdense = np.linspace(6e9, 9e9, 2001)
 
-S11 = data.model_S(1,1,fdense)
-S21 = data.model_S(2,1,fdense)
+S11 = data.scalar.grid.model_S(1,1,fdense)
+S21 = data.scalar.grid.model_S(2,1,fdense)
 
 plot_sp(fdense/1e9, [S11, S21], labels=['S11','S21'])
 
@@ -119,7 +119,7 @@ Z = Z.flatten()
 
 # The E-field can be interpolated by selecting a desired solution and then interpolating it.
 
-Ex, Ey, Ez = data.item(3).interpolate(X,Y,Z).E
+Ex, Ey, Ez = data.field[3].interpolate(X,Y,Z).E
 
 # We can add the objects we want and fields using the shown methods.
 model.display.add_object(box, opacity=0.1, show_edges=True)
@@ -127,4 +127,5 @@ model.display.add_quiver(X,Y,Z, Ex.real, Ey.real, Ez.real)
 model.display.add_object(feed1out, opacity=0.1)
 model.display.add_portmode(port1, 21)
 model.display.add_portmode(port2, 21)
+model.display.add_surf(*data.field[3].cutplane(ds=2*mm, y=0).scalar('normE'))
 model.display.show()

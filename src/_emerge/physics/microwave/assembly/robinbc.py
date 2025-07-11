@@ -21,8 +21,15 @@ from numba import njit, f8, c16, i8, types
 from ....elements import Nedelec2
 from typing import Callable
 
+
 _FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
  
+def optim_matmul(B: np.ndarray, data: np.ndarray):
+    dnew = np.zeros_like(data)
+    dnew[0,:] = B[0,0]*data[0,:] + B[0,1]*data[1,:] + B[0,2]*data[2,:]
+    dnew[1,:] = B[1,0]*data[0,:] + B[1,1]*data[1,:] + B[1,2]*data[2,:]
+    dnew[2,:] = B[2,0]*data[0,:] + B[2,1]*data[1,:] + B[2,2]*data[2,:]
+    return dnew
 
 @njit(f8(i8, i8, i8, i8), cache=True, fastmath=True, nogil=True)
 def area_coeff(a, b, c, d):
@@ -340,7 +347,7 @@ def assemble_robin_bc_excited(field: Nedelec2,
     
     Bvec = np.zeros((field.n_field,), dtype=np.complex128)
 
-    vertices_local = local_basis @ (field.mesh.nodes - origin[:,np.newaxis])
+    vertices_local = optim_matmul(local_basis, field.mesh.nodes - origin[:,np.newaxis])# local_basis @ ()
 
     xflat, yflat = generate_points(vertices_local, field.mesh.tris, DPTs, surf_triangle_indices)
 

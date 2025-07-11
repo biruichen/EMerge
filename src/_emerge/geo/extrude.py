@@ -24,62 +24,60 @@ from typing import Generator, Callable
 from ..selection import FaceSelection
 from typing import Literal
 from functools import reduce
+from numba import njit
 
-def _discretize_curve(xfunc, yfunc, t0, t1, tol=1e-3, max_depth=20):
-    """
-    Adaptively sample the parametric curve (xfunc(t), yfunc(t)) from t0 to t1.
+#@njit(cache=True)
+def _subsample_coordinates(xs, ys, tolerance, xmin):
+    N = xs.shape[0]
+    ids = np.zeros((N,), dtype=np.int32)
+    store_index = 1
+    start_index = 0
+    final_index = 0
+    for iteration in range(N):
+        i1 = start_index
+        done = 0
+        for i2 in range(i1+1,N):
+            x_true = xs[i1:i2+1]
+            y_true = ys[i1:i2+1]
 
-    Parameters
-    ----------
-    xfunc, yfunc : callables
-        Functions of a single scalar t returning x(t) and y(t).
-    t0, t1 : float
-        Parameter interval to sample over.
-    tol : float, optional
-        Maximum allowed deviation (in Euclidean space) between the true curve
-        midpoint and the chord midpoint before subdividing.
-    max_depth : int, optional
-        Maximum recursion depth to avoid pathological cases.
+            x_f = np.linspace(xs[i1],xs[i2], i2-i1+1)
+            y_f = np.linspace(ys[i1],ys[i2], i2-i1+1)
+            error = np.max(np.sqrt((x_f-x_true)**2 + (y_f-y_true)**2))
+            ds = np.sqrt((xs[i2]-xs[i1])**2 + (ys[i2]-ys[i1])**2)
+            # If at the end
+            if i2==N-1: 
+                ids[store_index] = i2-1
+                final_index = store_index + 1
+                done = 1
+                break
+            # If not yet past the minimum distance, accumulate more
+            if ds < xmin:
+                continue
+            # If the end is less than a minimum distance
+            if np.sqrt((ys[-1]-ys[i2])**2 + (xs[-1]-xs[i2])**2) < xmin:
+                imid = i1 + (N-1-i1)//2
+                ids[store_index] = imid
+                ids[store_index+1] = N-1
+                final_index = store_index + 2
+                done = 1
+                break
+            if error < tolerance:
+                continue
+            else:
+                ids[store_index] = i2-1
+                start_index = i2
+                store_index = store_index + 1
+                break
+        if done==1:
+            break
+    return xs[ids[0:final_index]], ys[ids[0:final_index]]
 
-    Returns
-    -------
-    pts : (N,2) ndarray
-        Array of sampled (x,y) points along the curve, ordered from t0→t1.
-    """
-
-    pts = []
-
-    def recurse(ta, pa, tb, pb, depth):
-        """
-        Ensure the segment [pa,pb] approximates the curve on [ta,tb] within tol.
-        """
-        if depth > max_depth:
-            # give up subdividing further
-            pts.append(pb)
-            return
-
-        tm = 0.5*(ta + tb)
-        pm = np.array([xfunc(tm), yfunc(tm)])
-
-        # midpoint of the straight chord
-        chord_mid = 0.5*(pa + pb)
-        err = np.linalg.norm(pm - chord_mid)
-
-        if err > tol:
-            # subdivide
-            recurse(ta, pa, tm, pm, depth+1)
-            recurse(tm, pm, tb, pb, depth+1)
-        else:
-            # accept the straight segment
-            pts.append(pb)
-
-    # seed with the start point
-    p0 = np.array([xfunc(t0), yfunc(t0)])
-    p1 = np.array([xfunc(t1), yfunc(t1)])
-    pts.append(p0)
-    recurse(t0, p0, t1, p1, depth=0)
-
-    return np.vstack(pts)
+def _discretize_curve(xfunc, yfunc, t0, t1, xmin, tol=1e-4):
+    td = np.linspace(t0, t1, 10001)
+    xs = xfunc(td)
+    ys = yfunc(td)
+    XS, YS = _subsample_coordinates(xs, ys, tol, xmin)
+    return XS, YS
 
 class GeoPrism(GeoVolume):
     """The GepPrism class generalizes the GeoVolume for extruded convex polygons.
@@ -135,26 +133,33 @@ class GeoPrism(GeoVolume):
 class XYPolygon:
 
     def __init__(self, 
-                 xs: np.ndarray,
-                 ys: np.ndarray):
+                 xs: np.ndarray = None,
+                 ys: np.ndarray = None):
         """Constructs an XY-plane placed polygon.
 
         Args:
             xs (np.ndarray): The X-points
             ys (np.ndarray): The Y-points
         """
+        if xs is None:
+            xs = []
+        if ys is None:
+            ys = []
 
         self.x: np.ndarray = xs
         self.y: np.ndarray = ys
 
+        self.fillets: list[tuple[float, int]] = []
+
+    @property
+    def N(self) -> int:
+        return len(self.xs)
+    
+    def _check(self) -> None:
         if np.sqrt((self.x[-1]-self.x[0])**2 + (self.y[-1]-self.y[0])**2) < 1e-6:
             self.x = self.x[:-1]
             self.y = self.y[:-1]
-
-        self.N: int = self.x.shape[0]
-
-        self.fillets: list[tuple[float, int]] = []
-
+        
     @property
     def area(self) -> float:
         return 0.5*np.abs(np.dot(self.x,np.roll(self.y,1))-np.dot(self.y,np.roll(self.x,1)))
@@ -202,6 +207,8 @@ class XYPolygon:
         Returns:
             GeoPolygon: The resultant 3D GeoPolygon object.
         """
+        self._check()
+
         ptags = []
         xg, yg, zg = cs.in_global_cs(self.x, self.y, 0*self.x)
 
@@ -324,13 +331,29 @@ class XYPolygon:
         ys = np.array([y0, y0+height, y0+height, y0])
         return XYPolygon(xs, ys)
     
-    @staticmethod
-    def parametric(xfunc: Callable,
+    def parametric(self, xfunc: Callable,
                    yfunc: Callable,
-                   tolerance: float,
+                   xmin: float = 1e-3,
+                   tolerance: float = 1e-5,
                    tmin: float = 0,
-                   tmax: float = 1):
-        pts = _discretize_curve(xfunc, yfunc, tmin, tmax, tolerance)
-        xs = pts[:,0]
-        ys = pts[:,1]
-        return XYPolygon(xs, ys)
+                   tmax: float = 1) -> XYPolygon:
+        """Adds the points of a parametric curve to the polygon.
+        The parametric curve is defined by two parametric functions of a parameter t that (by default) lives in the interval from [0,1].
+        thus the curve x(t) = xfunc(t), and y(t) = yfunc(t).
+
+        The tolerance indicates a maximum deviation from the true path.
+
+        Args:
+            xfunc (Callable): The x-coordinate function.
+            yfunc (Callable): The y-coordinate function
+            tolerance (float): A maximum distance tolerance. Defaults to 10um.
+            tmin (float, optional): The start value of the t-parameter. Defaults to 0.
+            tmax (float, optional): The end value of the t-parameter. Defaults to 1.
+
+        Returns:
+            XYPolygon: _description_
+        """
+        xs, ys = _discretize_curve(xfunc, yfunc, tmin, tmax, xmin, tolerance)
+        self.x = self.x + list(xs)
+        self.y = self.y + list(ys)
+        return self

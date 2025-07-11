@@ -60,6 +60,46 @@ def diagnose_matrix(mat: np.ndarray) -> None:
 def gen_key(coord, mult):
     return tuple([int(round(c*mult)) for c in coord])
 
+def plane_basis_from_points(points: np.ndarray) -> np.ndarray:
+    """
+    Compute an orthonormal basis from a cloud of 3D points dominantly
+    lying on one plane.
+
+    Parameters
+    ----------
+    points : ndarray, shape (3, N)
+        3D coordinates of the point cloud.
+
+    Returns
+    -------
+    basis : ndarray, shape (3, 3)
+        Matrix whose columns are:
+            - first principal direction (plane X axis)
+            - second principal direction (plane Y axis)
+            - plane normal vector (Z axis)
+    """
+    if points.shape[0] != 3:
+        raise ValueError("Input must have shape (3, N)")
+
+    # Compute centroid
+    centroid = points.mean(axis=1, keepdims=True)
+
+    # Center the data
+    points_centered = points - centroid
+
+    # Compute covariance matrix (3x3)
+    C = (points_centered @ points_centered.T) / points.shape[1]
+
+    # Eigen decomposition
+    eigvals, eigvecs = np.linalg.eigh(C)
+
+    # Sort eigenvectors by descending eigenvalue
+    idx = np.argsort(eigvals)[::-1]
+    eigvecs = eigvecs[:, idx]
+
+    # Columns of eigvecs = principal axes
+    return eigvecs
+
 class Assembler:
 
     def __init__(self):
@@ -213,28 +253,35 @@ class Assembler:
         # Robin BCs
         if len(robin_bcs) > 0:
             logger.debug('    Implementing Robin Boundary Conditions.')
+        
         gauss_points = gaus_quad_tri(4)
         for bc in robin_bcs:
-            face_tags = bc.tags
+            for tag in bc.tags:
+                face_tags = [tag,]#bc.tags
 
-            tri_ids = mesh.get_triangles(face_tags)
-            edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+                tri_ids = mesh.get_triangles(face_tags)
+                nodes = mesh.get_nodes(face_tags)
+                edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
 
-            gamma = bc.get_gamma(k0)
+                gamma = bc.get_gamma(k0)
 
-            def Ufunc(x,y): 
-                return bc.get_Uinc(x,y,k0)
-            
-            if bc._include_force:
-
-                B_p, b_p = assemble_robin_bc_excited(field, tri_ids, Ufunc, gamma, bc.get_inv_basis(), bc.cs.origin, gauss_points)
+                def Ufunc(x,y): 
+                    return bc.get_Uinc(x,y,k0)
                 
-                port_vectors[bc.port_number] += b_p
-            
-            else:
-                B_p = assemble_robin_bc(field, tri_ids, gamma)
-            if bc._include_stiff:
-                K = K + B_p
+                ibasis = bc.get_inv_basis()
+                if ibasis is None:
+                    basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
+                    ibasis = np.linalg.pinv(basis)
+                if bc._include_force:
+
+                    B_p, b_p = assemble_robin_bc_excited(field, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points)
+                    
+                    port_vectors[bc.port_number] += b_p
+                
+                else:
+                    B_p = assemble_robin_bc(field, tri_ids, gamma)
+                if bc._include_stiff:
+                    K = K + B_p
         
         if len(periodic) > 0:
             logger.debug('    Implementing Periodic Boundary Conditions.')

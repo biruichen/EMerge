@@ -77,8 +77,9 @@ pecvia = model.mw.bc.PEC(vias.outside())
 # Finally we run the simulation!
 data = model.mw.frequency_domain()
 
-freq, S11 = data.ax('freq').S(1,1)
-freq, S21 = data.ax('freq').S(2,1)
+freq = data.scalar.grid.freq
+S11 = data.scalar.grid.S(1,1)
+S21 = data.scalar.grid.S(2,1)
 
 plot_sp(freq/1e9, [S11, S21], labels=['S11','S21'])
 
@@ -89,6 +90,6 @@ model.display.add_object(vias)
 # In the latest version, you can use the cutplane method of the dataset class
 # which is equivalent to the interpolate method except it automatically generates
 # the point cloud based on a plane x,y or z coordinate.
-model.display.add_quiver(*data.item(3).cutplane(ds=0.001, z=-0.00025).vector('E'))
-model.display.add_surf(*data.item(3).cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'))
+model.display.add_quiver(*data.field[3].cutplane(ds=0.001, z=-0.00025).vector('E'))
+model.display.add_surf(*data.field[3].cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'))
 model.display.show()

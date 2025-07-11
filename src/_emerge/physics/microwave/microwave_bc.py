@@ -99,6 +99,12 @@ class RobinBC(BoundaryCondition):
         self.v_integration: bool = False
         self.vintline: Line = None
     
+    def get_basis(self) -> np.ndarray:
+        return None
+    
+    def get_inv_basis(self) -> np.ndarray:
+        return None
+    
     def get_beta(self, k0) -> float:
         raise NotImplementedError('get_beta not implemented for Port class')
     
