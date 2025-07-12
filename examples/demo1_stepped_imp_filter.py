@@ -1,6 +1,8 @@
 import emerge as em
 import numpy as np
 from emerge.plot import smith, plot_sp
+
+
 """ STEPPED IMPEDANCE FILTER
 
 In this demo we will look at how we can construct a stepped impedance filter using the
@@ -85,7 +87,7 @@ m.mesher.set_boundary_size(p2, 2*mm)
 # Finally we generate our mesh and view it
 m.generate_mesh()
 
-m.view()
+#m.view()
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)
@@ -111,7 +113,8 @@ if False:
     m.display.show()
 
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+sol = m.mw.frequency_domain(parallel=True, njobs=8, frequency_groups=16)
+
 
 # Our "sol" variable is of type MWData (Microwave Data). This contains a set of scalar data 
 # like S-parameters and field data like the E/H field. The scalar data is in sol.scalar and the 

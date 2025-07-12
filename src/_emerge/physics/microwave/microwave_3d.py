@@ -34,6 +34,23 @@ from typing import Callable
 
 import time
 import threading
+import multiprocessing as mp
+import inspect, os
+
+def _running_as_main():
+    for frame_info in inspect.stack():
+        # look for the very first frame in '<module>' context
+        if frame_info.function == "<module>" and \
+           os.path.abspath(frame_info.filename) == os.path.abspath(__file__):
+            return True
+    return False
+
+def run_job_multi(job: SimJob):
+    routine = ParallelRoutine()
+    for A, b, ids, reuse in job.iter_Ab():
+        solution, report = routine.solve(A, b, ids, reuse)
+        job.submit_solution(solution, report)
+    return job
 
 class SimulationError(Exception):
     pass
@@ -99,6 +116,9 @@ class Microwave3D:
 
         ## Data
         self._params: dict[str, float] = dict()
+
+    def reset_data(self):
+        self.data = MWData()
 
     def reset(self):
         self.basis: FEMBasis = None
@@ -455,7 +475,7 @@ class Microwave3D:
             eigen_values = []
             eigen_modes = []
             for kz in np.geomspace(k1,k2,20):
-                sub_eigen_values, sub_eigen_modes = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, 1, False, kz)
+                sub_eigen_values, sub_eigen_modes, report = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, 1, False, kz)
                 eigen_values.append(sub_eigen_values)
                 eigen_modes.append(sub_eigen_modes)
             eigen_values = np.concatenate(eigen_values)
@@ -464,7 +484,7 @@ class Microwave3D:
         else:
             logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
-            eigen_values, eigen_modes = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
+            eigen_values, eigen_modes, report = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
             
             logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
 
@@ -524,6 +544,7 @@ class Microwave3D:
                              harddisc_threshold: int = None,
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
+                             multi_processing: bool = False,
                              automatic_modal_analysis: bool = False) -> MWData:
         """Executes a parallel frequency domain study
 
@@ -608,8 +629,8 @@ class Microwave3D:
         def run_job(job: SimJob):
             routine = get_routine()
             for A, b, ids, reuse in job.iter_Ab():
-                solution = routine.solve(A, b, ids, reuse)
-                job.submit_solution(solution)
+                solution, report = routine.solve(A, b, ids, reuse)
+                job.submit_solution(solution, report)
             return job
         
         freq_groups = []
@@ -620,34 +641,69 @@ class Microwave3D:
             freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
 
         results: list[SimJob] = []
-        with ThreadPoolExecutor(max_workers=njobs) as executor:
-            # ITERATE OVER FREQUENCIES
-            for i_group, fgroup in enumerate(freq_groups):
-                logger.debug(f'Precomputing group {i_group}.')
-                jobs = []
-                
-                for freq in fgroup:
-                    logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
-                    if automatic_modal_analysis:
-                        self._compute_modes(freq)
-                    # Assembling matrix problem
-                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
-                                                              self.bc.boundary_conditions, 
-                                                              freq, 
-                                                              cache_matrices=self.cache_matrices)
-                    job.store_limit = harddisc_threshold
-                    job.relative_path = harddisc_path
-                    jobs.append(job)
-                
-                logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
-                group_results = list(executor.map(run_job, jobs))
-                results.extend(group_results)
+
+
+        if not multi_processing:
+            with ThreadPoolExecutor(max_workers=njobs) as executor:
+                # ITERATE OVER FREQUENCIES
+                for i_group, fgroup in enumerate(freq_groups):
+                    logger.debug(f'Precomputing group {i_group}.')
+                    jobs = []
+                    
+                    for freq in fgroup:
+                        logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+                        if automatic_modal_analysis:
+                            self._compute_modes(freq)
+                        # Assembling matrix problem
+                        job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
+                                                                self.bc.boundary_conditions, 
+                                                                freq, 
+                                                                cache_matrices=self.cache_matrices)
+                        job.store_limit = harddisc_threshold
+                        job.relative_path = harddisc_path
+                        jobs.append(job)
+                    
+                    logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
+                    group_results = list(executor.map(run_job, jobs))
+                    results.extend(group_results)
+        else:
+            # MULTI-PROCESSING VERSION
+            # Make sure run_job and any methods it needs are top-level (pickleable).
+            # You can also use initializer/initargs to set up per-process state if needed.
+            #if not _running_as_main():
+            #    logger.error('Parallel processing must be run from an if __name__ == "__main__": context.')
+            #    raise SimulationError('Parallel processing must be run from an if __name__ == "__main__": context.')
+            with mp.Pool(processes=njobs) as pool:
+                for i_group, fgroup in enumerate(freq_groups):
+                    logger.debug(f'Precomputing group {i_group}.')
+                    jobs = []
+                    for freq in fgroup:
+                        logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz')
+                        if automatic_modal_analysis:
+                            # This runs in the main process before distribution;
+                            # if you need it per-worker, move it into run_job.
+                            self._compute_modes(freq)
+                        job = self.assembler.assemble_freq_matrix(
+                            self.basis, er, ur, cond,
+                            self.bc.boundary_conditions,
+                            freq,
+                            cache_matrices=self.cache_matrices
+                        )
+                        job.store_limit    = harddisc_threshold
+                        job.relative_path = harddisc_path
+                        jobs.append(job)
+
+                    logger.info(
+                        f'Starting parallel solve of {len(jobs)} jobs '
+                        f'with {njobs} processes in parallel'
+                    )
+                    # pool.map returns a list of results in the same order
+                    group_results = pool.map(run_job_multi, jobs)
+                    results.extend(group_results)
 
         logger.info('Solving complete')
 
         logger.debug('Computing S-parameters')
-
-        self.data.new(**self._params)
 
         for freq, job in zip(self.frequencies, results):
 
@@ -662,6 +718,8 @@ class Microwave3D:
             fielddata.freq = freq
             fielddata.er = np.squeeze(er[0,0,:])
             fielddata.ur = np.squeeze(ur[0,0,:])
+
+            self.data.setreport(job.reports, freq=freq, **self._params)
 
             logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
 
@@ -776,8 +834,6 @@ class Microwave3D:
 
         logger.debug(f'Starting the simulation of {len(self.frequencies)} frequency points.')
 
-        self.data.new(**self._params)
-
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
             logger.info(f'Simulation frequency = {freq/1e9:.3f} GHz') 
@@ -788,11 +844,14 @@ class Microwave3D:
             
             job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.bc.boundary_conditions, freq, cache_matrices=self.cache_matrices)
             
+
             logger.debug(f'Routine: {self.solveroutine}')
 
             for A, b, ids, reuse in job.iter_Ab():
-                solution = self.solveroutine.solve(A, b, ids, reuse)
-                job.submit_solution(solution)
+                solution, report = self.solveroutine.solve(A, b, ids, reuse)
+                job.submit_solution(solution, report)
+
+            self.data.setreport(job.reports, freq=freq, **self._params)
 
             k0 = 2*np.pi*freq/299792458
 
@@ -865,6 +924,7 @@ class Microwave3D:
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
                              automatic_modal_analysis: bool = True,
+                             multi_processing: bool = False
                              ) -> MWData:
         """Perform a frequency sweep study
         The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
@@ -895,8 +955,12 @@ class Microwave3D:
         if parallel:
             if njobs == 1:
                 logger.warning('Only one parallel thread indicated, defaulting to single threaded.')
-                return self.frequency_domain_single()
-            return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups, automatic_modal_analysis=automatic_modal_analysis)
+                return self.frequency_domain_single(automatic_modal_analysis=automatic_modal_analysis)
+            return self.frequency_domain_par(njobs, harddisc_threshold, 
+                                             harddisc_path, 
+                                             frequency_groups, 
+                                             automatic_modal_analysis=automatic_modal_analysis,
+                                             multi_processing=multi_processing)
         else:
             return self.frequency_domain_single(automatic_modal_analysis=automatic_modal_analysis)
 

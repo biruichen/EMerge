@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.optimize import root, fmin
 import gmsh
 
 from ..cs import CoordinateSystem, GCS, Axis
@@ -36,8 +37,28 @@ def normalize(vector: np.ndarray) -> np.ndarray:
         return vector
     return vector / norm
 
+def _rot_mat(angle):
+    ang = -angle * np.pi/180
+    return np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
+
 class RouteException(Exception):
     pass
+
+class PCBPoly:
+
+    def __init__(self, 
+                 xs: list[float],
+                 ys: list[float],
+                 z: float = 0,
+                 material: Material = COPPER):
+        self.xs: list[float] = xs
+        self.ys: list[float] = ys
+        self.z: float = z
+        self.material: Material = material
+
+    @property
+    def xys(self) -> list[tuple[float, float]]:
+        return list([(x,y) for x,y in zip(self.xs, self.ys)])
 
 @dataclass
 class Via:
@@ -84,27 +105,7 @@ class StripLine(RouteElement):
     @property
     def left(self) -> list[tuple[float, float]]:
         return [(self.x - self.width/2 * self.dirright[0], self.y - self.width/2 * self.dirright[1])]
-    
-def _rot_mat(angle):
-    ang = -angle * np.pi/180
-    return np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
-
-class PCBPoly:
-
-    def __init__(self, 
-                 xs: list[float],
-                 ys: list[float],
-                 z: float = 0,
-                 material: Material = COPPER):
-        self.xs: list[float] = xs
-        self.ys: list[float] = ys
-        self.z: float = z
-        self.material: Material = material
-
-    @property
-    def xys(self) -> list[tuple[float, float]]:
-        return list([(x,y) for x,y in zip(self.xs, self.ys)])
-    
+      
 class StripTurn(RouteElement):
 
     def __init__(self,
@@ -115,19 +116,19 @@ class StripTurn(RouteElement):
                  angle: float,
                  corner_type: str = 'round',
                  champher_distance: float = None):
-        self.xold = x
-        self.yold = y
-        self.width = width
-        self.old_direction = normalize(np.array(direction))
-        self.direction = _rot_mat(angle) @ self.old_direction
-        self.angle = angle
+        self.xold: float = x
+        self.yold: float = y
+        self.width: float = width
+        self.old_direction: np.ndarray = normalize(np.array(direction))
+        self.direction: np.ndarray = _rot_mat(angle) @ self.old_direction
+        self.angle: float = angle
         self.corner_type: str = corner_type
-        self.dirright = np.array([self.old_direction[1], -self.old_direction[0]])
+        self.dirright: np.ndarray = np.array([self.old_direction[1], -self.old_direction[0]])
         
         if champher_distance is None:
-            self.champher_distance = 0.75 * self.width*np.tan(np.abs(angle)/2*np.pi/180)
+            self.champher_distance: float = 0.75 * self.width*np.tan(np.abs(angle)/2*np.pi/180)
         else:
-            self.champher_distance = champher_distance
+            self.champher_distance: float = champher_distance
 
         turnvec = _rot_mat(angle) @ self.dirright * self.width/2
 
@@ -211,6 +212,8 @@ class StripTurn(RouteElement):
             y2 = yend - dist * self.direction[1]
 
             return [(xend, yend), (x2, y2), (x1, y1)]
+ 
+
 
 class StripPath:
 
@@ -296,6 +299,35 @@ class StripPath:
         
         return self
     
+    def taper(self, distance: float, 
+                 width: float) -> StripPath:
+        """Add A taper section to the stripline.
+
+        Adds a taper section with a length determined by "distance". Optionally, a 
+        different "width" can be provided. The start of the straight section will be
+        at the end of the last section. The optional dx, dy arguments can be used to offset
+        the starting coordinate of the straight segment.
+
+        Args:
+            distance (float): The length of the stripline
+            width (float, optional): The width of the stripline. Defaults to None.
+            dx (float, optional): An x-direction offset. Defaults to 0.
+            dy (float, optional): A y-direction offset. Defaults to 0.
+
+        Returns:
+            StripPath: The current StripPath object.
+        """
+        
+        x = self.path[-1].x 
+        y = self.path[-1].y 
+
+        dx_2, dy_2 = self.path[-1].direction
+        x1 = x + distance * dx_2
+        y1 = y + distance * dy_2
+
+        self._add_element(StripLine(x1, y1, width, (dx_2, dy_2)))
+        
+        return self
     def turn(self, angle: float, 
              width: float = None, 
              corner_type: Literal['champher'] = 'champher') -> StripPath:
@@ -377,7 +409,7 @@ class StripPath:
         if self.pcb._checkpoint is None:
             raise RouteException('No checkpoint known. Make sure to call .check() first')
         return self.pcb._checkpoint
-        
+    
     def via(self,
             znew: float,
             radius: float,
@@ -477,6 +509,7 @@ class StripPath:
             x = ending.x + dx
             y = ending.y + dy
         return self.pcb.new(x, y, width, direction)
+    
     
     def __call__(self, element_nr: int) -> RouteElement:
         if element_nr >= len(self.path):

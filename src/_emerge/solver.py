@@ -22,6 +22,7 @@ from scipy.sparse.csgraph import reverse_cuthill_mckee
 from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigs, splu
 from scipy.linalg import eig
 from scipy import sparse, show_config
+from dataclasses import dataclass
 import numpy as np
 from loguru import logger
 from threadpoolctl import threadpool_info
@@ -130,6 +131,7 @@ def real_to_complex_block(x):
     x_i = x[n:]
     return x_r + 1j * x_i
 
+    
 class Sorter:
     """ A Generic class that executes a sort on the indices.
     It must implement a sort and unsort method.
@@ -183,6 +185,16 @@ class Solver:
         raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
         
 ## SORTERS
+@dataclass
+class SolveReport:
+    solver: str
+    sorter: str
+    precon: str
+    simtime: float
+    ndof: int
+    nnz: int
+    code: int = None
+
 
 class ReverseCuthillMckee(Sorter):
     """ Implements the Reverse Cuthill-Mckee sorting."""
@@ -220,7 +232,6 @@ class ILUPrecon(Preconditioner):
         logger.info("Generating ILU Preconditioner")
         self.ilu = sparse.linalg.spilu(A, drop_tol=1e-3, fill_factor=self.fill_factor)
         self.M = sparse.linalg.LinearOperator(A.shape, self.ilu.solve)
-
 
 ## Solvers
 
@@ -527,7 +538,7 @@ class SolveRoutine:
     def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
               b: np.ndarray, 
               solve_ids: np.ndarray,
-              reuse: bool = False) -> np.ndarray:
+              reuse: bool = False) -> tuple[np.ndarray, SolveReport]:
         """ Solve the system of equations defined by Ax=b for x.
 
         Solve is the main function call to solve a linear system of equations defined by Ax=b.
@@ -561,19 +572,24 @@ class SolveRoutine:
             Asel, bsel = complex_to_real_block(Asel, bsel)
 
         # SORT
+        sorter = 'None'
         if solver.req_sorter and self.use_sorter:
+            sorter = str(self.sorter)
             Asorted, bsorted = self.sorter.sort(Asel,bsel, reuse_sorting=reuse)
         else:
             Asorted, bsorted = Asel, bsel
         
         # Preconditioner
+        precon = 'None'
         if self.use_preconditioner and not self.iterative_solver.own_preconditioner:
             self.precon.init(Asorted, bsorted)
+            precon = str(self.precon)
 
         start = time.time()
         x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse)
         end = time.time()
-        logger.info(f'Time taken: {(end-start):.3f} seconds')
+        simtime = end-start
+        logger.info(f'Time taken: {simtime:.3f} seconds')
         logger.debug(f'    O(N²) performance = {(NS**2)/((end-start+1e-6)*1e6):.3f} MDoF/s')
         if self.use_sorter and solver.req_sorter:
             x = self.sorter.unsort(x_solved)
@@ -588,7 +604,7 @@ class SolveRoutine:
         logger.debug('Solver complete!')
         if code:
             logger.debug('    Solver code: {code}')
-        return solution
+        return solution, SolveReport(str(solver), sorter, precon, simtime, NS, A.nnz, code)
     
     def eig(self, 
             A: np.ndarray | lil_matrix | csc_matrix, 
@@ -597,7 +613,7 @@ class SolveRoutine:
             nmodes: int = 6,
             direct: bool = None,
             target_k0: float = None,
-            which: str = 'LM') -> np.ndarray:
+            which: str = 'LM') -> tuple[np.ndarray, np.ndarray, SolveReport]:
         """ Solve the system of equations defined by Ax=b for x.
 
         Solve is the main function call to solve a linear system of equations defined by Ax=b.
@@ -622,9 +638,12 @@ class SolveRoutine:
         Asel = A[np.ix_(solve_ids, solve_ids)]
         Bsel = B[np.ix_(solve_ids, solve_ids)]
         
+        start = time.time()
         eigen_values, eigen_modes = solver.eig(Asel, Bsel, nmodes, target_k0, which)
-        
-        return eigen_values, eigen_modes
+        end = time.time()
+
+        simtime = end-start
+        return eigen_values, eigen_modes, SolveReport(str(solver), 'None', 'None', simtime, NS, A.nnz, simtime)
 
 
 class AutomaticRoutine(SolveRoutine):
