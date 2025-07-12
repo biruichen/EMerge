@@ -31,12 +31,11 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from loguru import logger
 from typing import Callable
-
 import time
 import threading
 import multiprocessing as mp
 import inspect, os
-
+from cmath import sqrt as csqrt
 def _running_as_main():
     for frame_info in inspect.stack():
         # look for the very first frame in '<module>' context
@@ -994,8 +993,8 @@ class Microwave3D:
                 a = 0
                 b = V
             
-            a = np.sqrt(a**2/(2*bc.Z0))
-            b = np.sqrt(b**2/(2*bc.Z0))
+            a = a*csqrt(1/(2*bc.Z0))
+            b = b*csqrt(1/(2*bc.Z0))
 
             return b, a
         else:
