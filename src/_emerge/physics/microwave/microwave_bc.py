@@ -130,8 +130,6 @@ class PortBC(RobinBC):
         self.cs: CoordinateSystem = None
         self.selected_mode: int = 0
         self.Z0 = None
-        self._tri_ids: np.ndarray = None
-        self._tri_vertices: np.ndarray = None
         self.active: bool = False
 
     def get_basis(self) -> np.ndarray:
@@ -515,7 +513,6 @@ class ModalPort(PortBC):
         else:
             freq = k0*299792458/(2*np.pi)
             beta = np.sqrt(mode.beta**2 + k0**2 * (1-((mode.freq/freq)**2)))
-        logger.debug(f'    Derived kz={beta.real:.2f} (k0 = {k0:.2f}), neff = {np.sqrt(beta/k0).real:.2f}')
         return beta
 
     def get_gamma(self, k0: float):

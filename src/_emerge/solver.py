@@ -178,7 +178,7 @@ class Solver:
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'
     
-    def solve(self, A: lil_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False) -> tuple[np.ndarray, int]:
+    def solve(self, A: lil_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, int]:
         raise NotImplementedError("This classes Ax=B solver method is not implemented.")
     
     def eig(self, A: lil_matrix, B: np.ndarray, nmodes: int = 6, target_k0: float = None, which: str = 'LM'):
@@ -249,8 +249,8 @@ class SolverBicgstab(Solver):
         convergence = np.linalg.norm((self.A @ xk - self.b))
         logger.info(f'Iteration {convergence:.4f}')
 
-    def solve(self, A, b, precon):
-        logger.info('Calling BiCGStab Function')
+    def solve(self, A, b, precon, id: int = -1):
+        logger.info(f'Calling BiCGStab. ID={id}')
         self.A = A
         self.b = b
         if precon.M is not None:
@@ -272,8 +272,8 @@ class SolverGCROTMK(Solver):
         convergence = np.linalg.norm((self.A @ xk - self.b))
         logger.info(f'Iteration {convergence:.4f}')
 
-    def solve(self, A, b, precon):
-        logger.info('Calling GCRO-T(m,k) algorithm')
+    def solve(self, A, b, precon, id: int = -1):
+        logger.info(f'Calling GCRO-T(m,k) algorithm. ID={id}')
         self.A = A
         self.b = b
         if precon.M is not None:
@@ -296,8 +296,8 @@ class SolverGMRES(Solver):
         #convergence = np.linalg.norm((self.A @ xk - self.b))
         logger.info(f'Iteration {norm:.4f}')
 
-    def solve(self, A, b, precon):
-        logger.info('Calling GMRES Function')
+    def solve(self, A, b, precon, id: int = -1):
+        logger.info(f'Calling GMRES Function. ID={id}')
         self.A = A
         self.b = b
         if precon.M is not None:
@@ -321,8 +321,8 @@ class SolverSuperLU(Solver):
         self.options: dict[str, str] = dict(SymmetricMode=True)
         self.lu = None
         
-    def solve(self, A, b, precon, reuse_factorization: bool = False):
-        logger.info('Calling SuperLU Solver')
+    def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
+        logger.info(f'Calling SuperLU Solver, ID={id}')
         if not reuse_factorization:
             self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
@@ -341,8 +341,8 @@ class SolverUMFPACK(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
 
-    def solve(self, A, b, precon, reuse_factorization: bool = False):
-        logger.info('Calling UMFPACK Solver')
+    def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
+        logger.info(f'Calling UMFPACK Solver. ID={id}')
         self.A = A
         self.b = b
         x = spsolve(A, b)
@@ -359,8 +359,8 @@ class SolverPardiso(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
     
-    def solve(self, A, b, precon, reuse_factorization: bool = False):
-        logger.info('Calling Pardiso Solver')
+    def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
+        logger.info(f'Calling Pardiso Solver. ID={id}')
         self.A = A
         self.b = b
         try:
@@ -538,7 +538,8 @@ class SolveRoutine:
     def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
               b: np.ndarray, 
               solve_ids: np.ndarray,
-              reuse: bool = False) -> tuple[np.ndarray, SolveReport]:
+              reuse: bool = False,
+              id: int = -1) -> tuple[np.ndarray, SolveReport]:
         """ Solve the system of equations defined by Ax=b for x.
 
         Solve is the main function call to solve a linear system of equations defined by Ax=b.
@@ -586,7 +587,7 @@ class SolveRoutine:
             precon = str(self.precon)
 
         start = time.time()
-        x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse)
+        x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse, id=id)
         end = time.time()
         simtime = end-start
         logger.info(f'Time taken: {simtime:.3f} seconds')

@@ -2,7 +2,6 @@ import emerge as em
 import numpy as np
 from emerge.plot import smith, plot_sp
 
-
 """ STEPPED IMPEDANCE FILTER
 
 In this demo we will look at how we can construct a stepped impedance filter using the
@@ -28,7 +27,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
+m = em.Simulation3D('Demo1_SIF', loglevel='INFO')
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -74,7 +73,7 @@ m.define_geometry(pcb, polies, p1, p2)
 m.mw.set_resolution(0.15)
 
 # And we define our frequency range
-m.mw.set_frequency_range(0.2e9, 8e9, 41)
+m.mw.set_frequency_range(0.2e9, 8e9, 21)
 
 # EMerge also has a convenient interface to improve surface meshing quality. 
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
@@ -113,7 +112,7 @@ if False:
     m.display.show()
 
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-sol = m.mw.frequency_domain(parallel=True, njobs=8, frequency_groups=16)
+sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
 
 # Our "sol" variable is of type MWData (Microwave Data). This contains a set of scalar data 
@@ -144,3 +143,4 @@ S21 = gritted_data.model_S(2,1,f)
 smith(f,S11)
 
 plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+
