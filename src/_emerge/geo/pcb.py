@@ -26,10 +26,11 @@ from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cyllinder
 from .operations import change_coordinate_system
-
+from .pcb_tools.macro import parse_macro
 from loguru import logger
 from typing import Literal
 from dataclasses import dataclass
+import math
 
 def normalize(vector: np.ndarray) -> np.ndarray:
     norm = np.linalg.norm(vector)
@@ -98,6 +99,8 @@ class StripLine(RouteElement):
         self.direction = normalize(np.array(direction))
         self.dirright = np.array([self.direction[1], -self.direction[0]])
 
+    def __str__(self) -> str:
+        return f'StripLine[{self.x},{self.y},w={self.width},d=({self.direction})]'
     @property
     def right(self) -> list[tuple[float, float]]:
         return [(self.x + self.width/2 * self.dirright[0], self.y + self.width/2 * self.dirright[1])]
@@ -213,8 +216,6 @@ class StripTurn(RouteElement):
 
             return [(xend, yend), (x2, y2), (x1, y1)]
  
-
-
 class StripPath:
 
     def __init__(self, pcb: PCBLayouter):
@@ -328,6 +329,7 @@ class StripPath:
         self._add_element(StripLine(x1, y1, width, (dx_2, dy_2)))
         
         return self
+    
     def turn(self, angle: float, 
              width: float = None, 
              corner_type: Literal['champher'] = 'champher') -> StripPath:
@@ -510,6 +512,167 @@ class StripPath:
             y = ending.y + dy
         return self.pcb.new(x, y, width, direction)
     
+    def to(self, dest: tuple[float, float], 
+           arrival_dir: tuple[float, float] = None,
+           arrival_margin: float = None,
+           angle_step: float = 90):
+        """
+        Extend the path from current end point to dest (x, y).
+        Optionally ensure arrival in arrival_dir after a straight segment of arrival_margin.
+        Turns are quantized to multiples of angle_step (divisor of 360, <=90).
+        """
+        # Validate angle_step
+        if 360 % angle_step != 0 or angle_step > 90 or angle_step <= 0:
+            raise ValueError(f"angle_step must be a positive divisor of 360 <= 90, got {angle_step}")
+
+        # Current state
+        x0, y0 = self.end.x, self.end.y
+        vx, vy = self.end.direction  # unit heading
+        tx, ty = dest
+
+        # Compute unit arrival direction
+        if arrival_dir is not None:
+            adx, ady = arrival_dir
+            mag = math.hypot(adx, ady)
+            if mag == 0:
+                raise ValueError("arrival_dir must be non-zero")
+            ux, uy = adx/mag, ady/mag
+        else:
+            # if no arrival_dir, just head to point
+            ux, uy = 0.0, 0.0
+        arrival_margin += self.end.width
+        # Compute base point: destination minus arrival margin
+        bx = tx - ux * arrival_margin
+        by = ty - uy * arrival_margin
+
+        # Parametric search along negative arrival direction
+        # we seek t >= 0 such that angle from (vx,vy) to (bx - x0 - ux*t, by - y0 - uy*t)
+        # quantizes exactly to a multiple of angle_step
+        atol = angle_step/10
+        dtol = 0.01
+        t = 0.0
+        max_t = math.hypot(bx - x0, by - y0) + arrival_margin + 1e-3
+        dt = max_t / 1000.0  # resolution of search
+        found = False
+        desired_q = None
+        cand_dx = cand_dy = 0.0
+        
+        while t <= max_t:
+            # candidate intercept point
+            cx = bx - ux * t
+            cy = by - uy * t
+            dx = cx - x0
+            dy = cy - y0
+            if abs(dx) < dtol and abs(dy) < dtol:
+                # reached start; skip
+                t += dt
+                continue
+            # compute angle
+            cross = vx*dy - vy*dx
+            dot = vx*dx + vy*dy
+            ang = math.degrees(math.atan2(cross, dot))
+            # quantize
+            q_ang = math.ceil(ang / angle_step) * angle_step
+            if abs(ang - q_ang) <= atol:
+                found = True
+                desired_q = q_ang
+                break
+            t += dt
+
+        if not found:
+            raise RuntimeError("Could not find an intercept angle matching quantization")
+
+        # 1) Perform initial quantized turn
+        if abs(desired_q) > atol:
+            self.turn(-desired_q)
+        x0 = self.end.x
+        y0 = self.end.y
+        # compute new heading vector after turn
+        theta = math.radians(desired_q)
+        nvx = math.cos(theta) * vx - math.sin(theta) * vy
+        nvy = math.sin(theta) * vx + math.cos(theta) * vy
+
+        # 2) Compute exact intercept distance via line intersection:
+        # Solve: (x0,y0) + s*(nvx,nvy) = (bx,by) - t*(ux,uy)
+        # Unknowns s,t (we reuse t from above as initial guess, but solve fresh):
+        tol_dist = 1e-6
+        A11, A12 = nvx, ux
+        A21, A22 = nvy, uy
+        B1 = bx - x0
+        B2 = by - y0
+        det = A11 * A22 - A12 * A21
+        if abs(det) < tol_dist:
+            raise RuntimeError("Initial heading parallel to arrival line, no unique intercept")
+        s = (B1 * A22 - B2 * A12) / det
+        t_exact = (A11 * B2 - A21 * B1) / det
+        if s < -tol_dist or (arrival_dir is not None and t_exact < -tol_dist):
+            raise RuntimeError("Computed intercept lies behind start or before arrival point")
+
+        
+        # 3) Turn into arrival direction (if provided)
+    
+        # we need to rotate from current heading (vx,vy) by desired_q to (nvx,nvy)
+        theta = math.radians(desired_q)
+        nvx = math.cos(theta)*vx - math.sin(theta)*vy
+        nvy = math.sin(theta)*vx + math.cos(theta)*vy
+        # target heading is (ux,uy)
+        cross2 = nvx*uy - nvy*ux
+        dot2 = nvx*ux + nvy*uy
+        back_ang = math.degrees(math.atan2(cross2, dot2))
+        
+        backoff = math.tan(abs(back_ang)*np.pi/360)*self.end.width/2
+        self.straight(s - backoff)
+        
+
+        self.turn(-back_ang)
+
+        x0 = self.end.x
+        y0 = self.end.y
+        D = math.hypot(tx-x0, ty-y0)
+        # 4) Final straight into destination by arrival_margin + t
+        self.straight(D)
+        
+
+        return self
+
+    def macro(self, path: str, width: float = None, start_dir: tuple[float, float] = None) -> StripPath:
+        """Parse an EMerge macro command string
+
+        The start direction by default is the abslute current heading. If a specified heading is provided
+        the macro language will assume that as the current heading and generate commands accordingly. 
+
+        The language is specified by a symbol plus a number.
+        Symbols:
+        - = X: Move X units forward
+        - \> X: Turn to right and move X forward
+        - < X: Turn to left and move X forward
+        - v X: Turn to down and move X forward
+        - ^ X: Turn to up and move X forward
+        - T X,Y: Taper X forward to width Y
+        - \ X: Turn relative right 90 degrees and X forward
+        - / X: Turn relative left 90 degrees and X forward
+
+        (*) All commands X can also be provided as X,Y to change the width
+
+        Args:
+            path (str): The path command string
+            width (float, optional): The width to start width. Defaults to None.
+            start_dir (tuple[float, float], optional): The start direction to assume. Defaults to None.
+
+        Example:
+        >>> my_pcb.macro("= 5 v 4,1.2 > 5 ^ 2 > 3 T 4, 2.1")
+        
+        Returns:
+            StripPath: The strippath object
+        """
+        if start_dir is None:
+            start_dir = self.end.direction
+        if width is None:
+            width = self.end.width
+        for instr in parse_macro(path, width, start_dir):
+            print(f'Instr: {instr.args}, option={instr.kwargs}')
+            getattr(self, instr.instr)(*instr.args, **instr.kwargs)
+        return self
     
     def __call__(self, element_nr: int) -> RouteElement:
         if element_nr >= len(self.path):
@@ -651,6 +814,23 @@ class PCBLayouter:
         self.length = (maxy - miny + mt + mb)
         self.origin = np.array([-ml+minx, -mb+miny, 0])
     
+    def set_bounds(self,
+                   xmin: float,
+                   ymin: float,
+                   xmax: float,
+                   ymax: float) -> None:
+        """Define the bounds of the PCB
+
+        Args:
+            xmin (float): The minimum x-coordinate
+            ymin (float): The minimum y-coordinate
+            xmax (float): The maximum x-coordinate
+            ymax (float): The maximum y-coordinate
+        """
+        self.origin = np.array([xmin, ymin, 0])
+        self.width = xmax-xmin
+        self.length = ymax-ymin
+
     def plane(self,
               z: float,
               width: float = None,
@@ -812,8 +992,9 @@ class PCBLayouter:
 
     def modal_port(self,
                   point: StripLine,
+                  height: float,
                   width_multiplier: float = 5.0,
-                  height: float = None) -> GeoSurface:
+                  ) -> GeoSurface:
         """Generate a wave-port as a GeoSurface.
 
         The port is placed at the coordinate of the provided stripline. The width

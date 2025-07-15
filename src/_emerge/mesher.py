@@ -245,7 +245,7 @@ class Mesher:
             
     def set_boundary_size(self, object: GeoSurface | FaceSelection, 
                           size:float,
-                          growth_rate: float = 1.1,
+                          growth_rate: float = 1.4,
                           max_size: float = None):
         """Refine the mesh size along the boundary of a conducting surface
 

@@ -336,7 +336,8 @@ class XYPolygon:
                    xmin: float = 1e-3,
                    tolerance: float = 1e-5,
                    tmin: float = 0,
-                   tmax: float = 1) -> XYPolygon:
+                   tmax: float = 1,
+                   reverse: bool = False) -> XYPolygon:
         """Adds the points of a parametric curve to the polygon.
         The parametric curve is defined by two parametric functions of a parameter t that (by default) lives in the interval from [0,1].
         thus the curve x(t) = xfunc(t), and y(t) = yfunc(t).
@@ -349,11 +350,15 @@ class XYPolygon:
             tolerance (float): A maximum distance tolerance. Defaults to 10um.
             tmin (float, optional): The start value of the t-parameter. Defaults to 0.
             tmax (float, optional): The end value of the t-parameter. Defaults to 1.
+            reverse (bool, optional): Reverses the curve.
 
         Returns:
             XYPolygon: _description_
         """
         xs, ys = _discretize_curve(xfunc, yfunc, tmin, tmax, xmin, tolerance)
-        self.x = self.x + list(xs)
-        self.y = self.y + list(ys)
+
+        if reverse:
+            xs = xs[::-1]
+            ys = ys[::-1]
+        self.extend(xs, ys)
         return self
