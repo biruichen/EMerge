@@ -211,6 +211,7 @@ class PVDisplay(BaseDisplay):
         self._plot.add_key_event("m", self.activate_ruler)
         self._plot.add_key_event("f", self.activate_object)
 
+        self._ctr: int = 0
     def activate_ruler(self):
         self._plot.disable_picking()
         self._selector.turn_off()
@@ -347,10 +348,13 @@ class PVDisplay(BaseDisplay):
         if XYZ:
             X,Y,Z = XYZ
         else:
-            X,Y,Z = port.selection.sample(Npoints)
-            for x,y,z in zip(X,Y,Z):
-                self.add_portmode(port, Npoints, dv, (x,y,z), field, k0=k0, mode_number=mode_number)
-            return
+            tris = self._mesh.get_triangles(port.selection.tags)
+            X = self._mesh.tri_centers[0,tris]
+            Y = self._mesh.tri_centers[1,tris]
+            Z = self._mesh.tri_centers[2,tris]
+            # for x,y,z in zip(X,Y,Z):
+            #     self.add_portmode(port, Npoints, dv, (x,y,z), field, k0=k0, mode_number=mode_number)
+            # return
         
         X = X+dv[0]
         Y = Y+dv[1]
@@ -386,13 +390,13 @@ class PVDisplay(BaseDisplay):
 
         if field=='H':
             F = np.imag(F.T)
-            Fnorm = np.sqrt(Fx.imag**2 + Fy.imag**2 + Fz.imag**2)
+            Fnorm = np.sqrt(Fx.imag**2 + Fy.imag**2 + Fz.imag**2).T
         else:
             F = np.real(F.T)
-            Fnorm = np.sqrt(Fx.real**2 + Fy.real**2 + Fz.real**2)
+            Fnorm = np.sqrt(Fx.real**2 + Fy.real**2 + Fz.real**2).T
 
         #grid = pv.StructuredGrid(X,Y,Z)
-        self.add_surf(X,Y,Z,Fnorm)
+        #self.add_surf(X,Y,Z,Fnorm, _fieldname = 'portfield')
         #self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8, pickable=False)
 
         Emag = F/np.max(Fnorm.flatten())*d*3
@@ -409,6 +413,7 @@ class PVDisplay(BaseDisplay):
                  opacity: float = 1.0,
                  symmetrize: bool = True,
                  animate: bool = False,
+                 _fieldname: str = None,
                  **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
@@ -438,7 +443,12 @@ class PVDisplay(BaseDisplay):
             T = lambda x: x
         
         static_field = T(np.real(field_flat))
-        grid['anim'] = static_field
+        if _fieldname is None:
+            name = 'anim'+str(self._ctr)
+        else:
+            name = _fieldname
+        self._ctr += 1
+        grid[name] = static_field
 
         if clim is None:
             fmin = np.min(static_field)
@@ -449,8 +459,8 @@ class PVDisplay(BaseDisplay):
             lim = max(abs(clim[0]),abs(clim[1]))
             clim = (-lim, lim)
 
-        kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False)
-        actor = self._plot.add_mesh(grid, scalars='anim', **kwargs)
+        kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False, multi_colors=True)
+        actor = self._plot.add_mesh(grid, scalars=name, **kwargs)
 
         if self._animate:
             def on_update(obj: _AnimObject, phi: complex):
@@ -493,7 +503,7 @@ class PVDisplay(BaseDisplay):
             Vec[:,0] = dx
             Vec[:,1] = dy
             Vec[:,2] = dz
-        self._plot.add_arrows(Coo, Vec)
+        pl = self._plot.add_arrows(Coo, Vec, scalars=None, clim=None, cmap=None)
 
     def add_contour(self,
                      X: np.ndarray,

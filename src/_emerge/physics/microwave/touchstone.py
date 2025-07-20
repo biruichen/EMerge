@@ -20,7 +20,7 @@ import os
 from typing import Literal
 import numpy as np
 from datetime import datetime
-
+from loguru import logger
 
 _F_UNIT = {'HZ': 1,
            'KHZ': 1e3,
@@ -137,4 +137,4 @@ def generate_touchstone(filename: str,
                         f.write(f" {val:12.6e}")
                     f.write("\n")
     
-    print(f"Touchstone file written to '{filename_out}'")
+    logger.info(f"Touchstone file written to '{filename_out}'")

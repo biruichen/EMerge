@@ -181,18 +181,19 @@ class Plane:
         """
         return Plane(self.vax, self.uax)
     
-    def cs(self, origin: np.ndarray = None) -> CoordinateSystem:
+    def cs(self, x0: float = 0, y0: float = 0, z0: float = 0) -> CoordinateSystem:
         """Returns a CoordinateSystem object for the plane where the XY axes are aligned
         with the plane UV axis and Z is normal.
 
         Args:
-            origin (np.ndarray, optional): The origin at which to place the coordinate system. Defaults to None.
+            x0 (float): The x coordinate of the origin
+            y0 (float): The y coordinate of the origin
+            z0 (float): The z coordinate of the origin
 
         Returns:
             CoordinateSystem: The coordinate system object
         """
-        if origin is None:
-            origin = np.zeros(3)
+        origin = np.array([x0, y0, z0])
         return CoordinateSystem(self.uax, self.vax, self.normal, origin)
     
     def grid(self, 

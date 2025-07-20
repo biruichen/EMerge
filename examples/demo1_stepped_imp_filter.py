@@ -27,7 +27,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF', loglevel='INFO')
+m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -73,7 +73,7 @@ m.define_geometry(pcb, polies, p1, p2)
 m.mw.set_resolution(0.15)
 
 # And we define our frequency range
-m.mw.set_frequency_range(0.2e9, 8e9, 21)
+m.mw.set_frequency_range(0.2e9, 8e9, 41)
 
 # EMerge also has a convenient interface to improve surface meshing quality. 
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
@@ -86,7 +86,7 @@ m.mesher.set_boundary_size(p2, 2*mm)
 # Finally we generate our mesh and view it
 m.generate_mesh()
 
-#m.view()
+m.view()
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)

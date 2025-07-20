@@ -42,7 +42,6 @@ def parse_macro(pathstring: str, width: int, direction: tuple[float, float]) -> 
     
     oi = []
     for com, val in instructions:
-        print(val)
         if ',' in val:
             ival, width = [float(x) for x in val.split(',')]
         else:

@@ -35,6 +35,28 @@ def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
     av = np.array([e1[1]*e2[2] - e1[2]*e2[1], e1[2]*e2[0] - e1[0]*e2[2], e1[0]*e2[1] - e1[1]*e2[0]])
     return np.sqrt(av[0]**2 + av[1]**2 + av[2]**2)/2
 
+def shortest_distance(point_cloud):
+    """
+    Compute the shortest distance between any two points in a 3D point cloud.
+
+    Parameters:
+    - point_cloud: np.ndarray of shape (3, N)
+
+    Returns:
+    - min_dist: float, the shortest distance
+    """
+    # Transpose to shape (N, 3)
+    points = point_cloud.T  # Shape (N, 3)
+
+    # Compute pairwise squared distances (broadcasting)
+    diff = points[:, np.newaxis, :] - points[np.newaxis, :, :]  # Shape (N, N, 3)
+    dist_sq = np.einsum('ijk,ijk->ij', diff, diff)  # Shape (N, N)
+
+    # Avoid zero on diagonal (distance to self), set to np.inf
+    np.fill_diagonal(dist_sq, np.inf)
+
+    # Return minimum distance
+    return np.sqrt(np.min(dist_sq))
 
 def tri_ordering(i1: int, i2: int, i3: int) -> int:
     ''' Takes two integer indices of triangle verticces and determines if they are in increasing order or decreasing order.
@@ -417,6 +439,7 @@ class Mesh3D:
 
         node_ids_1 = []
         node_ids_2 = []
+        
         for d,t in face_dimtags:
             domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, t)
             node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
@@ -425,11 +448,16 @@ class Mesh3D:
             if t in bc.face2.tags:
                 node_ids_2.extend(node_tags)
             ftag_to_node[t] = node_tags
-            
+        
+        all_node_ids = np.unique(np.array(node_ids_1 + node_ids_2))
+        dsmin = shortest_distance(self.nodes[:,all_node_ids])
+
+        node_ids_1 = sorted(list(set(node_ids_1)))
+        node_ids_2 = sorted(list(set(node_ids_2)))
         dv = np.array(bc.dv)
         nodemapdict = defaultdict(lambda: [None, None])
         
-        mult = 1e6
+        mult = int(10**(-np.round(np.log10(dsmin))+2))
         
         for i1, i2 in zip(node_ids_1, node_ids_2):
             nodemapdict[gen_key(self.nodes[:,i1], mult)][0] = i1
@@ -534,8 +562,15 @@ class Mesh3D:
 
     def boundary_surface(self, 
                          face_tags: Union[int, list[int]], 
-                         origin: tuple[float, float, float]) -> SurfaceMesh:
+                         origin: tuple[float, float, float] = None) -> SurfaceMesh:
         tri_ids = self.get_triangles(face_tags)
+        if origin is None:
+            nodes = self.nodes[:,self.get_nodes(face_tags)]
+            x0 = np.mean(nodes[0,:])
+            y0 = np.mean(nodes[1,:])
+            z0 = np.mean(nodes[2,:])
+            origin = (x0, y0, z0)
+
         return SurfaceMesh(self, tri_ids, origin)
     
 class SurfaceMesh:
@@ -554,7 +589,11 @@ class SurfaceMesh:
 
 
         ### Store information
+        self._tri_ids = tri_ids
+        self._origin = origin
+
         self.original_tris: np.ndarray = original.tris
+
         self.old_new_node_map: dict[int,int] = old_to_new_node_id_map
         self.original: Mesh3D = original
         self._alignment_origin: np.ndarray = np.array(origin).astype(np.float64)
@@ -568,9 +607,37 @@ class SurfaceMesh:
         self.n_tris = self.tris.shape[1]
         self.n_edges = None
         self.areas: np.ndarray = None
+        self.normals: np.ndarray = None
 
         # Generate derived
         self.update()
+
+    def copy(self) -> SurfaceMesh:
+        return SurfaceMesh(self.original, self._tri_ids, self._origin)
+    
+    def flip(self, ax: str) -> SurfaceMesh:
+        if ax.lower()=='x':
+            self.flipX()
+        if ax.lower()=='y':
+            self.flipY()
+        if ax.lower()=='z':
+            self.flipZ()
+        #self.tris[(0,1),:] = self.tris[(1,0),:]
+
+    def flipX(self) -> SurfaceMesh:
+        self.nodes[0,:] = -self.nodes[0,:]
+        self.normals[0,:] = -self.normals[0,:]
+        self.edge_centers[0,:] = -self.edge_centers[0,:]
+    
+    def flipY(self) -> SurfaceMesh:
+        self.nodes[1,:] = -self.nodes[1,:]
+        self.normals[1,:] = -self.normals[1,:]
+        self.edge_centers[1,:] = -self.edge_centers[1,:]
+    
+    def flipZ(self) -> SurfaceMesh:
+        self.nodes[2,:] = -self.nodes[2,:]
+        self.normals[2,:] = -self.normals[2,:]
+        self.edge_centers[2,:] = -self.edge_centers[2,:]
 
     def from_source_tri(self, triid: int) -> int | None:
         ''' Returns a triangle index from the old mesh to the new mesh.'''

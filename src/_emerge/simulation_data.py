@@ -1,9 +1,25 @@
+# EMerge is an open source Python based FEM EM simulation module.
+# Copyright (C) 2025  Robert Fennis.
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see
+# <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 import numpy as np
 from loguru import logger
 from typing import TypeVar, Generic, Any, List, Union, Dict
 from collections import defaultdict
-from .solver import SolveReport
 
 T = TypeVar("T")
 M = TypeVar("M")
@@ -112,70 +128,94 @@ def generate_ndim(
     # Return each axis array followed by the grid
     return (*axes, grid)
 
-class PhysicsData:
 
+class DataEntry:
+    
+    def __init__(self, vars: dict[str, float]):
+        self.vars: dict[str, float] = vars
+        self.data: dict[str, Any] = dict()
+    
+    def print(self) -> None:
+        """Print the content of the DataEntry object"""
+        for key, value in self.data.items():
+            print(f'    {key} = {value}')
+
+    def values(self) -> list[Any]:
+        """ Return all values stored in the DataEntry"""
+        return self.data.values()
+    
+    def keys(self) -> list[str]:
+        """ Return all names of data stored in the DataEntry"""
+        return list(self.data.keys())
+    
+    def items(self) -> list[tuple[str, Any]]:
+        """ Returns a list of all key: value pairs of the DataEntry."""
+    
+    def __eq__(self, other: dict[str, float]) -> bool:
+        allkeys = set(list(self.vars.keys()) + list(other.keys()))
+        return all(self.vars[key]==other[key] for key in allkeys)
+    
+    def _dist(self, other: dict[str, float]) -> bool:
+        return sum([(abs(self.vars.get(key,1e20)-other[key])/other[key]) for key in other.keys()])
+    
+    def __getitem__(self, key) -> Any:
+        return self.data[key]
+    
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.data[key] = value
+
+
+class DataContainer:
+    """The DataContainer class is a generalized class to store data for a set of parameter sweeps"""
     def __init__(self):
-        self._variables: list[dict[str, float]] = []
-        self._data: list[dict[str, Any]] = []
-        self._reports: dict[tuple[tuple[str, float]], SolveReport] = dict()
-
-    @property
-    def last(self) -> dict:
-        """The latest dataset entry that was added"""
-        return self._data[-1]
-    
-    def setreport(self, reports: list[SolveReport], **variables) -> None:
-        """Store a simulation report for a given simulation parameter setting
-
-        Args:
-            report (SolveReport): _description_
-        """
-        self._reports[tuple([(key, value) for key,value in variables.items()])] = reports
-
-    def getreport(self, **variables) -> list[SolveReport] | None:
-        """Return a simulation report for a given simulation setting
-
-        Returns:
-            SolveReport | None: _description_
-        """
-        self._reports.get(tuple([(key, value) for key,value in variables.items()]), None)
-
-    def get(self, **variables: float) -> dict:
-        """Return a dictionary entry for the given parameter settings to store information in
-
-        Returns:
-            dict: The data dictionary to be filled
-        """
-        dct = self.select(**variables)
-        if dct is not None:
-            return dct
-        self._variables.append(variables)
-        datadict = dict()
-        self._data.append(datadict)
-        return datadict
-    
-    def get_entry(self, index: int) -> dict:
-        """Return the ith entry in the dataset. 
-
-        Args:
-            index (int): The data entry index
-
-        Returns:
-            dict: The data dictionary
-        """
-        return self._data[index]
-
-    def select(self, **variables: float) -> dict | None:
-        """Returns the first data dictionary that satisfies all variable specifications.
-
-        Returns:
-            dict: The data dictionary
-        """
-        for i, vrs in enumerate(self._variables):
-            if all(vrs.get(k) == v for k, v in variables.items()):
-                return self.get_entry(i)
+        self.entries: list[DataEntry] = []
+        self.stock: DataEntry = DataEntry({})
         
+
+    def print(self) -> None:
+        """ Print an overview of all data in the DataContainer"""
+        self.stock.print()
+        for entry in self.entries:
+            entry.print()
+
+    def new(self, **vars: float) -> DataEntry:
+        """Create a new entry in the DataContainer for the given value setting"""
+        entry = DataEntry(vars)
+        self.entries.append(entry)
+        return entry
+    
+    @property
+    def last(self) -> DataEntry:
+        """Returns the last added entry"""
+        return self.entries[-1]
+    
+    @property
+    def default(self) -> DataEntry:
+        """Returns the default DataEntry which is either the last from the parameter sweep or the general one in case of no parameter sweep."""
+        if not self.entries:
+            return self.stock
+        else:
+            return self.last
+        
+    def select(self, **vars: float) -> DataEntry | None:
+        """Returns the data entry corresponding to the provided parametric sweep set"""
+        for entry in self.entries:
+            if entry==vars:
+                return entry
         return None
+    
+    def find(self, **vars: float) -> DataEntry:
+        """Returns the DataEntry closest to the provided parametric sweep setting."""
+        return sorted([(entry, entry._dist(vars)) for entry in self.entries], key=lambda x: x[1])[0][0]
+    
+    def __getitem__(self, key: str) -> DataEntry:
+        """Returns the requested item from the default DataEntry"""
+        return self.default[key]
+        
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Writes a value to the requested default DataEntry"""
+        self.default[key] = value
+    
 
 class BaseDataset(Generic[T,M]):
     def __init__(self, datatype: T, matrixtype: M, scalar: bool):

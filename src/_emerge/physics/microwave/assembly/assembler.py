@@ -299,7 +299,7 @@ class Assembler:
             dv = np.array(bc.dv)
             trimapdict = defaultdict(lambda: [None, None])
             edgemapdict = defaultdict(lambda: [None, None])
-            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+2))
+            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+3))
             
             edge_ids_1 = set()
             edge_ids_2 = set()
@@ -381,6 +381,185 @@ class Assembler:
         simjob = SimJob(K, b, k0*299792458/(2*np.pi), True)
         
         simjob.port_vectors = port_vectors
+        simjob.solve_ids = solve_ids
+
+        if has_periodic:
+            simjob.P = Pmat
+            simjob.Pd = Pmat.getH()
+            simjob.has_periodic = has_periodic
+
+        return simjob
+    
+    def assemble_eig_matrix(self, field: Nedelec2, 
+                        er: np.ndarray, 
+                        ur: np.ndarray, 
+                        sig: np.ndarray,
+                        bcs: list[BoundaryCondition],
+                        frequency: float) -> SimJob:
+        
+        from .curlcurl import tet_mass_stiffness_matrices
+        from .robinbc import assemble_robin_bc
+
+        mesh = field.mesh
+        w0 = 2*np.pi*frequency
+        k0 = w0/C0
+
+        er = er - 1j*sig/(w0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
+        
+        logger.debug('    Assembling matrices')
+        E, B = tet_mass_stiffness_matrices(field, er, ur)
+        self.cached_matrices = (E, B)
+
+        NF = E.shape[0]
+
+        pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
+        robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
+        periodic: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
+
+        # Process all PEC Boundary Conditions
+        pec_ids = []
+        
+        logger.debug('    Implementing PEC Boundary Conditions.')
+        
+        # Conductivity above a limit, consider it all PEC
+        for itet in range(field.n_tets):
+            if sig[itet] > self.conductivity_limit:
+                pec_ids.extend(field.tet_to_field[:,itet])
+        
+        # PEC Boundary conditions
+        for pec in pecs:
+            if len(pec.tags)==0:
+                continue
+            face_tags = pec.tags
+            tri_ids = mesh.get_triangles(face_tags)
+            edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+
+            for ii in edge_ids:
+                eids = field.edge_to_field[:, ii]
+                pec_ids.extend(list(eids))
+
+            for ii in tri_ids:
+                tids = field.tri_to_field[:, ii]
+                pec_ids.extend(list(tids))
+
+        # Robin BCs
+        if len(robin_bcs) > 0:
+            logger.debug('    Implementing Robin Boundary Conditions.')
+        
+        for bc in robin_bcs:
+            for tag in bc.tags:
+                face_tags = [tag,]#bc.tags
+
+                tri_ids = mesh.get_triangles(face_tags)
+                nodes = mesh.get_nodes(face_tags)
+                edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+
+                gamma = bc.get_gamma(k0)
+                
+                ibasis = bc.get_inv_basis()
+                if ibasis is None:
+                    basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
+                    ibasis = np.linalg.pinv(basis)
+                B_p = assemble_robin_bc(field, tri_ids, gamma)
+                if bc._include_stiff:
+                    B = B + B_p
+        
+        if len(periodic) > 0:
+            logger.debug('    Implementing Periodic Boundary Conditions.')
+
+        # Periodic BCs
+        Pmats = []
+        remove = set()
+        has_periodic = False
+
+        for bc in periodic:
+            Pmat = eye(NF, format='lil', dtype=np.complex128)
+            has_periodic = True
+            tri_ids_1 = mesh.get_triangles(bc.face1.tags)
+            tri_ids_2 = mesh.get_triangles(bc.face2.tags)
+            dv = np.array(bc.dv)
+            trimapdict = defaultdict(lambda: [None, None])
+            edgemapdict = defaultdict(lambda: [None, None])
+            mult = int(10**(-np.round(np.ceil(min(mesh.edge_lengths.flatten())))+2))
+            edge_ids_1 = set()
+            edge_ids_2 = set()
+            
+            phi = bc.phi(k0)
+            for i1, i2 in zip(tri_ids_1, tri_ids_2):
+                trimapdict[gen_key(mesh.tri_centers[:,i1], mult)][0] = i1
+                trimapdict[gen_key(mesh.tri_centers[:,i2]-dv, mult)][1] = i2
+                
+                ie1, ie2, ie3 = mesh.tri_to_edge[:,i1]
+                edge_ids_1.update({ie1, ie2, ie3})
+                ie1, ie2, ie3 = mesh.tri_to_edge[:,i2]
+                edge_ids_2.update({ie1, ie2, ie3})
+            
+            for i1, i2 in zip(list(edge_ids_1), list(edge_ids_2)):
+                edgemapdict[gen_key(mesh.edge_centers[:,i1], mult)][0] = i1
+                edgemapdict[gen_key(mesh.edge_centers[:,i2]-dv, mult)][1] = i2
+
+            
+            for t1, t2 in trimapdict.values():
+                f11, f21 = field.tri_to_field[[3,7],t1]
+                f12, f22 = field.tri_to_field[[3,7],t2]
+                Pmat[f12,f12] = 0
+                Pmat[f22,f22] = 0
+                if Pmat[f12,f11] == 0:
+                    Pmat[f12,f11] += phi
+                else:
+                    Pmat[f12,f11] *= phi
+                
+                if Pmat[f22,f21] == 0:
+                    Pmat[f22,f21] += phi
+                else:
+                    Pmat[f22,f21] *= phi
+                remove.add(f12)
+                remove.add(f22)
+                
+            for e1, e2 in edgemapdict.values():
+                f11, f21 = field.edge_to_field[:,e1]
+                f12, f22 = field.edge_to_field[:,e2]
+                Pmat[f12,f12] = 0
+                Pmat[f22,f22] = 0
+                if Pmat[f12,f11] == 0:
+                    Pmat[f12,f11] += phi
+                else:
+                    Pmat[f12,f11] *= phi
+                
+                if Pmat[f22,f21] == 0:
+                    Pmat[f22,f21] += phi
+                else:
+                    Pmat[f22,f21] *= phi
+                remove.add(f12)
+                remove.add(f22)
+                
+            Pmats.append(Pmat)
+        
+        if Pmats:
+            Pmat = Pmats[0]
+            for P2 in Pmats[1:]:
+                Pmat = Pmat @ P2
+            Pmat = Pmat.tocsr()
+            remove = np.array(sorted(list(remove)))
+            all_indices = np.arange(NF)
+            keep_indices = np.setdiff1d(all_indices, remove)
+            Pmat = Pmat[:,keep_indices]
+        else:
+            Pmat = None
+        
+        pec_ids = set(pec_ids)
+        solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids])
+        
+        if has_periodic:
+            mask = np.zeros((NF,))
+            mask[solve_ids] = 1
+            mask = mask[keep_indices]
+            solve_ids = np.argwhere(mask==1).flatten()
+
+        logger.debug(f'Number of tets: {mesh.n_tets}')
+        logger.debug(f'Number of DoF: {E.shape[0]}')
+        simjob = SimJob(E, None, frequency, False, B=B)
+        
         simjob.solve_ids = solve_ids
 
         if has_periodic:

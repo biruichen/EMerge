@@ -370,7 +370,6 @@ class FaceSelection(Selection):
         else:
             return cs, (size2, size1)
             
-
     def sample(self, Npts: int) -> tuple[np.ndarray, np.ndarray, np.ndarray] | list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
         ''' Sample the surface at the compiler defined parametric coordinate range.
         This function usually returns a square region that contains the surface.

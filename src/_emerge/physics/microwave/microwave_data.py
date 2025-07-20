@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from ...simulation_data import BaseDataset, PhysicsData
+from ...simulation_data import BaseDataset, DataContainer
 from ...elements.femdata import FEMBasis
 from dataclasses import dataclass
 import numpy as np
@@ -82,7 +82,7 @@ def arc_on_plane(ref_dir, normal, angle_range_deg, num_points=100):
     # Convert to spherical angles
     ux, uy, uz = vectors[:,0], vectors[:,1], vectors[:,2]
 
-    theta = np.arcsin(uz)         # theta = arcsin(z)
+    theta = np.arccos(uz)         # theta = arcsin(z)
     phi = np.arctan2(uy, ux)      # phi = atan2(y, x)
 
     return theta, phi
@@ -235,15 +235,227 @@ class PortProperties:
     mode_number: int = 1
 
 
-class MWData(PhysicsData):
+class MWData:
     scalar: BaseDataset[MWScalar, MWScalarNdim]
     field:   BaseDataset[MWField, None]
 
     def __init__(self):
-        super().__init__()
         self.scalar = BaseDataset[MWScalar, MWScalarNdim](MWScalar, MWScalarNdim, True)
         self.field = BaseDataset[MWField, None](MWField, None, False)
+        self.sim: DataContainer = DataContainer()
 
+    def setreport(self, report, **vars):
+        self.sim.new(**vars)['report'] = report
+    
+@dataclass
+class FarfieldData:
+    E: np.ndarray
+    H: np.ndarray
+    theta: np.ndarray
+    phi: np.ndarray
+
+    def surfplot(self, 
+             polarization: Literal['Ex','Ey','Ez','Etheta','Ephi','normE'], 
+             isotropic: bool = True, dB: bool = False, dBfloor: float = -30, rmax: float = None,
+             offset: tuple[float, float, float] = (0,0,0)) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the parameters to be used as positional arguments for the display.add_surf() function.
+
+        Example:
+        >>> model.display.add_surf(*dataset.field[n].farfield_3d(...).surfplot())
+
+        Args:
+            polarization ('Ex','Ey','Ez','Etheta','Ephi','normE'): What quantity to plot
+            isotropic (bool, optional): Whether to look at the ratio with isotropic antennas. Defaults to True.
+            dB (bool, optional): Whether to plot in dB's. Defaults to False.
+            dBfloor (float, optional): The dB value to take as R=0. Defaults to -10.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The X, Y, Z, F values
+        """
+        if polarization == "Ex":
+            F = self.E[0,:]
+        elif polarization == "Ey":
+            F = self.E[1,:]
+        elif polarization == "Ez":
+            F = self.E[2,:]
+        elif polarization == "normE":
+            F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
+        elif polarization == "Etheta":
+            thx = -np.cos(self.theta)*np.cos(self.phi)
+            thy = -np.cos(self.theta)*np.sin(self.phi)
+            thz = np.sin(self.theta)
+            F = np.abs(thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:])
+        elif polarization == "Ephi":
+            phx = -np.sin(self.phi)
+            phy = np.cos(self.phi)
+            phz = np.zeros_like(self.theta)
+            F = np.abs(phx*self.E[0,:] + phy*self.E[1,:] + phz*self.E[2,:])
+        else:
+            logger.warning('Defaulting to normE')
+            F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
+        if isotropic:
+            F = F/np.sqrt(2*np.pi/376)
+        if dB:
+            F = 20*np.log10(np.abs(F) + 10**(dBfloor/20))
+        if rmax is not None:
+            F = rmax * F/np.max(F)
+        xs = F*np.sin(self.theta)*np.cos(self.phi) + offset[0]
+        ys = F*np.sin(self.theta)*np.sin(self.phi) + offset[1]
+        zs = F*np.cos(self.theta) + offset[2]
+
+        return xs, ys, zs, F
+
+@dataclass
+class EHField:
+    x: np.ndarray
+    y: np.ndarray
+    z: np.ndarray
+    Ex: np.ndarray
+    Ey: np.ndarray
+    Ez: np.ndarray
+    Hx: np.ndarray
+    Hy: np.ndarray
+    Hz: np.ndarray
+    freq: float
+
+    @property
+    def k0(self) -> float:
+        return self.freq*2*np.pi/299792458
+    
+    @property
+    def EH(self) -> tuple[np.ndarray, np.ndarray]:
+        ''' Return the electric and magnetic field as a tuple of numpy arrays '''
+        return np.array([self.Ex, self.Ey, self.Ez]), np.array([self.Hx, self.Hy, self.Hz])
+    
+    @property
+    def E(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the electric field as a tuple of numpy arrays '''
+        return self.Ex, self.Ey, self.Ez
+    
+    @property
+    def normE(self) -> np.ndarray:
+        """The complex norm of the E-field
+        """
+        return np.sqrt(np.abs(self.Ex)**2 + np.abs(self.Ey)**2 + np.abs(self.Ez)**2)
+    
+    @property
+    def normH(self) -> np.ndarray:
+        """The complex norm of the H-field"""
+        return np.sqrt(np.abs(self.Hx)**2 + np.abs(self.Hy)**2 + np.abs(self.Hz)**2)
+    
+    @property
+    def Emat(self) -> np.ndarray:
+        return np.array([self.Ex, self.Ey, self.Ez])
+    
+    @property
+    def Hmat(self) -> np.ndarray:
+        return np.array([self.Hx, self.Hy, self.Hz])
+
+    @property
+    def H(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the magnetic field as a tuple of numpy arrays '''
+        return self.Hx, self.Hy, self.Hz
+    
+    def vector(self, field: Literal['E','H'], metric: Literal['real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+        """Returns the X,Y,Z,Fx,Fy,Fz data to be directly cast into plot functions.
+
+        The field can be selected by a string literal. The metric of the complex vector field by the metric.
+        For animations, make sure to always use the complex metric.
+
+        Args:
+            field ('E','H'): The field to return
+            metric ([]'real','imag','complex'], optional): the metric to impose on the field. Defaults to 'real'.
+
+        Returns:
+            tuple[np.ndarray,...]: The X,Y,Z,Fx,Fy,Fz arrays
+        """
+        if field=='E':
+            Fx, Fy, Fz = self.Ex, self.Ey, self.Ez
+        elif field=='H':
+            Fx, Fy, Fz = self.Hx, self.Hy, self.Hz
+        
+        if metric=='real':
+            Fx, Fy, Fz = Fx.real, Fy.real, Fz.real
+        elif metric=='imag':
+            Fx, Fy, Fz = Fx.imag, Fy.imag, Fz.imag
+        
+        return self.x, self.y, self.z, Fx, Fy, Fz
+    
+    def scalar(self, field: Literal['Ex','Ey','Ez','Hx','Hy','Hz','normE','normH'], metric: Literal['abs','real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the data X, Y, Z, Field based on the interpolation
+
+        For animations, make sure to select the complex metric.
+
+        Args:
+            field (str): The field to plot
+            metric (str, optional): The metric to impose on the plot. Defaults to 'real'.
+
+        Returns:
+            (X,Y,Z,Field): The coordinates plus field scalar
+        """
+        field = getattr(self, field)
+        if metric=='abs':
+            field = np.abs(field)
+        elif metric=='real':
+            field = field.real
+        elif metric=='imag':
+            field = field.imag
+        elif metric=='complex':
+            field = field
+        return self.x, self.y, self.z, field
+
+class _EHSign:
+    """A small class to manage the sign of field components when computing the far-field with Stratton-Chu
+    """
+    def __init__(self):
+        self.Ex = 1
+        self.Ey = 1
+        self.Ez = 1
+        self.Hx = 1
+        self.Hy = 1
+        self.Hz = 1
+
+    def fE(self):
+        self.Ex = -1*self.Ex
+        self.Ey = -1*self.Ey
+        self.Ez = -1*self.Ez
+
+    def fH(self):
+        self.Hx = -1*self.Hx
+        self.Hy = -1*self.Hy
+        self.Hz = -1*self.Hz
+
+    def fX(self):
+        self.Ex = -1*self.Ex
+        self.Hx = -1*self.Hx
+
+    def fY(self):
+        self.Ey = -1*self.Ey
+        self.Hy = -1*self.Hy
+
+    def fZ(self):
+        self.Ez = -1*self.Ez
+        self.Hz = -1*self.Hz
+
+    def apply(self, symmetry: str):
+        f, c = symmetry
+        if f=='E':
+            self.fE()
+        elif f=='H':
+            self.fH()
+
+        if c=='x':
+            self.fX()
+        elif c=='y':
+            self.fY()
+        elif c=='z':
+            self.fZ()
+        
+    def flip_field(self, E: tuple, H: tuple):
+        Ex, Ey, Ez = E
+        Hx, Hy, Hz = H
+        return (Ex*self.Ex, Ey*self.Ey, Ez*self.Ez), (Hx*self.Hx, Hy*self.Hy, Hz*self.Hz)
+    
 class MWField:
     
     def __init__(self):
@@ -330,7 +542,7 @@ class MWField:
         ''' Return the magnetic field as a tuple of numpy arrays '''
         return self.Hx, self.Hy, self.Hz
     
-    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> MWField:
+    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> EHField:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
         shp = xs.shape
         xf = xs.flatten()
@@ -351,13 +563,13 @@ class MWField:
         self._x = xs
         self._y = ys
         self._z = zs
-        return self
+        return EHField(xs, ys, zs, self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz, self.freq)
 
     def cutplane(self, 
                      ds: float,
                      x: float=None,
                      y: float=None,
-                     z: float=None) -> MWField:
+                     z: float=None) -> EHField:
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
@@ -371,10 +583,9 @@ class MWField:
         if z is not None:
             X,Y = np.meshgrid(xs, ys)
             Z = z*np.ones_like(Y)
-        self.interpolate(X,Y,Z)
-        return self
+        return self.interpolate(X,Y,Z)
     
-    def grid(self, ds: float) -> MWField:
+    def grid(self, ds: float) -> EHField:
         """Interpolate a uniform grid sampled at ds
 
         Args:
@@ -388,8 +599,7 @@ class MWField:
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
         zs = np.linspace(zb[0], zb[1], int((zb[1]-zb[0])/ds))
         X, Y, Z = np.meshgrid(xs, ys, zs)
-        self.interpolate(X,Y,Z)
-        return self
+        return self.interpolate(X,Y,Z)
     
     def vector(self, field: Literal['E','H'], metric: Literal['real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
         """Returns the X,Y,Z,Fx,Fy,Fz data to be directly cast into plot functions.
@@ -444,18 +654,114 @@ class MWField:
                          faces: FaceSelection | GeoSurface,
                          ang_range: tuple[float, float] = (-180, 180),
                          Npoints: int = 201,
-                         origin: tuple[float, float, float] = (0,0,0),
-                         ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        from .sc import stratton_chu
-        surface = self.basis.mesh.boundary_surface(faces.tags, origin)
-        self.interpolate(*surface.exyz)
+                         origin: tuple[float, float, float] = None,
+                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute the farfield electric and magnetic field defined by a circle.
+
+        Args:
+            ref_direction (tuple[float,float,float] | Axis): The direction for angle=0
+            plane_normal (tuple[float,float,float] | Axis): The rotation axis of the angular cutplane
+            faces (FaceSelection | GeoSurface): The faces to integrate over
+            ang_range (tuple[float, float], optional): The angular rage limits. Defaults to (-180, 180).
+            Npoints (int, optional): The number of angular points. Defaults to 201.
+            origin (tuple[float, float, float], optional): The farfield origin. Defaults to (0,0,0).
+            syms (list[Literal['Ex','Ey','Ez','Hx','Hy','Hz']], optional): E and H-plane symmetry planes where Ex is E-symmetry in x=0. Defaults to []
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: _description_
+        """
         refdir = _parse_axis(ref_direction).np
         plane_normal = _parse_axis(plane_normal).np
-
         theta, phi = arc_on_plane(refdir, plane_normal, ang_range, Npoints)
-        E,H = stratton_chu(self.E, self.H, surface, theta, phi, self.k0)
+        E,H = self.farfield(theta, phi, faces, origin, syms = syms)
         angs = np.linspace(*ang_range, Npoints)*np.pi/180
         return angs, E ,H
+
+    def farfield_3d(self, 
+                    faces: FaceSelection | GeoSurface,
+                    thetas: np.ndarray = None,
+                    phis: np.ndarray = None,
+                    origin: tuple[float, float, float] = None,
+                    syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> FarfieldData:
+        """Compute the farfield in a 3D angular grid
+
+        If thetas and phis are not provided, they default to a sample space of 2 degrees.
+
+        Args:
+            faces (FaceSelection | GeoSurface): The integration faces
+            thetas (np.ndarray, optional): The 1D array of theta values. Defaults to None.
+            phis (np.ndarray, optional): A 1D array of phi values. Defaults to None.
+            origin (tuple[float, float, float], optional): The boundary normal alignment origin. Defaults to (0,0,0).
+            syms (list[Literal['Ex','Ey','Ez','Hx','Hy','Hz']], optional): E and H-plane symmetry planes where Ex is E-symmetry in x=0. Defaults to []
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The 2D theta, phi, E and H matrices.
+        """
+        if thetas is None:
+            thetas = np.linspace(0,np.pi, 91)
+        if phis is None:
+            phis = np.linspace(-np.pi, np.pi, 181)
+
+        T,P = np.meshgrid(thetas, phis)
+
+        E, H = self.farfield(T.flatten(), P.flatten(), faces, origin, syms=syms)
+        E = E.reshape((3, ) + T.shape)
+        H = H.reshape((3, ) + T.shape)
+        
+        return FarfieldData(E, H, T, P)
+
+    def farfield(self, theta: np.ndarray,
+                 phi: np.ndarray,
+                 faces: FaceSelection | GeoSurface,
+                 origin: tuple[float, float, float] = None,
+                 syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> tuple[np.ndarray, np.ndarray]:
+        """Compute the farfield at the provided theta/phi coordinates
+
+        Args:
+            theta (np.ndarray): The Theta coordinates as (N,) 1D Array
+            phi (np.ndarray): The Phi coordinates as (N,) 1D Array
+            faces (FaceSelection | GeoSurface): the faces to use as integration boundary
+            origin (tuple[float, float, float], optional): The surface normal origin. Defaults to (0,0,0).
+            syms (list[Literal['Ex','Ey','Ez','Hx','Hy','Hz']], optional): E and H-plane symmetry planes where Ex is E-symmetry in x=0. Defaults to []
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: The E and H field as (3,N) arrays
+        """
+        if syms is None:
+            syms = []
+
+        from .sc import stratton_chu
+        surface = self.basis.mesh.boundary_surface(faces.tags, origin)
+        field = self.interpolate(*surface.exyz)
+        
+        Eff,Hff = stratton_chu(field.E, field.H, surface, theta, phi, self.k0)
+        
+        if len(syms)==0:
+            return Eff, Hff
+
+        if len(syms)==1:
+            perms = ((syms[0], '##', '##'),)
+        elif len(syms)==2:
+            s1, s2 = syms
+            perms = ((s1, '##', '##'), (s2, '##', '##'), (s1, s2, '##'))
+        elif len(syms)==3:
+            s1, s2, s3 = syms
+            perms = ((s1, '##', '##'), (s2, '##', '##'), (s3, '##', '##'), (s1, s2, '##'), (s1, s3, '##'), (s2, s3, '##'), (s1, s2, s3))
+        
+        for s1, s2, s3 in perms:
+            surf = surface.copy()
+            ehf = _EHSign()
+            ehf.apply(s1)
+            ehf.apply(s2)
+            ehf.apply(s3)
+            Ef, Hf = ehf.flip_field(field.E, field.H)
+            surf.flip(s1[1])
+            surf.flip(s2[1])
+            surf.flip(s3[1])
+            E2, H2 = stratton_chu(Ef, Hf, surf, theta, phi, self.k0)
+            Eff = Eff + E2
+            Hff = Hff + H2
+        
+        return Eff, Hff
 
 class MWScalar:
     """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
