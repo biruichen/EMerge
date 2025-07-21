@@ -30,7 +30,7 @@ class Alignment(Enum):
     CENTER = 1
     CORNER = 2
 
-class OldBox(GeoVolume):
+class Box(GeoVolume):
     """ A class that represents a box shaped volume
 
     """
@@ -40,7 +40,8 @@ class OldBox(GeoVolume):
                  depth: float, 
                  height: float, 
                  position: tuple = (0,0,0),
-                 alignment: Alignment = Alignment.CORNER):
+                 alignment: Alignment = Alignment.CORNER,
+                 cs: CoordinateSystem = GCS):
         """Creates a box volume object.
         Specify the alignment of the box with the provided position. The options are CORNER (default)
         for the front-left-bottom node of the box or CENTER for the center of the box.
@@ -58,11 +59,39 @@ class OldBox(GeoVolume):
             position = (position[0]-width/2, position[1]-depth/2, position[2]-height/2)
         
         x,y,z = position
-        self.tags: list[int] = [gmsh.model.occ.addBox(x,y,z,width,depth,height),]
+
+        tag = gmsh.model.occ.addBox(x,y,z,width,depth,height)
+        super().__init__(tag)
+
         self.centre = (x+width/2, y+depth/2, z+height/2)
         self.width = width
         self.height = height
         self.depth = depth
+
+        wax = cs.xax.np
+        dax = cs.yax.np
+        hax = cs.zax.np
+        p0 = np.array(position) + np.array([width/2, depth/2, height/2])
+        pc = p0 + height/2*hax
+        self._add_face_pointer('front', pc - depth/2*dax, -dax)
+        self._add_face_pointer('back', pc + depth/2*dax, dax)
+        self._add_face_pointer('left', pc - width/2*wax, -wax)
+        self._add_face_pointer('right', pc + width/2*wax, wax)
+        self._add_face_pointer('top', pc + height/2*hax, hax)
+        self._add_face_pointer('bottom', pc - height/2*hax, -hax)
+        
+    
+    def outside(self, *exclude: Literal['bottom','top','right','left','front','back']) -> FaceSelection:
+        """Select all outside faces except for the once specified by outside
+
+        Returns:
+            FaceSelection: The resultant face selection
+        """
+        tagslist = [self._face_tags(name) for name in  ['bottom','top','right','left','front','back'] if name not in exclude]
+        
+        tags = list(reduce(lambda a,b: a+b, tagslist))
+        return FaceSelection(tags)
+
 
     @property
     def front(self) -> FaceSelection:
@@ -300,7 +329,7 @@ class HalfSphere(GeoVolume):
 
 
 
-class Box(GeoVolume):
+class OldBox(GeoVolume):
     '''The sided box class creates a box just like the Box class but with selectable face tags.
     This class is more convenient in use when defining radiation boundaries.'''
     def __init__(self, 

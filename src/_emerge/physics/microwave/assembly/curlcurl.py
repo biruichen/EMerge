@@ -403,7 +403,7 @@ def _matrix_builder(nodes, tets, tris, edges, all_edge_lengths, tet_to_field, te
         indices = tet_to_field[:, itet]
         for ii in range(20):
             rows[p+20*ii:p+20*(ii+1)] = indices[ii]
-            cols[p+ii:p+400:20] = indices[ii]
+            cols[p+ii:p+400+ii:20] = indices[ii]
 
         dataE[p:p+400] = Esub.ravel()
         dataB[p:p+400] = Bsub.ravel()
