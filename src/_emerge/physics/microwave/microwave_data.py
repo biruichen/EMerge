@@ -103,7 +103,7 @@ def renormalise_s(S: np.ndarray,
     W0_inv_sc = 1 / np.sqrt(Z0)               # scalar because Z0 is common
     I_N       = np.eye(N, dtype=complex)
 
-    M = S.shape[2]
+    M = S.shape[0]
     S0 = np.empty_like(S)
 
     for k in range(M):
@@ -767,7 +767,7 @@ class MWScalar:
     """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
     """
     _fields: list[str] = ['freq','k0','Sp','beta']
-    _copy: list[str] = ['_portmap','_portnumbers']
+    _copy: list[str] = ['_portmap','_portnumbers','port_modes']
 
     def __init__(self):
         self.freq: float = None
@@ -777,6 +777,7 @@ class MWScalar:
 
         self._portmap: dict[int, float|int] = dict()
         self._portnumbers: list[int | float] = []
+        self.port_modes: list[PortProperties] = []
 
     def init_sp(self, portnumbers: list[int | float]) -> None:
         """Initialize the S-parameter dataset with the given number of ports."""
@@ -791,12 +792,38 @@ class MWScalar:
     def write_S(self, i1: int | float, i2: int | float, value: complex) -> None:
         self.Sp[self._portmap[i1], self._portmap[i2]] = value
 
-    def S(self, i1: int, i2: int) -> np.ndarray:
+    def S(self, i1: int, i2: int) -> complex:
+        """Return the S-parameter corresponding to the given set of indices:
+
+        S11 = obj.S(1,1)
+
+        Args:
+            i1 (int): The first port index
+            i2 (int): The second port index
+
+        Returns:
+            complex: The S-parameter
+        """
         return self.Sp[self._portmap[i1], self._portmap[i2]]
+    
+    def add_port_properties(self, 
+                            port_number: int,
+                            mode_number: int,
+                            k0: float,
+                            beta: float,
+                            Z0: float,
+                            Pout: float) -> None:
+        self.port_modes.append(PortProperties(port_number=port_number,
+                                              mode_number=mode_number,
+                                              k0 = k0,
+                                              beta=beta,
+                                              Z0=Z0,
+                                              Pout=Pout))
     
 class MWScalarNdim:
     _fields: list[str] = ['freq','k0','Sp','beta']
-    _copy: list[str] = ['_portmap','_portnumbers']
+    _copy: list[str] = ['_portmap','_portnumbers','port_modes']
+
     def __init__(self):
         self.freq: np.ndarray = None
         self.k0: np.ndarray = None
@@ -804,6 +831,7 @@ class MWScalarNdim:
         self.beta: np.ndarray = None
         self._portmap: dict[int, float|int] = dict()
         self._portnumbers: list[int | float] = []
+        self.port_modes: list[PortProperties] = []
 
     def S(self, i1: int, i2: int) -> np.ndarray:
         return self.Sp[...,self._portmap[i1], self._portmap[i2]]
@@ -878,14 +906,14 @@ class MWScalarNdim:
         """
         
         logger.info(f'Exporting S-data to {filename}')
-        Nports = len(self.datasets[0].excitation)
-        freqs, _ = self.ax('freq').k0
+        Nports = len(self._portmap)
+        freqs = self.freq
 
         Smat = np.zeros((len(freqs),Nports,Nports), dtype=np.complex128)
         
         for i in range(1,Nports+1):
             for j in range(1,Nports+1):
-                _, S = self.ax('freq').S(i,j)
+                S = self.S(i,j)
                 Smat[:,i-1,j-1] = S
         
         self.save_smatrix(filename, Smat, freqs, format=format, Z0ref=Z0ref, custom_comments=custom_comments, funit=funit)
@@ -914,7 +942,7 @@ class MWScalarNdim:
         from .touchstone import generate_touchstone
 
         if Z0ref is not None:
-            Z0s = [port.Z0 for port in self.datasets[0].port_modes]
+            Z0s = [port.Z0 for port in self.port_modes]
             logger.debug(f'Renormalizing impedances {Z0s}Ω to {Z0ref}Ω')
             Smatrix = renormalise_s(Smatrix, Z0s, Z0ref)
 

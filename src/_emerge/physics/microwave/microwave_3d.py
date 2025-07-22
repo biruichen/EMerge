@@ -263,6 +263,8 @@ class Microwave3D:
 
         points = self.mesh.get_nodes(port.tags)
 
+        if points.size==0:
+            raise SimulationError(f'The lumped port {port} has no nodes associated with it')
         xs = self.mesh.nodes[0,points]
         ys = self.mesh.nodes[1,points]
         zs = self.mesh.nodes[2,points]
@@ -821,7 +823,7 @@ class Microwave3D:
             scalardata.k0 = k0
             scalardata.freq = freq
             scalardata.init_sp(port_numbers)
-
+            
             fielddata = self.data.field.new(freq=freq, **self._params)
             fielddata.freq = freq
             fielddata.er = np.squeeze(er[0,0,:])
@@ -839,7 +841,13 @@ class Microwave3D:
                                          beta = active_port.get_beta(k0),
                                          Z0 = active_port.portZ0(k0),
                                          Pout= active_port.power)
-            
+                scalardata.add_port_properties(active_port.port_number,
+                                         mode_number=active_port.mode_number,
+                                         k0 = k0,
+                                         beta = active_port.get_beta(k0),
+                                         Z0 = active_port.portZ0(k0),
+                                         Pout= active_port.power)
+
                 # Set port as active and add the port mode to the forcing vector
                 active_port.active = True
                 
