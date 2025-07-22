@@ -384,15 +384,6 @@ class BaseDataset(Generic[T,M]):
         axes_list = {key: list(self._axes[key]) for key in self._axes.keys()}
         for field in self._fields:
             data_field = [self._data_entries[i].__dict__[field] for i in range(N_entries)]
-            # if isinstance(data[0], np.ndarray):
-            #     shp = data[0].shape
-            #     stacked = np.stack(data)   # shape (T, a, b)
-            #     final_shape = tuple(Ndimlist) + shp
-            #     result = stacked.reshape(*final_shape)
-            #     obj.__setattr__(field, result)
-            # else:
-            #     matrix = np.array(data)[self._ids]
-            #     obj.__setattr__(field, matrix)
             data_set = assemble_nd_data(data_field, self._variables, axes_list)
             obj.__setattr__(field, data_set)
         for copyfield in self._copy:
