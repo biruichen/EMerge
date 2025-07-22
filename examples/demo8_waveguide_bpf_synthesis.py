@@ -104,6 +104,14 @@ with em.Simulation3D('IrisSim', loglevel='DEBUG') as sim:
 
         Ks.append(KZ0(S11, S12, S21, S22))
         hphis.append(phif(S11, S12, S21, S22))
+# --- Plot the K-inverter graph ------------------------------------------
+
+fig, ax = plt.subplots()
+ax.plot(wgaps*1000, Ks)
+ax.grid(True)
+ax.set_xlabel('Iris gap [mm]')
+ax.set_ylabel('K/Z0')
+plt.show()
 
 # --- Interpolate iris widths and electrical lengths ---------------------
 Ks = np.array(Ks)
