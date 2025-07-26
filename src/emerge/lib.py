@@ -1,5 +1,13 @@
 from _emerge.material import Material, AIR, COPPER
 
+C0 = 299792458
+Z0 = 376.73031366857
+PI = 3.14159265358979323846
+EISO: float = (Z0/(2*PI))**0.5
+EOMNI = (3*Z0/(4*PI))**0.5
+EPS0 = 8.854187818814e-12
+MU0 = 1.2566370612720e-6
+
 ### MATERIALS 
 VACUUM = Material(color="#2d8cd5", opacity=0.05)
 FR4 = Material(er=4.4, tand=0.001, color="#3c9747")
