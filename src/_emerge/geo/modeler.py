@@ -25,7 +25,7 @@ from numbers import Number
 from functools import reduce
 from operator import mul
 from ..cs import CoordinateSystem, GCS
-from .extrude import XYPolygon
+from .polybased import XYPolygon
 
 def get_flat_index(indices, shape):
     flat_index = 0

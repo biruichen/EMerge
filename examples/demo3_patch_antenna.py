@@ -83,7 +83,7 @@ model.mw.resolution = 0.2
 model.mw.set_frequency_range(f1, f2, 21)
 
 # --- Combine geometry into simulation -----------------------------------
-model.define_geometry([dielectric, air, rpatch, port])
+model.define_geometry()
 
 # --- Mesh refinement settings --------------------------------------------
 # Finer boundary mesh on patch edges for accuracy

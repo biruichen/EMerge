@@ -152,7 +152,7 @@ class Plate(GeoSurface):
             u (tuple[float, float, float]): The u-axis of the plate
             v (tuple[float, float, float]): The v-axis of the plate
         """
-        super().__init__([])
+        
         origin = np.array(origin)
         u = np.array(u)
         v = np.array(v)
@@ -169,8 +169,8 @@ class Plate(GeoSurface):
 
         tag_wire = gmsh.model.occ.addWire([tagl1,tagl2, tagl3, tagl4])
 
-        self.tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
-
+        tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
+        super().__init__(tags)
 
 class Cyllinder(GeoVolume):
 
@@ -198,8 +198,9 @@ class Cyllinder(GeoVolume):
         ax = cs.zax.np
 
         if Nsections:
-            from .extrude import XYPolygon
+            from .polybased import XYPolygon
             cyl = XYPolygon.circle(radius, Nsections=Nsections).extrude(height, cs)
+            cyl._exists = False
             self._face_pointers = cyl._face_pointers
             super().__init__(cyl.tags)
         else:

@@ -25,7 +25,7 @@ from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cyllinder
-from .extrude import XYPolygon
+from .polybased import XYPolygon
 from .operations import change_coordinate_system
 from .pcb_tools.macro import parse_macro
 from .pcb_tools.calculator import PCBCalculator

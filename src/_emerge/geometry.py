@@ -42,8 +42,30 @@ class _KEY_GENERATOR:
         self.start += 1
         return self.start
 
-_GENERATOR = _KEY_GENERATOR()
+class _GeometryManager:
 
+    def __init__(self):
+        self.geometry_list: dict[str, list[GeoObject]] = dict()
+        self.active: str = ''
+
+    def all_geometries(self, model: str = None) -> list[GeoObject]:
+        if model is None:
+            model = self.active
+        return [geo for geo in self.geometry_list[model] if geo._exists]
+
+    def submit_geometry(self, geo: GeoObject, model: str = None) -> None:
+        if model is None:
+            model = self.active
+        self.geometry_list[model].append(geo)
+
+    def sign_in(self, modelname: str) -> None:
+        if modelname not in self.geometry_list:
+            self.geometry_list[modelname] = []
+        self.active = modelname
+
+    def reset(self, modelname: str) -> None:
+        self.geometry_list[modelname] = []
+        
 class _FacePointer:
     """The FacePointer class defines a face to be selectable as a
     face normal vector plus an origin. All faces of an object
@@ -175,6 +197,10 @@ class _FacePointer:
     def copy(self) -> _FacePointer:
         return _FacePointer(self.o, self.n)
 
+
+_GENERATOR = _KEY_GENERATOR()
+_GEOMANAGER = _GeometryManager()
+
 class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
@@ -196,6 +222,7 @@ class GeoObject:
         self._priority: int = 10
 
         self._exists: bool = True
+        _GEOMANAGER.submit_geometry(self)
 
     @property
     def color_rgb(self) -> tuple[int,int,int]:
