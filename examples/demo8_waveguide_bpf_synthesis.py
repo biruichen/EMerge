@@ -16,7 +16,7 @@ c0 = 299792458            # speed of light in vacuum (m/s)
 
 # --- Waveguide and frequency definitions --------------------------------
 wga = 22.86 * mm          # a-dimension of WR-90 waveguide
-wgb = 10.16 * mm              # b-dimension (height) of waveguide
+wgb = 1*mm#10.16 * mm              # b-dimension (height) of waveguide
 # frequency band for final filter response
 f1 = 9.5e9                # start frequency (Hz)
 f2 = 9.8e9                # stop frequency (Hz)
@@ -104,6 +104,7 @@ with em.Simulation3D('IrisSim', loglevel='DEBUG') as sim:
 
         Ks.append(KZ0(S11, S12, S21, S22))
         hphis.append(phif(S11, S12, S21, S22))
+
 # --- Plot the K-inverter graph ------------------------------------------
 
 fig, ax = plt.subplots()
@@ -161,13 +162,15 @@ with em.Simulation3D('FullFilter', loglevel='DEBUG') as mf:
     data = mf.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
     grid = data.scalar.grid
     freqs = grid.freq
-    S11 = grid.S(1,1)
-    S21 = grid.S(2,1)
+    fdense = np.linspace(freqs[0], freqs[-1], 2001)
+
+    S11 = grid.model_S(1,1,fdense)
+    S21 = grid.model_S(2,1,fdense)
 
     # Plot the filter response (dB)
     fig, ax = plt.subplots()
-    ax.plot(freqs/1e9, 20*np.log10(np.abs(S11)), label='S11')
-    ax.plot(freqs/1e9, 20*np.log10(np.abs(S21)), label='S21')
+    ax.plot(fdense/1e9, 20*np.log10(np.abs(S11)), label='S11')
+    ax.plot(fdense/1e9, 20*np.log10(np.abs(S21)), label='S21')
     ax.set_xlabel('Frequency [GHz]')
     ax.set_ylabel('S-parameter [dB]')
     ax.grid(True)

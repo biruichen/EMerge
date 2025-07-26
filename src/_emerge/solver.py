@@ -100,7 +100,7 @@ def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax):
         Columns of `eigvecs` corresponding to `filtered_vals`.
     """
     tol = -1
-    upper_bound = -(k0**2) * ermax * urmax *2
+    upper_bound = -(k0**2) * ermax * urmax * 2
 
     mask = (eigvals <= tol) & (eigvals >= upper_bound)
     filtered_vals = eigvals[mask]
@@ -353,13 +353,12 @@ class SolverSuperLU(Solver):
         self._perm_c = None
         self.options: dict[str, str] = dict(SymmetricMode=True)
         self.lu = None
-        
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling SuperLU Solver, ID={id}')
+        self.single = True
         if not reuse_factorization:
             self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
-
         return x, 0
 
 

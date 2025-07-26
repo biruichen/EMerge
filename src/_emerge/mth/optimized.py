@@ -348,3 +348,10 @@ def matinv(s: np.ndarray) -> np.ndarray:
     return out
 
 
+@njit(cache=True, nogil=True)
+def matmul(a: np.ndarray, b: np.ndarray):
+    out = np.empty((3,b.shape[1]), dtype=b.dtype)
+    out[0,:] = a[0,0]*b[0,:] + a[0,1]*b[1,:] + a[0,2]*b[2,:]
+    out[1,:] = a[1,0]*b[0,:] + a[1,1]*b[1,:] + a[1,2]*b[2,:]
+    out[2,:] = a[2,0]*b[0,:] + a[2,1]*b[1,:] + a[2,2]*b[2,:]
+    return out

@@ -431,15 +431,19 @@ class Microwave3D:
             ur[:,:,itri] = urtet[:,:,itet]
             cond[itri] = condtet[itet]
 
-        ermean = np.mean(er[er>0].flatten())
-        urmean = np.mean(ur[ur>0].flatten())
-        ermax = np.max(er.flatten())
-        urmax = np.max(ur.flatten())
+        itri_port = self.mesh.get_triangles(port.tags)
+
+        ermean = np.mean(er[er>0].flatten()[itri_port])
+        urmean = np.mean(ur[ur>0].flatten()[itri_port])
+        ermax = np.max(er[:,:,itri_port].flatten())
+        urmax = np.max(ur[:,:,itri_port].flatten())
 
         if freq is None:
             freq = self.frequencies[0]
+        
+    
         k0 = 2*np.pi*freq/299792458
-        kmax = k0*np.sqrt(ermax*urmax)
+        kmax = k0*np.sqrt(ermax.real*urmax.real)
 
         logger.info('Assembling BMA Matrices')
         
@@ -712,7 +716,7 @@ class Microwave3D:
                         nmodes: int = 6,
                         k0_limit: float = 1,
                         direct: bool = False,
-                        smart_search: bool = True,
+                        deep_search: bool = False,
                         mode: Literal['LM','LR','SR','LI','SI']='LM') -> MWData:
         """Executes an eigenmode study
 
@@ -755,7 +759,7 @@ class Microwave3D:
 
         target_k0 = 2*np.pi*search_frequency/299792458
 
-        eigen_values, eigen_modes, report = self.solveroutine.eig(A, C, solve_ids, nmodes, direct, target_k0, smart_search=smart_search, which=mode)
+        eigen_values, eigen_modes, report = self.solveroutine.eig(A, C, solve_ids, nmodes, direct, target_k0, smart_search=deep_search, which=mode)
 
         eigen_modes = job.fix_solutions(eigen_modes)
 

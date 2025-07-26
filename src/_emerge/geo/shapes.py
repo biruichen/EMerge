@@ -54,7 +54,6 @@ class Box(GeoVolume):
             alignment (Alignment, optional): Which point of the box is placed at the position. 
                 Defaults to Alignment.CORNER.
         """
-        super().__init__([])
         if alignment is Alignment.CENTER:
             position = (position[0]-width/2, position[1]-depth/2, position[2]-height/2)
         

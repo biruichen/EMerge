@@ -39,6 +39,7 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         self.AbsorbingBoundary: type[AbsorbingBoundary] = self._construct_bc(AbsorbingBoundary)
         self.ModalPort: type[ModalPort] = self._construct_bc(ModalPort)
         self.LumpedPort: type[LumpedPort] = self._construct_bc(LumpedPort)
+        self.LumpedElement: type[LumpedElement] = self._construct_bc(LumpedElement)
         self.RectangularWaveguide: type[RectangularWaveguide] = self._construct_bc(RectangularWaveguide)
         self.Periodic: type[Periodic] = self._construct_bc(Periodic)
         self.FloquetPort: type[FloquetPort] = self._construct_bc(FloquetPort)
@@ -814,3 +815,86 @@ class LumpedPort(PortBC):
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
 
+
+class LumpedElement(RobinBC):
+    
+    _include_stiff: bool = True
+    _include_mass: bool = False
+    _include_force: bool = False
+
+    def __init__(self, 
+                 face: FaceSelection | GeoSurface,
+                 impedance_function: Callable = None,
+                 width: float = None,
+                 height: float = None,
+                 ):
+        """Generates a lumped power boundary condition.
+        
+        The lumped port boundary condition assumes a uniform E-field along the "direction" axis.
+        The port with and height must be provided manually in meters. The height is the size
+        in the "direction" axis along which the potential is imposed. The width dimension
+        is orthogonal to that. For a rectangular face its the width and for a cyllindrical face
+        its the circumpherance.
+
+        Args:
+            face (FaceSelection, GeoSurface): The port surface
+            port_number (int): The port number
+            width (float): The port width (meters).
+            height (float): The port height (meters).
+            direction (Axis): The port direction as an Axis object (em.Axis(..) or em.ZAX)
+            active (bool, optional): Whether the port is active. Defaults to False.
+            power (float, optional): The port output power. Defaults to 1.
+            Z0 (float, optional): The port impedance. Defaults to 50.
+        """
+        super().__init__(face)
+
+        if width is None:
+            if not isinstance(face, GeoObject):
+                raise ValueError(f'The width, height and direction must be defined. Information cannot be extracted from {face}')
+            width, height, impedance_function = face._data('width','height','func')
+            if width is None or height is None or impedance_function is None:
+                raise ValueError(f'The width, height and impedance function could not be extracted from {face}')
+        
+        logger.debug(f'Lumped port: width={1000*width:.1f}mm, height={1000*height:.1f}mm')
+
+        self.Z0: Callable = impedance_function
+        
+        self._field_amplitude: np.ndarray = None
+        self.width: float = width
+        self.height: float = height
+        
+        logger.info('Constructing coordinate system from normal port')
+        self.cs = Axis(self.selection.normal).construct_cs()
+
+        self.vintline: Line = None
+        self.v_integration = True
+        self.iintline: Line = None
+
+    def surfZ(self, k0: float) -> float:
+        """The surface sheet impedance for the lumped port
+
+        Returns:
+            float: The surface sheet impedance
+        """
+        Z0 = self.Z0(k0*299792458/(2*np.pi))*self.width/self.height
+        return Z0
+    
+    
+    def get_basis(self) -> np.ndarray:
+        return self.cs._basis
+    
+    def get_beta(self, k0: float) -> float:
+        ''' Return the out of plane propagation constant. βz.'''
+
+        return k0
+    
+    def get_gamma(self, k0: float) -> complex:
+        """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
+
+        Args:
+            k0 (float): The free space propagation constant.
+
+        Returns:
+            complex: The γ-constant
+        """
+        return 1j*k0*376.7303/self.surfZ(k0)

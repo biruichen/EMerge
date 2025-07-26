@@ -413,7 +413,7 @@ def ned2_tri_interp(coords: np.ndarray,
 
         Etri = solutions[field_ids]
 
-        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
+        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.0001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
 
         if inside.sum() == 0:
             continue
@@ -520,7 +520,7 @@ def ned2_tri_interp_full(coords: np.ndarray,
 
         Etri = solutions[field_ids]
 
-        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
+        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.00001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
 
         if inside.sum() == 0:
             continue
@@ -606,7 +606,7 @@ def ned2_tri_interp_curl(coords: np.ndarray,
 
         Etri = solutions[field_ids]
 
-        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
+        inside = ((coords_local[0,:] + coords_local[1,:]) <= 1.0001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6)
 
         if inside.sum() == 0:
             continue
