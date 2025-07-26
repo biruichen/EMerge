@@ -21,7 +21,7 @@ from ..mesh3d import Mesh3D
 from .femdata import FEMBasis
 from .ned2_interp import ned2_tet_interp, ned2_tet_interp_curl
 from ..mth.optimized import local_mapping
-
+from .index_interp import index_interp
 
 ############### Nedelec2 Class
 
@@ -84,6 +84,14 @@ class Nedelec2(FEMBasis):
             tetids = self._all_tet_ids
         return ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
     
+    def interpolate_index(self, xs: np.ndarray,
+                        ys: np.ndarray,
+                        zs: np.ndarray,
+                        tetids: np.ndarray = None) -> np.ndarray:
+        if tetids is None:
+            tetids = self._all_tet_ids
+
+        return index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
     ###### INDEX MAPPINGS
 
     def local_tet_to_triid(self, itet: int) -> np.ndarray:

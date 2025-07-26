@@ -36,6 +36,9 @@ EMField = Literal[
     "mode", "beta",
 ]
 
+EPS0 = 8.854187818814e-12
+MU0 = 1.2566370612720e-6
+
 def arc_on_plane(ref_dir, normal, angle_range_deg, num_points=100):
     """
     Generate theta/phi coordinates of an arc on a plane.
@@ -317,10 +320,68 @@ class EHField:
     Hy: np.ndarray
     Hz: np.ndarray
     freq: float
+    er: np.ndarray
+    ur: np.ndarray
 
     @property
     def k0(self) -> float:
         return self.freq*2*np.pi/299792458
+    
+    @property
+    def Px(self) -> np.ndarray:
+        return EPS0*(self.er-1)*self.Ex
+    
+    @property
+    def Py(self) -> np.ndarray:
+        return EPS0*(self.er-1)*self.Ey
+    
+    @property
+    def Pz(self) -> np.ndarray:
+        return EPS0*(self.er-1)*self.Ez
+    
+    @property
+    def Dx(self) -> np.ndarray:
+        return self.Ex*self.er
+    
+    @property
+    def Dy(self) -> np.ndarray:
+        return self.Et*self.er
+    
+    @property
+    def Dz(self) -> np.ndarray:
+        return self.Ez*self.er
+    
+    @property
+    def Bx(self) -> np.ndarray:
+        return self.Hx/self.ur
+    
+    @property
+    def By(self) -> np.ndarray:
+        return self.Hy/self.ur
+    
+    @property
+    def Bz(self) -> np.ndarray:
+        return self.Hz/self.ur
+    
+    @property
+    def Emat(self) -> np.ndarray:
+        return np.array([self.Ex, self.Ey, self.Ez])
+    
+    @property
+    def Hmat(self) -> np.ndarray:
+        return np.array([self.Hx, self.Hy, self.Hz])
+    
+    @property
+    def Pmat(self) -> np.ndarray:
+        return np.array([self.Px, self.Py, self.Pz])
+    
+    @property
+    def Bmat(self) -> np.ndarray:
+        return np.array([self.Bx, self.By, self.Bz])
+    
+    @property
+    def Dmat(self) -> np.ndarray:
+        return np.array([self.Dx, self.Dy, self.Dz])
     
     @property
     def EH(self) -> tuple[np.ndarray, np.ndarray]:
@@ -331,6 +392,43 @@ class EHField:
     def E(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         ''' Return the electric field as a tuple of numpy arrays '''
         return self.Ex, self.Ey, self.Ez
+    
+    @property
+    def Sx(self) -> np.ndarray:
+        return self.Ey*self.Hz - self.Ez*self.Hy
+    
+    @property
+    def Sy(self) -> np.ndarray:
+        return self.Ez*self.Hx - self.Ex*self.Hz
+    
+    @property
+    def Sz(self) -> np.ndarray:
+        return self.Ex*self.Hy - self.Ey*self.Hx
+    
+    @property
+    def B(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the magnetic field as a tuple of numpy arrays '''
+        return self.Bx, self.By, self.Bz
+    
+    @property
+    def P(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the polarization field as a tuple of numpy arrays '''
+        return self.Px, self.Py, self.Pz
+
+    @property
+    def D(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the electric displacement field as a tuple of numpy arrays '''
+        return self.Bx, self.By, self.Bz
+    
+    @property
+    def H(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the magnetic field as a tuple of numpy arrays '''
+        return self.Hx, self.Hy, self.Hz
+
+    @property
+    def S(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ''' Return the poynting vector field as a tuple of numpy arrays '''
+        return self.Sx, self.Sy, self.Sz
     
     @property
     def normE(self) -> np.ndarray:
@@ -344,17 +442,28 @@ class EHField:
         return np.sqrt(np.abs(self.Hx)**2 + np.abs(self.Hy)**2 + np.abs(self.Hz)**2)
     
     @property
-    def Emat(self) -> np.ndarray:
-        return np.array([self.Ex, self.Ey, self.Ez])
+    def normP(self) -> np.ndarray:
+        """The complex norm of the P-field
+        """
+        return np.sqrt(np.abs(self.Px)**2 + np.abs(self.Py)**2 + np.abs(self.Pz)**2)
     
     @property
-    def Hmat(self) -> np.ndarray:
-        return np.array([self.Hx, self.Hy, self.Hz])
-
+    def normB(self) -> np.ndarray:
+        """The complex norm of the B-field
+        """
+        return np.sqrt(np.abs(self.Bx)**2 + np.abs(self.By)**2 + np.abs(self.Bz)**2)
+    
     @property
-    def H(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        ''' Return the magnetic field as a tuple of numpy arrays '''
-        return self.Hx, self.Hy, self.Hz
+    def normD(self) -> np.ndarray:
+        """The complex norm of the D-field
+        """
+        return np.sqrt(np.abs(self.Dx)**2 + np.abs(self.Dy)**2 + np.abs(self.Dz)**2)
+    
+    @property
+    def normS(self) -> np.ndarray:
+        """The complex norm of the S-field
+        """
+        return np.sqrt(np.abs(self.Sx)**2 + np.abs(self.Sy)**2 + np.abs(self.Sz)**2)
     
     def vector(self, field: Literal['E','H'], metric: Literal['real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
         """Returns the X,Y,Z,Fx,Fy,Fz data to be directly cast into plot functions.
@@ -369,10 +478,7 @@ class EHField:
         Returns:
             tuple[np.ndarray,...]: The X,Y,Z,Fx,Fy,Fz arrays
         """
-        if field=='E':
-            Fx, Fy, Fz = self.Ex, self.Ey, self.Ez
-        elif field=='H':
-            Fx, Fy, Fz = self.Hx, self.Hy, self.Hz
+        Fx, Fy, Fz = getattr(self, field)
         
         if metric=='real':
             Fx, Fy, Fz = Fx.real, Fy.real, Fz.real
@@ -459,8 +565,8 @@ class _EHSign:
 class MWField:
     
     def __init__(self):
-        self.er: np.ndarray = None
-        self.ur: np.ndarray = None
+        self._der: np.ndarray = None
+        self._dur: np.ndarray = None
         self.freq: float = None
         self.basis: FEMBasis = None
         self._fields: dict[int, np.ndarray] = dict()
@@ -474,6 +580,8 @@ class MWField:
         self.Hx: np.ndarray = None
         self.Hy: np.ndarray = None
         self.Hz: np.ndarray = None
+        self.er: np.ndarray = None
+        self.ur: np.ndarray = None
 
     def add_port_properties(self, 
                             port_number: int,
@@ -554,8 +662,11 @@ class MWField:
         self.Ez = Ez.reshape(shp)
 
         
-        constants = 1/ (-1j*2*np.pi*self.freq*(self.ur*4*np.pi*1e-7) )
+        constants = 1/ (-1j*2*np.pi*self.freq*(self._dur*4*np.pi*1e-7) )
         Hx, Hy, Hz = self.basis.interpolate_curl(self._field, xf, yf, zf, constants)
+        ids = self.basis.interpolate_index(xf, yf, zf)
+        self.er = self._der[ids].reshape(shp)
+        self.ur = self._dur[ids].reshape(shp)
         self.Hx = Hx.reshape(shp)
         self.Hy = Hy.reshape(shp)
         self.Hz = Hz.reshape(shp)
@@ -563,7 +674,7 @@ class MWField:
         self._x = xs
         self._y = ys
         self._z = zs
-        return EHField(xs, ys, zs, self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz, self.freq)
+        return EHField(xs, ys, zs, self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz, self.freq, self.er, self.ur)
 
     def cutplane(self, 
                      ds: float,
