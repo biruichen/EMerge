@@ -352,9 +352,6 @@ class PVDisplay(BaseDisplay):
             X = self._mesh.tri_centers[0,tris]
             Y = self._mesh.tri_centers[1,tris]
             Z = self._mesh.tri_centers[2,tris]
-            # for x,y,z in zip(X,Y,Z):
-            #     self.add_portmode(port, Npoints, dv, (x,y,z), field, k0=k0, mode_number=mode_number)
-            # return
         
         X = X+dv[0]
         Y = Y+dv[1]
@@ -395,9 +392,10 @@ class PVDisplay(BaseDisplay):
             F = np.real(F.T)
             Fnorm = np.sqrt(Fx.real**2 + Fy.real**2 + Fz.real**2).T
 
-        #grid = pv.StructuredGrid(X,Y,Z)
-        #self.add_surf(X,Y,Z,Fnorm, _fieldname = 'portfield')
-        #self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8, pickable=False)
+        if XYZ is not None:
+            grid = pv.StructuredGrid(X,Y,Z)
+            self.add_surf(X,Y,Z,Fnorm, _fieldname = 'portfield')
+            self._plot.add_mesh(grid, scalars = Fnorm.T, opacity=0.8, pickable=False)
 
         Emag = F/np.max(Fnorm.flatten())*d*3
         self._plot.add_arrows(np.array([xf,yf,zf]).T, Emag)

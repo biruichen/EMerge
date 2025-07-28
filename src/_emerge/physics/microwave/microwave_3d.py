@@ -482,19 +482,20 @@ class Microwave3D:
             eigenmode = eigen_modes[:,i]
             Emode[solve_ids] = np.squeeze(eigenmode)
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
-            beta = min(np.emath.sqrt(-eigen_values[i]).real, kmax.real)
+
+            beta = np.emath.sqrt(-eigen_values[i])
             
             residuals = -1
 
             portfE = nlf.interpolate_Ef(Emode)
-            portfH = nlf.interpolate_Hf(Emode, k0, ur, beta)
+            portfH = nlf.interpolate_Hf(Emode, k0, ur, beta.real)
 
             P = compute_avg_power_flux(nlf, Emode, k0, ur, beta)
 
             mode = port.add_mode(Emode, portfE, portfH, beta, k0, residuals, TEM=TEM, freq=freq)
             if mode is None:
                 continue
-            mode.set_power(P)
+            
 
             Ez = np.max(np.abs(Emode[nlf.n_xy:]))
             Exy = np.max(np.abs(Emode[:nlf.n_xy]))
@@ -513,6 +514,8 @@ class Microwave3D:
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
                 mode.Z0 = voltage**2/(2*P)
                 logger.debug(f'Port Z0 = {mode.Z0}')
+
+            mode.set_power(P*port._qmode(k0)**2)
         
         port.sort_modes()
 

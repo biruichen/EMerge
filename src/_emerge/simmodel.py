@@ -56,28 +56,29 @@ class Simulation3D:
 
     def __init__(self, 
                  modelname: str, 
-                 display: Type[BaseDisplay] = None,
                  loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
                  save_file: bool = False,
                  logfile: bool = False,
-                 microwave: bool = True):
+                 path_suffix: str = ".EMResults"):
         """Generate a Simulation3D class object.
 
         As a minimum a file name should be provided. Additionally you may provide it with any
         class that inherits from BaseDisplay. This will then be used for geometry displaying.
 
         Args:
-            modelname (str): The model name
-            display (BaseDisplay, optional): The BaseDisplay class type to use. Defaults to None.
-            loglevel ("DEBUG","INFO","WARNING","ERROR, optional): _description_. Defaults to 'INFO'.
-        
+            modelname (str): The name of the simulation model. This will be used for filenames and path names when saving data.
+            loglevel ("DEBUG","INFO","WARNING","ERROR", optional): The loglevel to use for loguru. Defaults to 'INFO'.
+            load_file (bool, optional): If the simulatio model should be loaded from a file. Defaults to False.
+            save_file (bool, optional): if the simulation file should be stored to a file. Defaults to False.
+            logfile (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
+            path_suffix (str, optional): The suffix that will be added to the results directory. Defaults to ".EMResults".
         """
         caller_file = Path(inspect.stack()[1].filename).resolve()
         base_path = caller_file.parent
 
         self.modelname = modelname
-        self.modelpath = base_path / (modelname.lower()+'_data')
+        self.modelpath = base_path / (modelname.lower()+path_suffix)
         self.mesher: Mesher = Mesher()
         self.modeler: Modeler = Modeler()
         
@@ -91,10 +92,7 @@ class Simulation3D:
         self._defined_geometries: bool = False
         self._cell: PeriodicCell = None
 
-        if display is not None:
-            self.display = display(self.mesh)
-        else:
-            self.display = PVDisplay(self.mesh)
+        self.display = PVDisplay(self.mesh)
         if logfile:
             self.set_logfile(logfile)
 

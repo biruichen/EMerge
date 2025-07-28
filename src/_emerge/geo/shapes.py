@@ -265,7 +265,8 @@ class CoaxCyllinder(GeoVolume):
 
         self.cyl_out = Cyllinder(rout, height, cs, Nsections=Nsections)
         self.cyl_in = Cyllinder(rin, height, cs, Nsections=Nsections)
-
+        self.cyl_in._exists = False
+        self.cyl_out._exists = False
         cyltags, _ = gmsh.model.occ.cut(self.cyl_out.dimtags, self.cyl_in.dimtags)
         
         super().__init__([dt[1] for dt in cyltags])

@@ -163,6 +163,20 @@ class PortBC(RobinBC):
         else:
             return ValueError(f'Port mode type should be TEM, TE or TM but instead is {self.modetype(k0)}')
     
+    def _qmode(self, k0: float) -> float:
+        """Computes a mode amplitude correction factor.
+        The total output power of a port as a function of the field amplitude is not constant.
+        For TE and TM modes the output power depends on the mode impedance. This factor corrects
+        the mode output power to 1W by scaling the E-field appropriately.
+
+        Args:
+            k0 (float): The phase constant of the simulation
+
+        Returns:
+            float: The mode amplitude correction factor.
+        """
+        return np.sqrt(self.Zmode(k0)/376.73031341259)
+    
     @property
     def mode_number(self) -> int:
         return self.selected_mode + 1
@@ -453,9 +467,9 @@ class ModalPort(PortBC):
         This field-function is defined in global coordinates (not local coordinates).'''
         mode = self.get_mode(k0)
         if which == 'E':
-            return lambda x,y,z: mode.norm_factor*mode.E_function(x,y,z)*mode.polarity
+            return lambda x,y,z: mode.norm_factor * self._qmode(k0) * mode.E_function(x,y,z)*mode.polarity
         else:
-            return lambda x,y,z: mode.norm_factor*mode.H_function(x,y,z)*mode.polarity
+            return lambda x,y,z: mode.norm_factor * self._qmode(k0) * mode.H_function(x,y,z)*mode.polarity
     
     def clear_modes(self) -> None:
         """Clear all port mode data"""
@@ -542,7 +556,7 @@ class ModalPort(PortBC):
                             z_global: np.ndarray,
                             k0: float,
                             which: Literal['E','H'] = 'E') -> np.ndarray:
-        Ex, Ey, Ez = np.sqrt(self.power) * self.global_field_function(k0, which)(x_global,y_global,z_global)
+        Ex, Ey, Ez = self.global_field_function(k0, which)(x_global,y_global,z_global)
         Exyz = np.array([Ex, Ey, Ez])
         return Exyz
 
@@ -602,6 +616,9 @@ class RectangularWaveguide(PortBC):
     def portZ0(self, k0: float = None) -> complex:
         return k0*299792458 * 4*np.pi*1e-7/self.get_beta(k0)
 
+    def modetype(self, k0):
+        return self.type
+    
     def get_amplitude(self, k0: float) -> float:
         Zte = 376.73031341259
         amplitude= np.sqrt(self.power*4*Zte/(self.dims[0]*self.dims[1]))
@@ -624,7 +641,8 @@ class RectangularWaveguide(PortBC):
         ''' Return the out of plane propagation constant. βz.'''
         width=self.dims[0]
         height=self.dims[1]
-        return np.sqrt(k0**2 - (np.pi*self.mode[0]/width)**2 - (np.pi*self.mode[1]/height)**2)
+        beta = np.sqrt(k0**2 - (np.pi*self.mode[0]/width)**2 - (np.pi*self.mode[1]/height)**2)
+        return beta
     
     def get_gamma(self, k0: float):
         """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
@@ -654,7 +672,7 @@ class RectangularWaveguide(PortBC):
         Ex = 0*E
         Ey = E
         Ez = 0*E
-        Exyz = np.array([Ex, Ey, Ez])
+        Exyz =  self._qmode(k0) * np.array([Ex, Ey, Ez])
         return Exyz
 
     def port_mode_3d_global(self, 
