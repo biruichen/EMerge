@@ -297,7 +297,7 @@ class FarfieldData:
             logger.warning('Defaulting to normE')
             F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
         if isotropic:
-            F = F/np.sqrt(376/(2*np.pi))
+            F = F/np.sqrt(376.730313412/(2*np.pi))
         if dB:
             F = 20*np.log10(np.clip(np.abs(F), a_min=10**(dBfloor/20), a_max = 1e9))-dBfloor
         if rmax is not None:

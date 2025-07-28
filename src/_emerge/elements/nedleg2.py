@@ -130,7 +130,7 @@ class NedelecLegrange2(FEMBasis):
         self.tri_to_field[8:11,:] = self.mesh.tris + (2*Ne + 2*Nt) # + E + T + E + T
         self.tri_to_field[11:14,:] = self.mesh.tri_to_edge + (2*Ne + 2*Nt + Nn)
     
-        self.edge_to_field: np.ndarray = np.zeros((5,Ne), dtype=int)
+        self.edge_to_field: np.ndarray = np.zeros((5,Ne), dtype=int) #edge mode 1, edge mode 2, edge legrande mode, edge vertex mode 1, edge vertex mode 2
 
         self.edge_to_field[0,:] = np.arange(Ne)
         self.edge_to_field[1,:] = np.arange(Ne) + Nt + Ne

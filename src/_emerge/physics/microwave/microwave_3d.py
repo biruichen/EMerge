@@ -231,7 +231,7 @@ class Microwave3D:
             Callable: The discretizer function
         """
         def disc(material: Material):
-            return 299792456/(max(self.frequencies) * np.real(material.neff))
+            return 299792458/(max(self.frequencies) * np.real(material.neff))
         return disc
     
     def _initialize_field(self):
@@ -483,12 +483,12 @@ class Microwave3D:
             Emode[solve_ids] = np.squeeze(eigenmode)
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
 
+            #beta = min(k0*np.sqrt(ermax*urmax), np.emath.sqrt(-eigen_values[i]))
             beta = np.emath.sqrt(-eigen_values[i])
-            
             residuals = -1
 
             portfE = nlf.interpolate_Ef(Emode)
-            portfH = nlf.interpolate_Hf(Emode, k0, ur, beta.real)
+            portfH = nlf.interpolate_Hf(Emode, k0, ur, beta)
 
             P = compute_avg_power_flux(nlf, Emode, k0, ur, beta)
 
@@ -496,20 +496,21 @@ class Microwave3D:
             if mode is None:
                 continue
             
+            Efxy = Emode[:nlf.n_xy]
+            Efz = Emode[nlf.n_xy:]
+            Ez = np.max(np.abs(Efz))
+            Exy = np.max(np.abs(Efxy))
 
-            Ez = np.max(np.abs(Emode[nlf.n_xy:]))
-            Exy = np.max(np.abs(Emode[:nlf.n_xy]))
-
-            if Ez/Exy < 1e-5 and not TEM:
+            if Ez/Exy < 1e-3 and not TEM:
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
-            elif Ez/Exy > 1e-5 and not TEM:
+            elif Ez/Exy > 1e-3 and not TEM:
                 logger.debug('High Ez/Et ratio detected, assuming TM mode')
                 mode.modetype = 'TM'
             elif TEM:
                 G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
-                
+                mode.modetype='TEM'
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
                 mode.Z0 = voltage**2/(2*P)
@@ -620,6 +621,9 @@ class Microwave3D:
 
         ## Single threaded
         job_id = 1
+
+        self._compute_modes(sum(self.frequencies)/len(self.frequencies))
+
         if not parallel:
             # ITERATE OVER FREQUENCIES
             freq_groups

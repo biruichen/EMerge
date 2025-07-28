@@ -43,7 +43,7 @@ def generelized_eigenvalue_matrix(field: NedelecLegrange2,
     nodes = np.linalg.pinv(basis) @ nodes
     
     with ProgressBar(total=nT, ncols=100, dynamic_ncols=False) as pgb:
-        dataE, dataB, rows, cols = _matrix_builder(nodes, tris, edges, tri_to_field, ur, er,k0, pgb)
+        dataE, dataB, rows, cols = _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb)
     
     nfield = field.n_field
 
@@ -157,7 +157,7 @@ def _ne1_curl(coeff, coords):
     a2, b2, c2 = coeff[:,1]
     xs = coords[0,:]
     ys = coords[1,:]
-    return -3*a1*b1*c2 + 3*a1*b2*c1 - 3*b1**2*c2*xs + 3*b1*b2*c1*xs - 3*b1*c1*c2*ys + 3*b2*c1**2*ys + 0*1j
+    return -3*a1*b1*c2 + 3*a1*b2*c1 - 3*b1**2*c2*xs + 3*b1*b2*c1*xs - 3*b1*c1*c2*ys + 3*b2*c1**2*ys + 0j
 
 @njit(c16[:](f8[:,:], f8[:,:]), cache=True, nogil=True)
 def _ne2_curl(coeff, coords):
@@ -165,7 +165,7 @@ def _ne2_curl(coeff, coords):
     a2, b2, c2 = coeff[:,1]
     xs = coords[0,:]
     ys = coords[1,:]
-    return -3*a2*b1*c2 + 3*a2*b2*c1 - 3*b1*b2*c2*xs - 3*b1*c2**2*ys + 3*b2**2*c1*xs + 3*b2*c1*c2*ys+ 0*1j
+    return -3*a2*b1*c2 + 3*a2*b2*c1 - 3*b1*b2*c2*xs - 3*b1*c2**2*ys + 3*b2**2*c1*xs + 3*b2*c1*c2*ys+ 0j
 
 @njit(c16[:](f8[:,:], f8[:,:]), cache=True, nogil=True)
 def _nf1_curl(coeff, coords):
@@ -269,93 +269,103 @@ def generalized_matrix_GQ(tri_vertices, local_edge_map, Ms, Mm, k0):
     Ls[:,3] *= Ds[0,2]
     Ls[:,7] *= Ds[0,1]
 
-    for ei in range(3):
-        eis = local_edge_map[:, ei]
+    for iv1 in range(3):
+        ie1 = local_edge_map[:, iv1]
         
-        Le = Ds[eis[0], eis[1]]
-        Ls[ei,:] *= Le
-        Ls[:,ei] *= Le
-        Ls[ei+4,:] *= Le
-        Ls[:,ei+4] *= Le
+        Le = Ds[ie1[0], ie1[1]]
+        Ls[iv1,:] *= Le
+        Ls[:,iv1] *= Le
+        Ls[iv1+4,:] *= Le
+        Ls[:,iv1+4] *= Le
+        F1 = _ne1_curl(coeff[:,ie1], cs)
+        F2 = _ne2_curl(coeff[:,ie1], cs)
+        F3 = _ne1(coeff[:,ie1], cs)
+        F4 = _ne2(coeff[:,ie1], cs)
+        F5 = _lv_grad(coeff[:,iv1],cs)
+        F6 = _le_grad(coeff[:,ie1],cs)
+        for iv2 in range(3):
+            ei2 = local_edge_map[:, iv2]
+            
+            
+            Att[iv1,iv2]     = _gqi(F1, Msz * _ne1_curl(coeff[:,ei2],cs), WEIGHTS)
+            Att[iv1+4,iv2]   = _gqi(F2, Msz * _ne1_curl(coeff[:,ei2],cs), WEIGHTS)
+            Att[iv1,iv2+4]   = _gqi(F1, Msz * _ne2_curl(coeff[:,ei2],cs), WEIGHTS)
+            Att[iv1+4,iv2+4] = _gqi(F2, Msz * _ne2_curl(coeff[:,ei2],cs), WEIGHTS)
+
+            Btt[iv1,iv2]     = _gqi2(F3, matmul(Mm,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Btt[iv1+4,iv2]   = _gqi2(F4, matmul(Mm,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Btt[iv1,iv2+4]   = _gqi2(F3, matmul(Mm,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+            Btt[iv1+4,iv2+4] = _gqi2(F4, matmul(Mm,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+
+            Dtt[iv1,iv2]     = _gqi2(F3, matmul(Ms,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Dtt[iv1+4,iv2]   = _gqi2(F4, matmul(Ms,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Dtt[iv1,iv2+4]   = _gqi2(F3, matmul(Ms,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+            Dtt[iv1+4,iv2+4] = _gqi2(F4, matmul(Ms,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+
+            Dzt[iv1, iv2]     = _gqi2(F5, matmul(Ms,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Dzt[iv1+3, iv2]   = _gqi2(F6, matmul(Ms,_ne1(coeff[:,ei2],cs)), WEIGHTS)
+            Dzt[iv1, iv2+4]   = _gqi2(F5, matmul(Ms,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+            Dzt[iv1+3, iv2+4] = _gqi2(F6, matmul(Ms,_ne2(coeff[:,ei2],cs)), WEIGHTS)
+
+            Dzz1[iv1, iv2]     = _gqi2(_lv_grad(coeff[:,iv1], cs), matmul(Ms,_lv_grad(coeff[:,iv2],cs)), WEIGHTS)
+            Dzz1[iv1, iv2+3]   = _gqi2(_lv_grad(coeff[:,iv1], cs), matmul(Ms,_le_grad(coeff[:,ei2],cs)), WEIGHTS)
+            Dzz1[iv1+3, iv2]   = _gqi2(_le_grad(coeff[:,ie1], cs), matmul(Ms,_lv_grad(coeff[:,iv2],cs)), WEIGHTS)
+            Dzz1[iv1+3, iv2+3] = _gqi2(_le_grad(coeff[:,ie1], cs), matmul(Ms,_le_grad(coeff[:,ei2],cs)), WEIGHTS)
+
+            Dzz2[iv1, iv2]     = _gqi(_lv(coeff[:,iv1], cs), Mmz * _lv(coeff[:,iv2],cs), WEIGHTS)
+            Dzz2[iv1, iv2+3]   = _gqi(_lv(coeff[:,iv1], cs), Mmz * _le(coeff[:,ei2],cs), WEIGHTS)
+            Dzz2[iv1+3, iv2]   = _gqi(_le(coeff[:,ie1], cs), Mmz * _lv(coeff[:,iv2],cs), WEIGHTS)
+            Dzz2[iv1+3, iv2+3] = _gqi(_le(coeff[:,ie1], cs), Mmz * _le(coeff[:,ei2],cs), WEIGHTS)
+
+
+        G1 = matmul(Mm,_nf1(coeff,cs))
+        G2 = matmul(Mm,_nf2(coeff,cs))
+        G3 = matmul(Ms,_nf1(coeff,cs))
+        G4 = matmul(Ms,_nf2(coeff,cs))
+        Att[iv1,3]   = _gqi(F1, Msz * _nf1_curl(coeff,cs), WEIGHTS)
+        Att[iv1+4,3] = _gqi(_ne2_curl(coeff[:,ie1], cs), Msz * _nf1_curl(coeff,cs), WEIGHTS)
+        Att[iv1,7]   = _gqi(F1, Msz * _nf2_curl(coeff,cs), WEIGHTS)
+        Att[iv1+4,7] = _gqi(_ne2_curl(coeff[:,ie1], cs), Msz * _nf2_curl(coeff,cs), WEIGHTS)
         
-        for ej in range(3):
-            ejs = local_edge_map[:, ej]
+        Att[3, iv1]   = Att[iv1,3]
+        Att[7, iv1]   = Att[iv1,7]
+        Att[3, iv1+4] = Att[iv1+4,3]
+        Att[7, iv1+4] = Att[iv1+4,7]
 
-            Att[ei,ej]     = _gqi(_ne1_curl(coeff[:,eis], cs), Msz * _ne1_curl(coeff[:,ejs],cs), WEIGHTS)
-            Att[ei+4,ej]   = _gqi(_ne2_curl(coeff[:,eis], cs), Msz * _ne1_curl(coeff[:,ejs],cs), WEIGHTS)
-            Att[ei,ej+4]   = _gqi(_ne1_curl(coeff[:,eis], cs), Msz * _ne2_curl(coeff[:,ejs],cs), WEIGHTS)
-            Att[ei+4,ej+4] = _gqi(_ne2_curl(coeff[:,eis], cs), Msz * _ne2_curl(coeff[:,ejs],cs), WEIGHTS)
+        Btt[iv1,3]   = _gqi2(F3, G1, WEIGHTS)
+        Btt[iv1+4,3] = _gqi2(F4, G1, WEIGHTS)
+        Btt[iv1,7]   = _gqi2(F3, G2, WEIGHTS)
+        Btt[iv1+4,7] = _gqi2(F4, G2, WEIGHTS)
 
-            Btt[ei,ej]     = _gqi2(_ne1(coeff[:,eis], cs), matmul(Mm,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Btt[ei+4,ej]   = _gqi2(_ne2(coeff[:,eis], cs), matmul(Mm,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Btt[ei,ej+4]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Mm,_ne2(coeff[:,ejs],cs)), WEIGHTS)
-            Btt[ei+4,ej+4] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Mm,_ne2(coeff[:,ejs],cs)), WEIGHTS)
+        Btt[3, iv1]   = Btt[iv1,3]
+        Btt[7, iv1]   = Btt[iv1,7]
+        Btt[3, iv1+4] = Btt[iv1+4,3]
+        Btt[7, iv1+4] = Btt[iv1+4,7]
 
-            Dtt[ei,ej]     = _gqi2(_ne1(coeff[:,eis], cs), matmul(Ms,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Dtt[ei+4,ej]   = _gqi2(_ne2(coeff[:,eis], cs), matmul(Ms,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Dtt[ei,ej+4]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Ms,_ne2(coeff[:,ejs],cs)), WEIGHTS)
-            Dtt[ei+4,ej+4] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Ms,_ne2(coeff[:,ejs],cs)), WEIGHTS)
+        Dtt[iv1,3]   = _gqi2(F3, G3, WEIGHTS)
+        Dtt[iv1+4,3] = _gqi2(F4, G3, WEIGHTS)
+        Dtt[iv1,7]   = _gqi2(F3, G4, WEIGHTS)
+        Dtt[iv1+4,7] = _gqi2(F4, G4, WEIGHTS)
 
-            Dzt[ei, ej]     = _gqi2(_lv_grad(coeff[:,ei],cs), matmul(Ms,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Dzt[ei, ej+4]   = _gqi2(_lv_grad(coeff[:,ei],cs), matmul(Ms,_ne2(coeff[:,ejs],cs)), WEIGHTS)
-            Dzt[ei+3, ej]   = _gqi2(_le_grad(coeff[:,eis],cs), matmul(Ms,_ne1(coeff[:,ejs],cs)), WEIGHTS)
-            Dzt[ei+3, ej+4] = _gqi2(_le_grad(coeff[:,eis],cs), matmul(Ms,_ne2(coeff[:,ejs],cs)), WEIGHTS)
+        Dtt[3, iv1]   = Dtt[iv1,3]
+        Dtt[7, iv1]   = Dtt[iv1,7]
+        Dtt[3, iv1+4] = Dtt[iv1+4,3]
+        Dtt[7, iv1+4] = Dtt[iv1+4,7]
 
-            Dzz1[ei, ej]     = _gqi2(_lv_grad(coeff[:,ei], cs), matmul(Ms,_lv_grad(coeff[:,ej],cs)), WEIGHTS)
-            Dzz1[ei, ej+3]   = _gqi2(_lv_grad(coeff[:,ei], cs), matmul(Ms,_le_grad(coeff[:,ejs],cs)), WEIGHTS)
-            Dzz1[ei+3, ej]   = _gqi2(_le_grad(coeff[:,eis], cs), matmul(Ms,_lv_grad(coeff[:,ej],cs)), WEIGHTS)
-            Dzz1[ei+3, ej+3] = _gqi2(_le_grad(coeff[:,eis], cs), matmul(Ms,_le_grad(coeff[:,ejs],cs)), WEIGHTS)
+        Dzt[iv1, 3]   = _gqi2(F5, G3, WEIGHTS)
+        Dzt[iv1, 7]   = _gqi2(F5, G4, WEIGHTS)
+        Dzt[iv1+3, 3] = _gqi2(F6, G3, WEIGHTS)
+        Dzt[iv1+3, 7] = _gqi2(F6, G4, WEIGHTS)
 
-            Dzz2[ei, ej]     = _gqi(_lv(coeff[:,ei], cs), Mmz * _lv(coeff[:,ej],cs), WEIGHTS)
-            Dzz2[ei, ej+3]   = _gqi(_lv(coeff[:,ei], cs), Mmz * _le(coeff[:,ejs],cs), WEIGHTS)
-            Dzz2[ei+3, ej]   = _gqi(_le(coeff[:,eis], cs), Mmz * _lv(coeff[:,ej],cs), WEIGHTS)
-            Dzz2[ei+3, ej+3] = _gqi(_le(coeff[:,eis], cs), Mmz * _le(coeff[:,ejs],cs), WEIGHTS)
+    Att[3,3] = _gqi(_nf1_curl(coeff, cs), Msz * _nf1_curl(coeff,cs), WEIGHTS)
+    Att[7,3] = _gqi(_nf2_curl(coeff, cs), Msz * _nf1_curl(coeff,cs), WEIGHTS)
+    Att[3,7] = _gqi(_nf1_curl(coeff, cs), Msz * _nf2_curl(coeff,cs), WEIGHTS)
+    Att[7,7] = _gqi(_nf2_curl(coeff, cs), Msz * _nf2_curl(coeff,cs), WEIGHTS)
 
-
-        Att[ei,3]   = _gqi(_ne1_curl(coeff[:,eis], cs), Msz * _nf1_curl(coeff[:,fid],cs), WEIGHTS)
-        Att[ei+4,3] = _gqi(_ne2_curl(coeff[:,eis], cs), Msz * _nf1_curl(coeff[:,fid],cs), WEIGHTS)
-        Att[ei,7]   = _gqi(_ne1_curl(coeff[:,eis], cs), Msz * _nf2_curl(coeff[:,fid],cs), WEIGHTS)
-        Att[ei+4,7] = _gqi(_ne2_curl(coeff[:,eis], cs), Msz * _nf2_curl(coeff[:,fid],cs), WEIGHTS)
-        
-        Att[3, ei]   = Att[ei,3]
-        Att[7, ei]   = Att[ei,7]
-        Att[3, ei+4] = Att[ei+4,3]
-        Att[7, ei+4] = Att[ei+4,7]
-
-        Btt[ei,3]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Mm,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Btt[ei+4,3] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Mm,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Btt[ei,7]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Mm,_nf2(coeff[:,fid],cs)), WEIGHTS)
-        Btt[ei+4,7] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Mm,_nf2(coeff[:,fid],cs)), WEIGHTS)
-
-        Btt[3, ei]   = Btt[ei,3]
-        Btt[7, ei]   = Btt[ei,7]
-        Btt[3, ei+4] = Btt[ei+4,3]
-        Btt[7, ei+4] = Btt[ei+4,7]
-
-        Dtt[ei,3]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Ms,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Dtt[ei+4,3] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Ms,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Dtt[ei,7]   = _gqi2(_ne1(coeff[:,eis], cs), matmul(Ms,_nf2(coeff[:,fid],cs)), WEIGHTS)
-        Dtt[ei+4,7] = _gqi2(_ne2(coeff[:,eis], cs), matmul(Ms,_nf2(coeff[:,fid],cs)), WEIGHTS)
-
-        Dtt[3, ei]   = Dtt[ei,3]
-        Dtt[7, ei]   = Dtt[ei,7]
-        Dtt[3, ei+4] = Dtt[ei+4,3]
-        Dtt[7, ei+4] = Dtt[ei+4,7]
-
-        Dzt[ei, 3]   = _gqi2(_lv_grad(coeff[:,ei],cs), matmul(Ms,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Dzt[ei, 7]   = _gqi2(_lv_grad(coeff[:,ei],cs), matmul(Ms,_nf2(coeff[:,fid],cs)), WEIGHTS)
-        Dzt[ei+3, 3] = _gqi2(_le_grad(coeff[:,eis],cs), matmul(Ms,_nf1(coeff[:,fid],cs)), WEIGHTS)
-        Dzt[ei+3, 7] = _gqi2(_le_grad(coeff[:,eis],cs), matmul(Ms,_nf2(coeff[:,fid],cs)), WEIGHTS)
-
-    Att[3,3] = _gqi(_nf1_curl(coeff[:,fid], cs), Msz * _nf1_curl(coeff[:,fid],cs), WEIGHTS)
-    Att[7,3] = _gqi(_nf2_curl(coeff[:,fid], cs), Msz * _nf1_curl(coeff[:,fid],cs), WEIGHTS)
-    Att[3,7] = _gqi(_nf1_curl(coeff[:,fid], cs), Msz * _nf2_curl(coeff[:,fid],cs), WEIGHTS)
-    Att[7,7] = _gqi(_nf2_curl(coeff[:,fid], cs), Msz * _nf2_curl(coeff[:,fid],cs), WEIGHTS)
-
-    Btt[3,3] = _gqi2(_nf1(coeff[:,fid], cs), matmul(Mm,_nf1(coeff[:,fid],cs)), WEIGHTS)
-    Btt[7,3] = _gqi2(_nf2(coeff[:,fid], cs), matmul(Mm,_nf1(coeff[:,fid],cs)), WEIGHTS)
-    Btt[3,7] = _gqi2(_nf1(coeff[:,fid], cs), matmul(Mm,_nf2(coeff[:,fid],cs)), WEIGHTS)
-    Btt[7,7] = _gqi2(_nf2(coeff[:,fid], cs), matmul(Mm,_nf2(coeff[:,fid],cs)), WEIGHTS)
+    Btt[3,3] = _gqi2(_nf1(coeff, cs), G1, WEIGHTS)
+    Btt[7,3] = _gqi2(_nf2(coeff, cs), G1, WEIGHTS)
+    Btt[3,7] = _gqi2(_nf1(coeff, cs), G2, WEIGHTS)
+    Btt[7,7] = _gqi2(_nf2(coeff, cs), G2, WEIGHTS)
 
     A = np.zeros((14, 14), dtype = np.complex128)
     B = np.zeros((14, 14), dtype = np.complex128)
@@ -409,7 +419,7 @@ def _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb: ProgressB
         indices = tri_to_field[:, itri]
         for ii in range(14):
             rows[p+14*ii:p+14*(ii+1)] = indices[ii]
-            cols[p+ii:p+196:14] = indices[ii]
+            cols[p+ii:p+ii+196:14] = indices[ii]
 
         dataE[p:p+196] = Esub.ravel()
         dataB[p:p+196] = Bsub.ravel()
