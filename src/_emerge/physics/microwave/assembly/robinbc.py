@@ -17,13 +17,14 @@
 
 
 import numpy as np
-from numba import njit, f8, c16, i8, types
+from numba import njit, f8, c16, i8, types, prange
 from ....elements import Nedelec2
 from typing import Callable
-
+from loguru import logger
 
 _FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
  
+@njit(cache=True, fastmath=True, nogil=True)
 def optim_matmul(B: np.ndarray, data: np.ndarray):
     dnew = np.zeros_like(data)
     dnew[0,:] = B[0,0]*data[0,:] + B[0,1]*data[1,:] + B[0,2]*data[2,:]
@@ -95,7 +96,7 @@ def compute_distances(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndar
             Ds[j,i] = Ds[i,j]  
     return Ds
 
-@njit(types.Tuple((c16[:,:],c16[:]))(f8[:,:], c16, c16[:,:], f8[:,:]), cache=True, nogil=True)
+@njit(types.Tuple((c16[:,:],c16[:]))(f8[:,:], c16, c16[:,:], f8[:,:]), cache=True, nogil=True, parallel=False)
 def ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs):
     ''' Nedelec-2 Triangle Stiffness matrix and forcing vector (For Boundary Condition of the Third Kind)
 
@@ -172,55 +173,87 @@ def ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs):
             GC = GLs[ej1]
             GD = GLs[ej2]
 
-            Bmat[ei,ej] += Li*Lj*(AREA_COEFF[A,B,C,D]*dot(GA,GC)-AREA_COEFF[A,B,C,C]*dot(GA,GD)-AREA_COEFF[A,A,C,D]*dot(GB,GC)+AREA_COEFF[A,A,C,C]*dot(GB,GD))
-            Bmat[ei,ej+4] += Li*Lj*(AREA_COEFF[A,B,D,D]*dot(GA,GC)-AREA_COEFF[A,B,C,D]*dot(GA,GD)-AREA_COEFF[A,A,D,D]*dot(GB,GC)+AREA_COEFF[A,A,C,D]*dot(GB,GD))
-            Bmat[ei+4,ej] += Li*Lj*(AREA_COEFF[B,B,C,D]*dot(GA,GC)-AREA_COEFF[B,B,C,C]*dot(GA,GD)-AREA_COEFF[A,B,C,D]*dot(GB,GC)+AREA_COEFF[A,B,C,C]*dot(GB,GD))
-            Bmat[ei+4,ej+4] += Li*Lj*(AREA_COEFF[B,B,D,D]*dot(GA,GC)-AREA_COEFF[B,B,C,D]*dot(GA,GD)-AREA_COEFF[A,B,D,D]*dot(GB,GC)+AREA_COEFF[A,B,C,D]*dot(GB,GD))
+            DAC = dot(GA,GC)
+            DAD = dot(GA,GD)
+            DBC = dot(GB,GC)
+            DBD = dot(GB,GD)
+            LL = Li*Lj
             
-        Bmat[ei,3] += Li*Lt1*(AREA_COEFF[A,B,tA,tB]*dot(GA,GtC)-AREA_COEFF[A,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,A,tA,tB]*dot(GB,GtC)+AREA_COEFF[A,A,tB,tC]*dot(GB,GtA))
-        Bmat[ei,7] += Li*Lt2*(AREA_COEFF[A,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,B,tC,tA]*dot(GA,GtB)-AREA_COEFF[A,A,tB,tC]*dot(GB,GtA)+AREA_COEFF[A,A,tC,tA]*dot(GB,GtB))
-        Bmat[3,ei] += Lt1*Li*(AREA_COEFF[tA,tB,A,B]*dot(GA,GtC)-AREA_COEFF[tA,tB,A,A]*dot(GB,GtC)-AREA_COEFF[tB,tC,A,B]*dot(GA,GtA)+AREA_COEFF[tB,tC,A,A]*dot(GB,GtA))
-        Bmat[7,ei] += Lt2*Li*(AREA_COEFF[tB,tC,A,B]*dot(GA,GtA)-AREA_COEFF[tB,tC,A,A]*dot(GB,GtA)-AREA_COEFF[tC,tA,A,B]*dot(GA,GtB)+AREA_COEFF[tC,tA,A,A]*dot(GB,GtB))
-        Bmat[ei+4,3] += Li*Lt1*(AREA_COEFF[B,B,tA,tB]*dot(GA,GtC)-AREA_COEFF[B,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,B,tA,tB]*dot(GB,GtC)+AREA_COEFF[A,B,tB,tC]*dot(GB,GtA))
-        Bmat[ei+4,7] += Li*Lt2*(AREA_COEFF[B,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[B,B,tC,tA]*dot(GA,GtB)-AREA_COEFF[A,B,tB,tC]*dot(GB,GtA)+AREA_COEFF[A,B,tC,tA]*dot(GB,GtB))
-        Bmat[3,ei+4] += Lt1*Li*(AREA_COEFF[tA,tB,B,B]*dot(GA,GtC)-AREA_COEFF[tA,tB,A,B]*dot(GB,GtC)-AREA_COEFF[tB,tC,B,B]*dot(GA,GtA)+AREA_COEFF[tB,tC,A,B]*dot(GB,GtA))
-        Bmat[7,ei+4] += Lt2*Li*(AREA_COEFF[tB,tC,B,B]*dot(GA,GtA)-AREA_COEFF[tB,tC,A,B]*dot(GB,GtA)-AREA_COEFF[tC,tA,B,B]*dot(GA,GtB)+AREA_COEFF[tC,tA,A,B]*dot(GB,GtB))
+            Bmat[ei,ej] += LL*(AREA_COEFF[A,B,C,D]*DAC-AREA_COEFF[A,B,C,C]*DAD-AREA_COEFF[A,A,C,D]*DBC+AREA_COEFF[A,A,C,C]*DBD)
+            Bmat[ei,ej+4] += LL*(AREA_COEFF[A,B,D,D]*DAC-AREA_COEFF[A,B,C,D]*DAD-AREA_COEFF[A,A,D,D]*DBC+AREA_COEFF[A,A,C,D]*DBD)
+            Bmat[ei+4,ej] += LL*(AREA_COEFF[B,B,C,D]*DAC-AREA_COEFF[B,B,C,C]*DAD-AREA_COEFF[A,B,C,D]*DBC+AREA_COEFF[A,B,C,C]*DBD)
+            Bmat[ei+4,ej+4] += LL*(AREA_COEFF[B,B,D,D]*DAC-AREA_COEFF[B,B,C,D]*DAD-AREA_COEFF[A,B,D,D]*DBC+AREA_COEFF[A,B,C,D]*DBD)
+            
+        FA = dot(GA,GtC)
+        FB = dot(GA,GtA)
+        FC = dot(GB,GtC)
+        FD = dot(GB,GtA)
+        FE = dot(GA,GtB)
+        FF = dot(GB,GtB)
+
+        Bmat[ei,3] += Li*Lt1*(AREA_COEFF[A,B,tA,tB]*FA-AREA_COEFF[A,B,tB,tC]*FB-AREA_COEFF[A,A,tA,tB]*FC+AREA_COEFF[A,A,tB,tC]*FD)
+        Bmat[ei,7] += Li*Lt2*(AREA_COEFF[A,B,tB,tC]*FB-AREA_COEFF[A,B,tC,tA]*FE-AREA_COEFF[A,A,tB,tC]*FD+AREA_COEFF[A,A,tC,tA]*FF)
+        Bmat[3,ei] += Lt1*Li*(AREA_COEFF[tA,tB,A,B]*FA-AREA_COEFF[tA,tB,A,A]*FC-AREA_COEFF[tB,tC,A,B]*FB+AREA_COEFF[tB,tC,A,A]*FD)
+        Bmat[7,ei] += Lt2*Li*(AREA_COEFF[tB,tC,A,B]*FB-AREA_COEFF[tB,tC,A,A]*FD-AREA_COEFF[tC,tA,A,B]*FE+AREA_COEFF[tC,tA,A,A]*FF)
+        Bmat[ei+4,3] += Li*Lt1*(AREA_COEFF[B,B,tA,tB]*FA-AREA_COEFF[B,B,tB,tC]*FB-AREA_COEFF[A,B,tA,tB]*FC+AREA_COEFF[A,B,tB,tC]*FD)
+        Bmat[ei+4,7] += Li*Lt2*(AREA_COEFF[B,B,tB,tC]*FB-AREA_COEFF[B,B,tC,tA]*FE-AREA_COEFF[A,B,tB,tC]*FD+AREA_COEFF[A,B,tC,tA]*FF)
+        Bmat[3,ei+4] += Lt1*Li*(AREA_COEFF[tA,tB,B,B]*FA-AREA_COEFF[tA,tB,A,B]*FC-AREA_COEFF[tB,tC,B,B]*FB+AREA_COEFF[tB,tC,A,B]*FD)
+        Bmat[7,ei+4] += Lt2*Li*(AREA_COEFF[tB,tC,B,B]*FB-AREA_COEFF[tB,tC,A,B]*FD-AREA_COEFF[tC,tA,B,B]*FE+AREA_COEFF[tC,tA,A,B]*FF)
             
         A1, A2 = As[ei1], As[ei2]
         B1, B2 = Bs[ei1], Bs[ei2]
         C1, C2 = Cs[ei1], Cs[ei2]
 
-        Ee1x = Li*(B1*(A2 + B2*x + C2*y)/(4*Area**2) - B2*(A1 + B1*x + C1*y)/(4*Area**2))*(A1 + B1*x + C1*y)/(2*Area)
-        Ee1y = Li*(C1*(A2 + B2*x + C2*y)/(4*Area**2) - C2*(A1 + B1*x + C1*y)/(4*Area**2))*(A1 + B1*x + C1*y)/(2*Area)
-        Ee2x = Li*(B1*(A2 + B2*x + C2*y)/(4*Area**2) - B2*(A1 + B1*x + C1*y)/(4*Area**2))*(A2 + B2*x + C2*y)/(2*Area)
-        Ee2y = Li*(C1*(A2 + B2*x + C2*y)/(4*Area**2) - C2*(A1 + B1*x + C1*y)/(4*Area**2))*(A2 + B2*x + C2*y)/(2*Area)
+        Q = A2 + B2*x + C2*y
+        Z = A1 + B1*x + C1*y
+        A4 = (4*Area**2)
+        Q2 = Q/A4
+        Z2 = Z/A4
+        Ar2 = 1/(2*Area)
 
-        bvec[ei] += signA*Area*np.sum(Ws*(Ee1x*Ux + Ee1y*Uy))
-        bvec[ei+4] += signA*Area*np.sum(Ws*(Ee2x*Ux + Ee2y*Uy))
+        Ee1x = (B1*Q2 - B2*Z2)*(Z)*Ar2
+        Ee1y = (C1*Q2 - C2*Z2)*(Z)*Ar2
+        Ee2x = (B1*Q2 - B2*Z2)*(Q)*Ar2
+        Ee2y = (C1*Q2 - C2*Z2)*(Q)*Ar2
+
+        bvec[ei] += signA*Area*Li*np.sum(Ws*(Ee1x*Ux + Ee1y*Uy))
+        bvec[ei+4] += signA*Area*Li*np.sum(Ws*(Ee2x*Ux + Ee2y*Uy))
     
-    Bmat[3,3] += Lt1*Lt1*(AREA_COEFF[tA,tB,tA,tB]*dot(GtC,GtC)-AREA_COEFF[tA,tB,tB,tC]*dot(GtA,GtC)-AREA_COEFF[tB,tC,tA,tB]*dot(GtA,GtC)+AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA))
-    Bmat[3,7] += Lt1*Lt2*(AREA_COEFF[tA,tB,tB,tC]*dot(GtA,GtC)-AREA_COEFF[tA,tB,tC,tA]*dot(GtB,GtC)-AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)+AREA_COEFF[tB,tC,tC,tA]*dot(GtA,GtB))
-    Bmat[7,3] += Lt2*Lt1*(AREA_COEFF[tB,tC,tA,tB]*dot(GtA,GtC)-AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)-AREA_COEFF[tC,tA,tA,tB]*dot(GtB,GtC)+AREA_COEFF[tC,tA,tB,tC]*dot(GtA,GtB))
-    Bmat[7,7] += Lt2*Lt2*(AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)-AREA_COEFF[tB,tC,tC,tA]*dot(GtA,GtB)-AREA_COEFF[tC,tA,tB,tC]*dot(GtA,GtB)+AREA_COEFF[tC,tA,tC,tA]*dot(GtB,GtB))
+    H1 = dot(GtA,GtC)
+    H2 = dot(GtA,GtA)
+    H3 = dot(GtA,GtB)
+
+    Bmat[3,3] += Lt1*Lt1*(AREA_COEFF[tA,tB,tA,tB]*dot(GtC,GtC)-AREA_COEFF[tA,tB,tB,tC]*H1-AREA_COEFF[tB,tC,tA,tB]*H1+AREA_COEFF[tB,tC,tB,tC]*H2)
+    Bmat[3,7] += Lt1*Lt2*(AREA_COEFF[tA,tB,tB,tC]*H1-AREA_COEFF[tA,tB,tC,tA]*dot(GtB,GtC)-AREA_COEFF[tB,tC,tB,tC]*H2+AREA_COEFF[tB,tC,tC,tA]*H3)
+    Bmat[7,3] += Lt2*Lt1*(AREA_COEFF[tB,tC,tA,tB]*H1-AREA_COEFF[tB,tC,tB,tC]*H2-AREA_COEFF[tC,tA,tA,tB]*dot(GtB,GtC)+AREA_COEFF[tC,tA,tB,tC]*H3)
+    Bmat[7,7] += Lt2*Lt2*(AREA_COEFF[tB,tC,tB,tC]*H2-AREA_COEFF[tB,tC,tC,tA]*H3-AREA_COEFF[tC,tA,tB,tC]*H3+AREA_COEFF[tC,tA,tC,tA]*dot(GtB,GtB))
     
     A1, A2, A3 = As
     B1, B2, B3 = Bs
     C1, C2, C3 = Cs
-   
-    Ef1x = Lt1*(-B1*(A2 + B2*x + C2*y)*(A3 + B3*x + C3*y)/(8*Area**3) + B3*(A1 + B1*x + C1*y)*(A2 + B2*x + C2*y)/(8*Area**3))
-    Ef1y = Lt1*(-C1*(A2 + B2*x + C2*y)*(A3 + B3*x + C3*y)/(8*Area**3) + C3*(A1 + B1*x + C1*y)*(A2 + B2*x + C2*y)/(8*Area**3))
-    Ef2x = Lt2*(B1*(A2 + B2*x + C2*y)*(A3 + B3*x + C3*y)/(8*Area**3) - B2*(A1 + B1*x + C1*y)*(A3 + B3*x + C3*y)/(8*Area**3))
-    Ef2y = Lt2*(C1*(A2 + B2*x + C2*y)*(A3 + B3*x + C3*y)/(8*Area**3) - C2*(A1 + B1*x + C1*y)*(A3 + B3*x + C3*y)/(8*Area**3))
+
+    Q = A2 + B2*x + C2*y
+    Z = A1 + B1*x + C1*y
+    FA = (8*Area**3)
+    W = (A3 + B3*x + C3*y)/FA
+    W2 = Q*W
+
+    Ef1x = Lt1*(-B1*W2 + B3*(Z)*(Q)/FA)
+    Ef1y = Lt1*(-C1*W2 + C3*(Z)*(Q)/FA)
+    Ef2x = Lt2*(B1*W2 - B2*(Z)*W)
+    Ef2y = Lt2*(C1*W2 - C2*(Z)*W)
     
     bvec[3] += signA*Area*np.sum(Ws*(Ef1x*Ux + Ef1y*Uy))
     bvec[7] += signA*Area*np.sum(Ws*(Ef2x*Ux + Ef2y*Uy))
     Bmat = Bmat * COEFF
     return Bmat, bvec
 
-@njit(types.Tuple((c16[:], c16[:]))(f8[:,:], i8[:,:], c16[:], c16[:], i8[:], c16, c16[:,:,:], f8[:,:], i8[:,:]), cache=True, nogil=True)
-def compute_bc_entries(vertices_local, tris, Bmat, Bvec, surf_triangle_indices, gamma, Ulocal_all, DPTs, tri_to_field):
+@njit(types.Tuple((c16[:], c16[:]))(f8[:,:], i8[:,:], c16[:], c16[:], i8[:], c16, c16[:,:,:], f8[:,:], i8[:,:]), cache=True, nogil=True, parallel=False)
+def compute_bc_entries_excited(vertices_local, tris, Bmat, Bvec, surf_triangle_indices, gamma, Ulocal_all, DPTs, tri_to_field):
     N = 64
-    for i, itri in enumerate(surf_triangle_indices):
+    Niter = surf_triangle_indices.shape[0]
+    for i in prange(Niter):
+        itri = surf_triangle_indices[i]
 
         vertex_ids = tris[:, itri]
 
@@ -230,11 +263,12 @@ def compute_bc_entries(vertices_local, tris, Bmat, Bvec, surf_triangle_indices, 
         
         indices = tri_to_field[:, itri]
         
-        Bmat[itri*N:(itri+1)*N] = Bsub.ravel()
-        Bvec[indices] = Bvec[indices] + bvec
+        Bmat[itri*N:(itri+1)*N] += Bsub.ravel()
+        Bvec[indices] += bvec
     return Bmat, Bvec
 
-@njit(c16[:,:](f8[:,:], f8[:], c16), cache=True, nogil=True)
+
+@njit(c16[:,:](f8[:,:], f8[:], c16), cache=True, nogil=True, parallel=False)
 def ned2_tri_stiff(vertices, edge_lengths, gamma):
     ''' Nedelec-2 Triangle Stiffness matrix and forcing vector (For Boundary Condition of the Third Kind)
 
@@ -311,43 +345,73 @@ def ned2_tri_stiff(vertices, edge_lengths, gamma):
 
             GC = GLs[ej1]
             GD = GLs[ej2]
+            DAC = dot(GA,GC)
+            DAD = dot(GA,GD)
+            DBC = dot(GB,GC)
+            DBD = dot(GB,GD)
+            LL = Li*Lj
 
-            Bmat[ei,ej] += Li*Lj*COEFF*(AREA_COEFF[A,B,C,D]*dot(GA,GC)-AREA_COEFF[A,B,C,C]*dot(GA,GD)-AREA_COEFF[A,A,C,D]*dot(GB,GC)+AREA_COEFF[A,A,C,C]*dot(GB,GD))
-            Bmat[ei,ej+4] += Li*Lj*COEFF*(AREA_COEFF[A,B,D,D]*dot(GA,GC)-AREA_COEFF[A,B,C,D]*dot(GA,GD)-AREA_COEFF[A,A,D,D]*dot(GB,GC)+AREA_COEFF[A,A,C,D]*dot(GB,GD))
-            Bmat[ei+4,ej] += Li*Lj*COEFF*(AREA_COEFF[B,B,C,D]*dot(GA,GC)-AREA_COEFF[B,B,C,C]*dot(GA,GD)-AREA_COEFF[A,B,C,D]*dot(GB,GC)+AREA_COEFF[A,B,C,C]*dot(GB,GD))
-            Bmat[ei+4,ej+4] += Li*Lj*COEFF*(AREA_COEFF[B,B,D,D]*dot(GA,GC)-AREA_COEFF[B,B,C,D]*dot(GA,GD)-AREA_COEFF[A,B,D,D]*dot(GB,GC)+AREA_COEFF[A,B,C,D]*dot(GB,GD))
-            
-        Bmat[ei,3] += Li*Lt1*COEFF*(AREA_COEFF[A,B,tA,tB]*dot(GA,GtC)-AREA_COEFF[A,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,A,tA,tB]*dot(GB,GtC)+AREA_COEFF[A,A,tB,tC]*dot(GB,GtA))
-        Bmat[ei,7] += Li*Lt2*COEFF*(AREA_COEFF[A,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,B,tC,tA]*dot(GA,GtB)-AREA_COEFF[A,A,tB,tC]*dot(GB,GtA)+AREA_COEFF[A,A,tC,tA]*dot(GB,GtB))
-        Bmat[3,ei] += Lt1*Li*COEFF*(AREA_COEFF[tA,tB,A,B]*dot(GA,GtC)-AREA_COEFF[tA,tB,A,A]*dot(GB,GtC)-AREA_COEFF[tB,tC,A,B]*dot(GA,GtA)+AREA_COEFF[tB,tC,A,A]*dot(GB,GtA))
-        Bmat[7,ei] += Lt2*Li*COEFF*(AREA_COEFF[tB,tC,A,B]*dot(GA,GtA)-AREA_COEFF[tB,tC,A,A]*dot(GB,GtA)-AREA_COEFF[tC,tA,A,B]*dot(GA,GtB)+AREA_COEFF[tC,tA,A,A]*dot(GB,GtB))
-        Bmat[ei+4,3] += Li*Lt1*COEFF*(AREA_COEFF[B,B,tA,tB]*dot(GA,GtC)-AREA_COEFF[B,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[A,B,tA,tB]*dot(GB,GtC)+AREA_COEFF[A,B,tB,tC]*dot(GB,GtA))
-        Bmat[ei+4,7] += Li*Lt2*COEFF*(AREA_COEFF[B,B,tB,tC]*dot(GA,GtA)-AREA_COEFF[B,B,tC,tA]*dot(GA,GtB)-AREA_COEFF[A,B,tB,tC]*dot(GB,GtA)+AREA_COEFF[A,B,tC,tA]*dot(GB,GtB))
-        Bmat[3,ei+4] += Lt1*Li*COEFF*(AREA_COEFF[tA,tB,B,B]*dot(GA,GtC)-AREA_COEFF[tA,tB,A,B]*dot(GB,GtC)-AREA_COEFF[tB,tC,B,B]*dot(GA,GtA)+AREA_COEFF[tB,tC,A,B]*dot(GB,GtA))
-        Bmat[7,ei+4] += Lt2*Li*COEFF*(AREA_COEFF[tB,tC,B,B]*dot(GA,GtA)-AREA_COEFF[tB,tC,A,B]*dot(GB,GtA)-AREA_COEFF[tC,tA,B,B]*dot(GA,GtB)+AREA_COEFF[tC,tA,A,B]*dot(GB,GtB))
+            Bmat[ei,ej] += LL*COEFF*(AREA_COEFF[A,B,C,D]*DAC-AREA_COEFF[A,B,C,C]*DAD-AREA_COEFF[A,A,C,D]*DBC+AREA_COEFF[A,A,C,C]*DBD)
+            Bmat[ei,ej+4] += LL*COEFF*(AREA_COEFF[A,B,D,D]*DAC-AREA_COEFF[A,B,C,D]*DAD-AREA_COEFF[A,A,D,D]*DBC+AREA_COEFF[A,A,C,D]*DBD)
+            Bmat[ei+4,ej] += LL*COEFF*(AREA_COEFF[B,B,C,D]*DAC-AREA_COEFF[B,B,C,C]*DAD-AREA_COEFF[A,B,C,D]*DBC+AREA_COEFF[A,B,C,C]*DBD)
+            Bmat[ei+4,ej+4] += LL*COEFF*(AREA_COEFF[B,B,D,D]*DAC-AREA_COEFF[B,B,C,D]*DAD-AREA_COEFF[A,B,D,D]*DBC+AREA_COEFF[A,B,C,D]*DBD)
+        
+        FA = dot(GA,GtC)
+        FB = dot(GA,GtA)
+        FC = dot(GB,GtC)
+        FD = dot(GB,GtA)
+        FE = dot(GA,GtB)
+        FF = dot(GB,GtB)
+
+        Bmat[ei,3] += Li*Lt1*COEFF*(AREA_COEFF[A,B,tA,tB]*FA-AREA_COEFF[A,B,tB,tC]*FB-AREA_COEFF[A,A,tA,tB]*FC+AREA_COEFF[A,A,tB,tC]*FD)
+        Bmat[ei,7] += Li*Lt2*COEFF*(AREA_COEFF[A,B,tB,tC]*FB-AREA_COEFF[A,B,tC,tA]*FE-AREA_COEFF[A,A,tB,tC]*FD+AREA_COEFF[A,A,tC,tA]*FF)
+        Bmat[3,ei] += Lt1*Li*COEFF*(AREA_COEFF[tA,tB,A,B]*FA-AREA_COEFF[tA,tB,A,A]*FC-AREA_COEFF[tB,tC,A,B]*FB+AREA_COEFF[tB,tC,A,A]*FD)
+        Bmat[7,ei] += Lt2*Li*COEFF*(AREA_COEFF[tB,tC,A,B]*FB-AREA_COEFF[tB,tC,A,A]*FD-AREA_COEFF[tC,tA,A,B]*FE+AREA_COEFF[tC,tA,A,A]*FF)
+        Bmat[ei+4,3] += Li*Lt1*COEFF*(AREA_COEFF[B,B,tA,tB]*FA-AREA_COEFF[B,B,tB,tC]*FB-AREA_COEFF[A,B,tA,tB]*FC+AREA_COEFF[A,B,tB,tC]*FD)
+        Bmat[ei+4,7] += Li*Lt2*COEFF*(AREA_COEFF[B,B,tB,tC]*FB-AREA_COEFF[B,B,tC,tA]*FE-AREA_COEFF[A,B,tB,tC]*FD+AREA_COEFF[A,B,tC,tA]*FF)
+        Bmat[3,ei+4] += Lt1*Li*COEFF*(AREA_COEFF[tA,tB,B,B]*FA-AREA_COEFF[tA,tB,A,B]*FC-AREA_COEFF[tB,tC,B,B]*FB+AREA_COEFF[tB,tC,A,B]*FD)
+        Bmat[7,ei+4] += Lt2*Li*COEFF*(AREA_COEFF[tB,tC,B,B]*FB-AREA_COEFF[tB,tC,A,B]*FD-AREA_COEFF[tC,tA,B,B]*FE+AREA_COEFF[tC,tA,A,B]*FF)
       
-    
-    Bmat[3,3] += Lt1*Lt1*COEFF*(AREA_COEFF[tA,tB,tA,tB]*dot(GtC,GtC)-AREA_COEFF[tA,tB,tB,tC]*dot(GtA,GtC)-AREA_COEFF[tB,tC,tA,tB]*dot(GtA,GtC)+AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA))
-    Bmat[3,7] += Lt1*Lt2*COEFF*(AREA_COEFF[tA,tB,tB,tC]*dot(GtA,GtC)-AREA_COEFF[tA,tB,tC,tA]*dot(GtB,GtC)-AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)+AREA_COEFF[tB,tC,tC,tA]*dot(GtA,GtB))
-    Bmat[7,3] += Lt2*Lt1*COEFF*(AREA_COEFF[tB,tC,tA,tB]*dot(GtA,GtC)-AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)-AREA_COEFF[tC,tA,tA,tB]*dot(GtB,GtC)+AREA_COEFF[tC,tA,tB,tC]*dot(GtA,GtB))
-    Bmat[7,7] += Lt2*Lt2*COEFF*(AREA_COEFF[tB,tC,tB,tC]*dot(GtA,GtA)-AREA_COEFF[tB,tC,tC,tA]*dot(GtA,GtB)-AREA_COEFF[tC,tA,tB,tC]*dot(GtA,GtB)+AREA_COEFF[tC,tA,tC,tA]*dot(GtB,GtB))
+    H1 = dot(GtA,GtC)
+    H2 = dot(GtA,GtA)
+    H3 = dot(GtA,GtB)
 
+    Bmat[3,3] += Lt1*Lt1*(AREA_COEFF[tA,tB,tA,tB]*dot(GtC,GtC)-AREA_COEFF[tA,tB,tB,tC]*H1-AREA_COEFF[tB,tC,tA,tB]*H1+AREA_COEFF[tB,tC,tB,tC]*H2)
+    Bmat[3,7] += Lt1*Lt2*(AREA_COEFF[tA,tB,tB,tC]*H1-AREA_COEFF[tA,tB,tC,tA]*dot(GtB,GtC)-AREA_COEFF[tB,tC,tB,tC]*H2+AREA_COEFF[tB,tC,tC,tA]*H3)
+    Bmat[7,3] += Lt2*Lt1*(AREA_COEFF[tB,tC,tA,tB]*H1-AREA_COEFF[tB,tC,tB,tC]*H2-AREA_COEFF[tC,tA,tA,tB]*dot(GtB,GtC)+AREA_COEFF[tC,tA,tB,tC]*H3)
+    Bmat[7,7] += Lt2*Lt2*(AREA_COEFF[tB,tC,tB,tC]*H2-AREA_COEFF[tB,tC,tC,tA]*H3-AREA_COEFF[tC,tA,tB,tC]*H3+AREA_COEFF[tC,tA,tC,tA]*dot(GtB,GtB))
+    
 
     return Bmat
 
+@njit(c16[:](f8[:,:], i8[:,:], c16[:], f8[:,:], i8[:], c16), cache=True, nogil=True, parallel=False)
+def compute_bc_entries(vertices, tris, Bmat, all_edge_lengths, surf_triangle_indices, gamma):
+    N = 64
+    Niter = surf_triangle_indices.shape[0]
+    for i in prange(Niter):
+        itri = surf_triangle_indices[i]
+
+        vertex_ids = tris[:, itri]
+
+        edge_lengths = all_edge_lengths[:,itri]
+
+        Bsub = ned2_tri_stiff(vertices[:,vertex_ids], edge_lengths, gamma)
+        
+        Bmat[itri*N:(itri+1)*N] = Bmat[itri*N:(itri+1)*N] + Bsub.ravel()
+    return Bmat
+
 def assemble_robin_bc_excited(field: Nedelec2,
+                              Bmat: np.ndarray,
                 surf_triangle_indices: np.ndarray,
                 Ufunc: Callable,
                 gamma: np.ndarray,
                 local_basis: np.ndarray,
                 origin: np.ndarray,
                 DPTs: np.ndarray):
-    Bmat = field.empty_tri_matrix()
-    Bmat[:] = 0
     
     Bvec = np.zeros((field.n_field,), dtype=np.complex128)
 
-    vertices_local = optim_matmul(local_basis, field.mesh.nodes - origin[:,np.newaxis])# local_basis @ ()
+    vertices_local = optim_matmul(local_basis, field.mesh.nodes - origin[:,np.newaxis])
 
     xflat, yflat = generate_points(vertices_local, field.mesh.tris, DPTs, surf_triangle_indices)
 
@@ -355,28 +419,15 @@ def assemble_robin_bc_excited(field: Nedelec2,
 
     Ulocal_all = Ulocal.reshape((3, DPTs.shape[1], surf_triangle_indices.shape[0]))
 
-    Bmat, Bvec = compute_bc_entries(vertices_local, field.mesh.tris, Bmat, Bvec, surf_triangle_indices, gamma, Ulocal_all, DPTs, field.tri_to_field)
-    Bmat = field.generate_csr(Bmat)
-
+    Bmat, Bvec = compute_bc_entries_excited(vertices_local, field.mesh.tris, Bmat, Bvec, surf_triangle_indices, gamma, Ulocal_all, DPTs, field.tri_to_field)
     return Bmat, Bvec
 
 def assemble_robin_bc(field: Nedelec2,
+                      Bmat: np.ndarray,
                 surf_triangle_indices: np.ndarray,
                 gamma: np.ndarray):
+    vertices = field.mesh.nodes
+    all_edge_lengths = field.mesh.edge_lengths[field.mesh.tri_to_edge]
+    Bmat = compute_bc_entries(vertices, field.mesh.tris, Bmat, all_edge_lengths, surf_triangle_indices, gamma)
 
-    Bmat = field.empty_tri_matrix()
-    row, col = field.empty_tri_rowcol()
-    Bmat[:] = 0
-
-    for i, itri in enumerate(surf_triangle_indices):
-
-        vertex_ids = field.mesh.tris[:, itri]
-
-        edge_lengths = field.tri_to_edge_lengths(itri)
-
-        Bsub = ned2_tri_stiff(field.mesh.nodes[:,vertex_ids], edge_lengths, gamma)
-        
-        Bmat[field.trislice(itri)] = Bsub.ravel()
-
-    Bmat = field.generate_csr(Bmat)
     return Bmat

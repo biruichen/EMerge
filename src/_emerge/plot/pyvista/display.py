@@ -342,7 +342,7 @@ class PVDisplay(BaseDisplay):
                      dv=(0,0,0), 
                      XYZ=None,
                      field: Literal['E','H'] = 'E', 
-                     k0: float = None, 
+                     k0: float = None,
                      mode_number: int = None) -> pv.UnstructuredGrid:
         
         if XYZ:
@@ -378,7 +378,8 @@ class PVDisplay(BaseDisplay):
         if k0 is None:
             if isinstance(port, ModalPort):
                 k0 = port.get_mode(0).k0
-        
+            else:
+                k0 = 1
         F = port.port_mode_3d_global(xf,yf,zf,k0, which=field)
 
         Fx = F[0,:].reshape(X.shape).T

@@ -50,7 +50,7 @@ pcb = em.geo.PCBLayouter(th, unit=mil)
 pcb.new(0, 140, w0, (1, 0)) \
     .store('p1') \
     .straight(l0) \
-    .turn(15) \
+    .turn(0) \
     .straight(l1 * 0.8) \
     .straight(l1, w1, dy=abs(w1 - w0) / 2) \
     .jump(gap=g1, side='left', reverse=l1 - e) \
@@ -70,7 +70,7 @@ pcb.new(0, 140, w0, (1, 0)) \
     .straight(l1, w6, dy=abs(w2 - w1) / 2) \
     .jump(gap=g6, side='left', reverse=l1 - e) \
     .straight(l1, w6) \
-    .turn(-15) \
+    .turn(0) \
     .straight(l1 * 0.8, w0) \
     .straight(l0, w0, dy=abs(w1 - w0) / 2) \
     .store('p2')                        # label output port
