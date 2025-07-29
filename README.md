@@ -20,7 +20,19 @@ pip install ".[pypardiso]"
 
 ## Compatibility
 
-As far as I know, the library should work on all systems. PyPARDISO is not supported on ARM but the current SuperLU solver settings should work on ARM as well. I have now implemented a proto version of parallel processing `.frequency_domain_par(njobs=N)` method that can run a simulation on multiple parallel threads. This is work in progress. 
+As far as I know, the library should work on all systems. PyPARDISO is not supported on ARM but the current SuperLU and UMFPACK solvers work on ARM as well. Both SuperLU and UMFPACK can run on multi-processing implementations as long as you do entry-point protection:
+```
+import emerge as em
+
+def main():
+    # setup simulation
+
+    model.mw.frequency_domain(True, ..., multi_processing=True)
+
+if __name__ == "__main__":
+    main()
+```
+Otherwise, the parallel solver will default to SuperLU which is significantly slower on larger problems.
 
 ## Required libraries
 
@@ -36,7 +48,7 @@ To run this FEM library you need the following libraries
  - pyvista (for the PyVista base display)
  - numba-progress
  - threadpoolctl (for SuperLU settings)
- - scikit-rf (for touchstone export only)
+ - scikit-umfpack
 
 ## NOTICE
 

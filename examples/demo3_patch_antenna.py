@@ -1,6 +1,5 @@
 import emerge as em
 import numpy as np
-from emerge.pyvista import PVDisplay
 from emerge.plot import plot_sp, smith, plot_ff_polar, plot_ff
 
 """ PATCH ANTENNA DEMO

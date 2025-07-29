@@ -41,7 +41,6 @@ only-include = ["src/_emerge", "src/emerge"]
 pypardiso = [
   "pypardiso @ git+https://github.com/haasad/PyPardiso.git",
   "matplotlib",
-  "scikit-rf",
 ]
 
 [build-system]
