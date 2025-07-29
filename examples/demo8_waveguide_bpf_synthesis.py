@@ -9,6 +9,7 @@ using iris inverters. First, iris scattering parameters are simulated to
 extract K-inverter and phase data. Then the full filter geometry is
 assembled and S-parameters are plotted. """
 
+
 # --- Physical constants and units ---------------------------------------
 mm = 0.001                # meters per millimeter
 dielectric_constant = 1.0 # (not used for air-filled waveguide)
@@ -87,7 +88,7 @@ with em.Simulation3D('IrisSim', loglevel='DEBUG') as sim:
 
         sim.define_geometry()
         sim.mw.set_frequency(f0)
-        sim.mw.set_resolution(0.1)
+        sim.mw.set_resolution(0.10)
         sim.mesher.set_domain_size(iris, 2*mm)
         sim.generate_mesh()
 
@@ -148,8 +149,8 @@ with em.Simulation3D('FullFilter', loglevel='DEBUG') as mf:
     mf.define_geometry(feed1, feed2, last_iris, *(cavities + irises))
 
     # Simulation settings and mesh
-    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 81)
-    mf.mw.set_resolution(0.1)
+    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 101)
+    mf.mw.set_resolution(0.10)
     for ir in irises:
         mf.mesher.set_domain_size(ir, 2*mm)
     mf.generate_mesh()
@@ -159,7 +160,7 @@ with em.Simulation3D('FullFilter', loglevel='DEBUG') as mf:
     p2 = mf.mw.bc.RectangularWaveguide(feed2.face('back'), 2)
 
     # Run frequency-domain sweep and extract S-parameters
-    data = mf.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+    data = mf.mw.frequency_domain(parallel=True, njobs=3, frequency_groups=8)
     grid = data.scalar.grid
     freqs = grid.freq
     fdense = np.linspace(freqs[0], freqs[-1], 2001)

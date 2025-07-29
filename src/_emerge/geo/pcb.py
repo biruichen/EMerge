@@ -359,7 +359,7 @@ class StripPath:
     
     def turn(self, angle: float, 
              width: float = None, 
-             corner_type: Literal['champher'] = 'champher') -> StripPath:
+             corner_type: Literal['champher','square'] = 'champher') -> StripPath:
         """Adds a turn to the strip path.
 
         The angle is specified in degrees. The width of the turn will be the same as the last segment.

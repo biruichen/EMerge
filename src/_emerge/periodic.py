@@ -1,6 +1,6 @@
 from .cs import Axis, _parse_axis, GCS
 from .selection import FaceSelection, SELECTOR_OBJ
-from .geo import GeoPrism, XYPolygon, Alignment
+from .geo import GeoPrism, XYPolygon, Alignment, XYPlate
 from .bc import BoundaryCondition
 from typing import Generator
 from .bc import Periodic
@@ -69,6 +69,18 @@ class PeriodicCell:
         """
         raise NotImplementedError('This method is not implemented for this subclass.')
 
+    def generate_bcs(self) -> list[Periodic]:
+        """Generate the priodic boundary conditions
+        """
+        bcs = []
+        for f1, f2, a in self.cell_data():
+            if self.excluded_faces is not None:
+                f1 = f1 - self.excluded_faces
+                f2 = f2 - self.excluded_faces
+            bcs.append(Periodic(f1, f2, a))
+        self._bcs = bcs
+        return bcs
+    
     @property
     def bcs(self) -> list[Periodic]:
         """Returns a list of Periodic boundary conditions for the given PeriodicCell
@@ -80,13 +92,7 @@ class PeriodicCell:
             list[Periodic]: The list of Periodic boundary conditions
         """
         if not self._bcs:
-            bcs = []
-            for f1, f2, a in self.cell_data():
-                if self.excluded_faces is not None:
-                    f1 = f1 - self.excluded_faces
-                    f2 = f2 - self.excluded_faces
-                bcs.append(Periodic(f1, f2, a))
-            self._bcs = bcs
+            raise ValueError('Periodic Boundary conditions not generated')
         return self._bcs + self._ports
     
     def set_scanangle(self, theta: float, phi: float, degree: bool = True) -> None:
@@ -113,6 +119,9 @@ class PeriodicCell:
             port.scan_theta = theta
             port.scan_phi = phi
 
+    def port_face(self, z: float):
+        raise NotImplementedError('')
+    
 class RectCell(PeriodicCell):
     """This class represents the unit cell environment of a regular rectangular tiling.
 
@@ -141,6 +150,9 @@ class RectCell(PeriodicCell):
         self.ftop = ((0, height/2, 0), v2)
         self.fright = ((width/2, 0, 0), v1)
 
+    def port_face(self, z: float):
+        return XYPlate(self.width, self.height, position=(0,0,z), alignment=Alignment.CENTER)
+        
     def cell_data(self):
         f1s = SELECTOR_OBJ.inplane(*self.fleft[0], *self.fleft[1])
         f2s = SELECTOR_OBJ.inplane(*self.fright[0], *self.fright[1])
@@ -201,6 +213,11 @@ class HexCell(PeriodicCell):
         self.f22 = (-o2, n2)
         self.f32 = (-o3, n3)
 
+    def port_face(self, z: float):
+        xs, ys, zs = zip(self.p1, self.p2, self.p3)
+        poly = XYPolygon(xs, ys).geo(GCS.displace(0,0,zs[0]))
+        return poly
+    
     def cell_data(self) -> Generator[FaceSelection, FaceSelection, np.ndarray]:
         nrm = np.linalg.norm
 

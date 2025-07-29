@@ -82,7 +82,7 @@ m.generate_mesh()
 p1 = m.mw.bc.ModalPort(feed.face('left'), 1)     # excite TE10 in feed
 PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, 0, 1, 0))  # perfect magnetic on symmetry
 radiation_boundary = air.outside('front', 'left', 'bottom')  # open faces
-abs = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
+abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 # View mesh and BC selections
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
@@ -105,6 +105,7 @@ m.display.add_object(horn_in, opacity=0.1)
 m.display.add_object(air2, opacity=0.1)
 m.display.add_object(feed, opacity=0.1)
 m.display.add_surf(*data.field[0].farfield_3d(radiation_boundary, syms=['Ez','Hy'])\
-                   .surfplot('normE', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
+                .surfplot('normE', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
 m.display.add_surf(*data.field[0].cutplane(0.5*mm, z=0).scalar('Ez','real'))
 m.display.show()
+

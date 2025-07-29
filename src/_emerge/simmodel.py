@@ -258,6 +258,11 @@ class Simulation3D:
         self.mesher.submit_objects(geometries)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
+        # Set the cell periodicity in GMSH
+        if self._cell is not None:
+            self.mesher.set_periodic_cell(self._cell)
+            
+        self.mw._initialize_bcs()
     
     def generate_mesh(self):
         """Generate the mesh. 
@@ -272,9 +277,7 @@ class Simulation3D:
         if not self._defined_geometries:
             self.define_geometry()
         
-        # Set the cell periodicity in GMSH
-        if self._cell is not None:
-            self.mesher.set_periodic_cell(self._cell)
+        
         
         # Check if frequencies are defined: TODO: Replace with a more generic check
         if self.mw.frequencies is None:
@@ -284,18 +287,17 @@ class Simulation3D:
 
         # Set the mesh size
         self.mesher.set_mesh_size(self.mw.get_discretizer(), self.mw.resolution)
+        
         try:
             gmsh.model.mesh.generate(3)
         except Exception:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
-
-        self.mw._initialize_bcs()
         
         self.mesh.update(self.mesher._get_periodic_bcs())
         gmsh.model.occ.synchronize()
-        self.mw.mesh = self.mesh
+        self.set_mesh(self.mesh)
 
     def get_boundary(self, face: FaceSelection = None, tags: list[int] = None) -> tuple[np.ndarray, np.ndarray]:
         ''' Return boundary data. 
@@ -353,7 +355,6 @@ class Simulation3D:
             
             params = {key: dim[i_iter] for key,dim in zip(paramlist, dims_flat)}
             self.mw._params = params
-            #self._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
             self.data.sim.new(**params)
 
             logger.info(f'Iterating: {params}')
