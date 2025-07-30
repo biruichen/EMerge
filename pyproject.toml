@@ -19,13 +19,9 @@ dependencies = [
 ]
 
 [project.scripts]
-emerge = "_emerge.cli:main"
-
-[tool.hatch.build.targets.sdist]
-only-include = ["src/_emerge", "src/emerge"]
+emerge = "emerge.cli:main"
 
 [tool.hatch.build.targets.sdist.sources]
-"src/_emerge" = "_emerge"
 "src/emerge"  = "emerge"
 
 [project.optional-dependencies]

@@ -22,11 +22,3 @@ airbox = em.geo.pmlbox(40*mm, ratio*rad_out, ratio*rad_out, (len_horn-5*mm, -rat
                        top=True, bottom=True, right=True, front=True, back=True)
 
 model.view()
-
-model.define_geometry(vol)
-
-model.mw.set_frequency(0.2e9)
-
-model.generate_mesh()
-
-model.view()
