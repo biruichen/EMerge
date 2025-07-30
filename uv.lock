@@ -181,6 +181,7 @@ dependencies = [
 pypardiso = [
     { name = "matplotlib" },
     { name = "pypardiso" },
+    { name = "scikit-umfpack" },
 ]
 
 [package.metadata]
@@ -194,6 +195,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pypardiso", marker = "extra == 'pypardiso'", git = "https://github.com/haasad/PyPardiso.git" },
     { name = "pyvista", specifier = ">=0.45.2" },
+    { name = "scikit-umfpack", marker = "extra == 'pypardiso'" },
     { name = "scipy", specifier = ">=1.15.3" },
 ]
 provides-extras = ["pypardiso"]
@@ -765,6 +767,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/e1/0a/929373653770d8a0d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7c/e4/56027c4a6b4ae70ca9de302488c5ca95ad4a39e190093d6c1a8ace08341b/requests-2.32.4-py3-none-any.whl", hash = "sha256:27babd3cda2a6d50b30443204ee89830707d396671944c998b5975b031ac2b2c", size = 64847, upload-time = "2025-06-09T16:43:05.728Z" },
 ]
+
+[[package]]
+name = "scikit-umfpack"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/87/e9837fbc60271bcbc569911814f3e63cb40c75aa4904a3d1d82cf8f5e079/scikit_umfpack-0.4.2.tar.gz", hash = "sha256:7cd652e6559804a52379f4ff367cfad54d6f7a6fc65a5e0bd26d26a1282c3f64", size = 33827, upload-time = "2025-07-08T08:52:41.643Z" }
 
 [[package]]
 name = "scipy"
