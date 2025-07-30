@@ -35,3 +35,5 @@ version_update.txt
 manual_scripts/
 
 *.EMResults
+
+tests/

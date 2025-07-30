@@ -28,6 +28,17 @@ class Horn(GeoVolume):
                  end_aperture: tuple[float, float],
                  height: float,
                  cs: CoordinateSystem):
+        """Generate a Horn geometry. The horn is defined by a start and ending rectangle.
+
+        Start aperture is always defined at z=0 and the end at z=height.
+        The horn can be reoriented by choosing a different coordinate system.
+
+        Args:
+            start_aperture (tuple[float, float]): The width/height of the start aperture
+            end_aperture (tuple[float, float]): The width/height of the end aperture
+            height (float): The height of the horn
+            cs (CoordinateSystem): The coordinate systme to place the horn in.
+        """
         super().__init__([])
         p0 = cs.origin
         p1 = p0 + cs.zax.np * height

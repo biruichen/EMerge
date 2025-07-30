@@ -20,9 +20,10 @@ from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
 from ...elements.femdata import FEMBasis
-from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
+from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
+from scipy.sparse.linalg import inv as sparse_inverse
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -37,18 +38,34 @@ import threading
 import multiprocessing as mp
 from cmath import sqrt as csqrt
 
-def run_job_multi(job: SimJob):
-    routine = ParallelRoutine(True)
+class SimulationError(Exception):
+    pass
+
+def run_job_multi(job: SimJob) -> SimJob:
+    """The job launcher for Multi-Processing environements
+
+    Args:
+        job (SimJob): The Simulation Job
+
+    Returns:
+        SimJob: The solved SimJob
+    """
+    routine = DEFAULT_ROUTINE.duplicate().configure('MP')
     for A, b, ids, reuse in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         job.submit_solution(solution, report)
     return job
 
-class SimulationError(Exception):
-    pass
 
+def _dimstring(data: list[float]) -> str:
+    """A String formatter for dimensions in millimeters
 
-def _dimstring(data: list[float]):
+    Args:
+        data (list[float]): The list of floating point dimensions
+
+    Returns:
+        str: The formatted string
+    """
     return '(' + ', '.join([f'{x*1000:.1f}mm' for x in data]) + ')'
 
 def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
@@ -258,7 +275,15 @@ class Microwave3D:
         for port in self.bc.oftype(LumpedPort):
             self.define_lumped_port_integration_points(port)
     
-    def define_lumped_port_integration_points(self, port: LumpedPort):
+    def define_lumped_port_integration_points(self, port: LumpedPort) -> None:
+        """Sets the integration points on Lumped Port objects for voltage integration
+
+        Args:
+            port (LumpedPort): The LumpedPort object
+
+        Raises:
+            SimulationError: An error if there are no nodes associated with the port.
+        """
         logger.debug('Finding Lumped Port integration points')
         field_axis = port.Vdirection.np
 
@@ -468,7 +493,7 @@ class Microwave3D:
     
         logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
-        eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
+        eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz, sign=-1)
         
         logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
 
@@ -484,8 +509,8 @@ class Microwave3D:
             Emode[solve_ids] = np.squeeze(eigenmode)
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
 
-            #beta = min(k0*np.sqrt(ermax*urmax), np.emath.sqrt(-eigen_values[i]))
-            beta = np.emath.sqrt(-eigen_values[i])
+            beta = min(k0*np.sqrt(ermax*urmax), np.emath.sqrt(-eigen_values[i]))
+            #beta = np.emath.sqrt(eigen_values[i])
             residuals = -1
 
             portfE = nlf.interpolate_Ef(Emode)
@@ -501,7 +526,9 @@ class Microwave3D:
             Efz = Emode[nlf.n_xy:]
             Ez = np.max(np.abs(Efz))
             Exy = np.max(np.abs(Efxy))
-
+            
+            # Exy = np.max(np.max(Emode))
+            # Ez = 0
             if Ez/Exy < 1e-3 and not TEM:
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
@@ -593,7 +620,7 @@ class Microwave3D:
         ## DEFINE SOLVE FUNCTIONS
         def get_routine():
             if not hasattr(thread_local, "routine"):
-                thread_local.routine = ParallelRoutine(False)
+                thread_local.routine = self.solveroutine.duplicate().configure('MT')
             return thread_local.routine
 
         def run_job(job: SimJob):
@@ -674,6 +701,7 @@ class Microwave3D:
                     logger.info(f'Starting distributed solve of {len(jobs)} jobs with {njobs} threads.')
                     group_results = list(executor.map(run_job, jobs))
                     results.extend(group_results)
+                executor.shutdown()
         else:
             ### MULTI PROCESSING
             # Check for if __name__=="__main__" Guard
@@ -714,6 +742,7 @@ class Microwave3D:
                     group_results = pool.map(run_job_multi, jobs)
                     results.extend(group_results)
 
+        thread_local.__dict__.clear()
         logger.info('Solving complete')
 
         ### Compute S-parameters and return
@@ -767,7 +796,7 @@ class Microwave3D:
 
         target_k0 = 2*np.pi*search_frequency/299792458
 
-        eigen_values, eigen_modes, report = self.solveroutine.eig(A, C, solve_ids, nmodes, direct, target_k0, smart_search=deep_search, which=mode)
+        eigen_values, eigen_modes, report = self.solveroutine.eig(A, C, solve_ids, nmodes, direct, target_k0, which=mode)
 
         eigen_modes = job.fix_solutions(eigen_modes)
 
