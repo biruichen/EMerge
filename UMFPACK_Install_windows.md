@@ -92,8 +92,7 @@ python -m pip install scikit-umfpack --no-build-isolation -Csetup-args="--native
 ```
 Powershell
 ```powershell
-python -m pip install scikit-umfpack --no-build-isolation `
-  -Csetup-args="--native-file=$((Get-Location).Path)/nativefile.ini"
+python -m pip install scikit-umfpack --no-build-isolation -Csetup-args="--native-file=$((Get-Location).Path)/nativefile.ini"
 ```
 
 ---
