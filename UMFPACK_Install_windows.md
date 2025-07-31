@@ -11,7 +11,7 @@ py -m pip install ...
 
 ---
 
-## ⚠️ Step 0: (Optional) Uninstall conflicting packages first
+## Step 0: (Optional) Uninstall conflicting packages first
 
 Before you begin, it’s safest to uninstall any conflicting or prebuilt packages like `emerge`, `numpy`, or `scipy`. You’ll reinstall them later in step 6.
 
@@ -31,7 +31,7 @@ python -m pip uninstall numba-progress
 
 ---
 
-## 🏗️ Step 2: Create a Conda environment (Python 3.10 or 3.11 recommended)
+## Step 2: Create a Conda environment (Python 3.10 or 3.11 recommended)
 The latest version of scikit-umfpack is not compatible with python 3.13 so this likely only works on lower python versions. Its tried on 3.10.
 
 ```bash
