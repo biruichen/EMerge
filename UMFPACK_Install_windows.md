@@ -45,8 +45,8 @@ conda activate umf-env
 
 ```bash
 conda install suitesparse
-conda install -y meson swig
-conda install -y -c conda-forge compilers
+conda install meson swig
+conda install -c conda-forge compilers
 conda install -c conda-forge m2w64-toolchain
 conda install -c conda-forge openblas
 ```
