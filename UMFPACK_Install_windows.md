@@ -39,6 +39,11 @@ conda create -n umf-env python=3.10 -y
 conda activate umf-env
 ```
 
+or switch to 3.10 in your main conda environment
+```bash
+conda install -y python=3.10
+```
+
 ---
 
 ## Step 3: Install required packages
