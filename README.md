@@ -9,14 +9,25 @@ If you have suggestions/changes/questions either use the Github issue system or 
 
 ## How to install
 
-Clone this repository or download the files. While in the EMerge path containing the src/emerge folder, install the module using:
+You can now install the basic version of emerge from PyPi!
 ```
-pip install .
+pip install emerge
 ```
 If you want to install the library with PyPardiso on Intel machines, you can install the optional dependency with EMerge using:
 ```
-pip install ".[pypardiso]"
+pip install emerge[pypardiso]
 ```
+On MacOS and Linux you can install it with the very fast UMFPACK through scikit-umfpack
+
+```
+pip install emerge[scikit-umfpack]
+```
+On linux and MacOS with intel or AMD chips you can also include both:
+
+```
+pip install emerge[scikit-umfpack, pypardiso]
+```
+The `scikit-umfpack` solver can be installed on Windows as well from binaries with conda. This is a bit more complicated and is described in the installation guide.
 
 ## Compatibility
 
@@ -32,7 +43,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-Otherwise, the parallel solver will default to SuperLU which is significantly slower on larger problems.
+Otherwise, the parallel solver will default to SuperLU which can be slower on larger problems with a very densely connected/compact matrix.
 
 ## Required libraries
 
@@ -40,13 +51,15 @@ To run this FEM library you need the following libraries
 
  - numpy
  - scipy
- - pypardiso
  - gmsh
  - loguru
  - numba
  - matplotlib (for the matplotlib base display)
  - pyvista (for the PyVista base display)
  - numba-progress
+
+Optional:
+ - pypardiso
  - scikit-umfpack
 
 ## NOTICE
