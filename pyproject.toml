@@ -17,6 +17,7 @@ dependencies = [
     "numpy>=1.24, <2.3",
     "pyvista>=0.45.2",
     "scipy>=1.14.0",
+    "mkl!=2024.0; platform_machine == \"x86_64\" or platform_machine == \"AMD64\""
 ]
 
 [project.scripts]
@@ -26,9 +27,6 @@ emerge = "emerge.cli:main"
 "src/emerge"  = "emerge"
 
 [project.optional-dependencies]
-pypardiso = [
-  "pypardiso; platform_machine == 'x86_64' or platform_machine == 'AMD64'",
-]
 umfpack = [
   "scikit-umfpack; sys_platform != 'win32'",
 ]
