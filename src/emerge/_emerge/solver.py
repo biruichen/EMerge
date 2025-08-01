@@ -647,6 +647,7 @@ class SolveRoutine:
         self.parallel: Literal['SI','MT','MP'] = 'SI'
         self.smart_search: bool = False
         self.forced_solver: list[Solver] = []
+        self.disabled_solver: list[Solver] = []
 
         self.use_sorter: bool = False
         self.use_preconditioner: bool = False
@@ -654,6 +655,49 @@ class SolveRoutine:
 
     def __str__(self) -> str:
         return f'SolveRoutine({self.sorter},{self.precon},{self.iterative_solver}, {self.direct_solver})'
+    
+    def _legal_solver(self, solver: Solver) -> bool:
+        """Checks if a solver is a legal option.
+
+        Args:
+            solver (Solver): The solver to test against
+
+        Returns:
+            bool: If the solver is legal
+        """
+        if any(isinstance(solver, solvertype) for solvertype in self.disabled_solver):
+            return False
+        return True
+    
+    @property
+    def all_solvers(self) -> list[Solver]:
+        return list([solver for solver in self.solvers.values() if not isinstance(solver, EigSolver)])
+    
+    @property
+    def all_eig_solvers(self) -> list[Solver]:
+        return list([solver for solver in self.solvers.values() if isinstance(solver, EigSolver)])
+    
+
+    def _try_solver(self, solver_type: EMSolver) -> Solver:
+        """Try to use the selected solver or else find another one that is working.
+
+        Args:
+            solver_type (EMSolver): The solver type to try
+
+        Raises:
+            RuntimeError: Error if no valid solver is found.
+
+        Returns:
+            Solver: The working solver.
+        """
+        solver = self.solvers[solver_type]
+        if self._legal_solver(solver):
+            return solver
+        for alternative in self.all_solvers:
+            if self._legal_solver(alternative):
+                logger.debug(f'Falling back on legal solver: {alternative}')
+                return alternative
+        raise RuntimeError(f'No legal solver could be found. The following are disabled: {self.disabled_solver}')
     
     def duplicate(self) -> SolveRoutine:
         """Creates a copy of this SolveRoutine class object.
@@ -667,17 +711,30 @@ class SolveRoutine:
         new_routine.forced_solver = self.forced_solver
         return new_routine
     
-    def set_solver(self, *solver: EMSolver | EigSolver | Solver) -> None:
+    def set_solver(self, *solvers: EMSolver | EigSolver | Solver) -> None:
         """Set a given Solver class instance as the main solver. Solvers will be checked on validity for the given problem.
 
         Args:
             solver (EMSolver | Solver): The solver objects
         """
-        if isinstance(solver, EMSolver):
-            self.forced_solver.append(solver.get_solver())
-        else:
-            self.forced_solver.append(solver)
-        
+        for solver in solvers:
+            if isinstance(solver, EMSolver):
+                self.forced_solver.append(solver.get_solver())
+            else:
+                self.forced_solver.append(solver)
+    
+    def disable(self, *solvers: EMSolver) -> None:
+        """Disable a given Solver class instance as the main solver. Solvers will be checked on validity for the given problem.
+
+        Args:
+            solver (EMSolver): The solver objects
+        """
+        for solver in solvers:
+            if isinstance(solver, EMSolver):
+                self.disabled_solver.append(solver.get_solver().__class__)
+            else:
+                self.disabled_solver.append(solver.__class__)
+
     def configure(self, 
                   parallel: Literal['SI','MT','MP'] = 'SI', smart_search: bool = False) -> SolveRoutine:
         """Configure the solver with the given settings
@@ -705,6 +762,7 @@ class SolveRoutine:
         self.parallel: Literal['SI','MT','MP'] = 'SI'
         self.smart_search: bool = False
         self.forced_solver = []
+        self.disabled_solver: list[Solver] = []
 
     def _get_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
@@ -720,6 +778,8 @@ class SolveRoutine:
 
         """
         for solver in self.forced_solver:
+            if not self._legal_solver(solver):
+                continue
             if isinstance(solver, Solver):
                 return solver
         return self.pick_solver(A,b)
@@ -738,7 +798,7 @@ class SolveRoutine:
             Solver: Returns the direct solver
 
         """
-        return self.solvers[EMSolver.SUPERLU]
+        return self._try_solver(EMSolver.SUPERLU)
     
     def _get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
@@ -973,21 +1033,21 @@ class AutomaticRoutine(SolveRoutine):
         """
         N = b.shape[0]
         if N < 10_000:
-            return self.solvers[EMSolver.SUPERLU]
+            return self._try_solver(EMSolver.SUPERLU)
         if self.parallel=='SI':
             if _PARDISO_AVAILABLE:
-                return self.solvers[EMSolver.PARDISO]
+                return self._try_solver(EMSolver.PARDISO)
             elif _UMFPACK_AVAILABLE:
-                return self.solvers[EMSolver.UMFPACK]
+                return self._try_solver(EMSolver.UMFPACK)
             else:
-                return self.solvers[EMSolver.SUPERLU]
+                return self._try_solver(EMSolver.SUPERLU)
         elif self.parallel=='MP':
             if _UMFPACK_AVAILABLE:
-                return self.solvers[EMSolver.UMFPACK]
+                return self._try_solver(EMSolver.UMFPACK)
             else:
-                return self.solvers[EMSolver.SUPERLU]
+                return self._try_solver(EMSolver.SUPERLU)
         elif self.parallel=='MT':
-            return self.solvers[EMSolver.SUPERLU]
-        return self.solvers[EMSolver.SUPERLU]
+            return self._try_solver(EMSolver.SUPERLU)
+        return self._try_solver(EMSolver.SUPERLU)
     
 DEFAULT_ROUTINE = AutomaticRoutine()
