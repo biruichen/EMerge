@@ -277,8 +277,6 @@ class Simulation3D:
         if not self._defined_geometries:
             self.define_geometry()
         
-        
-        
         # Check if frequencies are defined: TODO: Replace with a more generic check
         if self.mw.frequencies is None:
             raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
@@ -296,6 +294,7 @@ class Simulation3D:
             raise
         
         self.mesh.update(self.mesher._get_periodic_bcs())
+        self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
         gmsh.model.occ.synchronize()
         self.set_mesh(self.mesh)
 
