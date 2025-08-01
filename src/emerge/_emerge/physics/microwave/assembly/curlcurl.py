@@ -85,7 +85,7 @@ for I in range(NFILL):
 VOLUME_COEFF_CACHE = VOLUME_COEFF_CACHE_BASE
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
-def tet_coefficients_bcd(xs: np.ndarray, ys: np.ndarray, zs: np.ndrray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+def tet_coefficients_bcd(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Computes the a,b,c and d coefficients of a tet barycentric coordinate functions and the volume
 
     Args:
