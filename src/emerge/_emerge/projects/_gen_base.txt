@@ -16,7 +16,7 @@ wgl = 50*mm
 with em.Simulation3D("myfile", save_file=True) as m:
     m['box'] = em.geo.Box(wga,wgl,wgb,(0,0,0))
     
-    m.define_geometry()
+    m.commit_geometry()
 
     m.mw.set_frequency_range(8e9,9e9,11)
 

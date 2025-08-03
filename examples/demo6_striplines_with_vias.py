@@ -13,7 +13,7 @@ th = 1
 
 model = em.Simulation3D('Stripline_test', loglevel='DEBUG')
 # As usual we start by creating our layouter
-ly = em.geo.PCBLayouter(th, mm, em.GCS, em.lib.ROGERS_4350B)
+ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
 
 # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
 # None of the transmission lines are conciously matched in any way, this is just about the routing
@@ -48,7 +48,7 @@ diel = ly.gen_pcb(True, merge=True)
 air = ly.gen_air(3)
 
 # The rest is as usual
-model.define_geometry()
+model.commit_geometry()
 
 model.view()
 

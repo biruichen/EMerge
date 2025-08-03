@@ -86,7 +86,7 @@ with em.Simulation3D('IrisSim', loglevel='DEBUG') as sim:
         iris = em.geo.Box(wgap, t_thickness, wgb, (-wgap/2, -t_thickness/2, 0))
         wg2 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, t_thickness/2, 0))
 
-        sim.define_geometry()
+        sim.commit_geometry()
         sim.mw.set_frequency(f0)
         sim.mw.set_resolution(0.10)
         sim.mesher.set_domain_size(iris, 2*mm)
@@ -146,7 +146,7 @@ with em.Simulation3D('FullFilter', loglevel='DEBUG') as mf:
     feed2 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, y0 + t_thickness, 0))
 
     # Define the full filter geometry
-    mf.define_geometry(feed1, feed2, last_iris, *(cavities + irises))
+    mf.commit_geometry(feed1, feed2, last_iris, *(cavities + irises))
 
     # Simulation settings and mesh
     mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 101)

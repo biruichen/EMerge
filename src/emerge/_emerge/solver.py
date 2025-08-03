@@ -39,7 +39,7 @@ If so, attempt to import PyPardiso (if its installed)
 
 if 'arm' not in platform.processor():
     try:
-        from .pardiso.pardiso_solver import PyPardisoSolver, PyPardisoError
+        from .solve_interfaces.pardiso_interface import PardisoInterface
         _PARDISO_AVAILABLE = True
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
@@ -48,6 +48,11 @@ try:
     _UMFPACK_AVAILABLE = True
 except ModuleNotFoundError as e:
     logger.debug('UMFPACK not found, defaulting to SuperLU')
+
+
+############################################################
+#                 EIGENMODE FILTER ROUTINE                #
+############################################################
 
 def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax, sign):
     """
@@ -85,6 +90,11 @@ def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax, sign):
     filtered_vecs = filtered_vecs[:, order] 
     return filtered_vals, filtered_vecs
 
+
+############################################################
+#               EIGENMODE ORTHOGONALITY CHECK              #
+############################################################
+
 def filter_unique_eigenpairs(eigen_values: list[complex], eigen_vectors: list[np.ndarray], tol=-3) -> tuple[list[complex], list[np.ndarray]]:
     """
     Filters eigenvectors by orthogonality using dot-product tolerance.
@@ -115,6 +125,11 @@ def filter_unique_eigenpairs(eigen_values: list[complex], eigen_vectors: list[np
 
     return unique_values, unique_vectors
 
+
+############################################################
+#         COMPLEX MATRIX TO REAL MATRIX CONVERSION        #
+############################################################
+
 def complex_to_real_block(A, b):
     """Return (Â,  b̂) real-augmented representation of A x = b."""
     A_r = sparse.csr_matrix(A.real)
@@ -135,7 +150,14 @@ def real_to_complex_block(x):
     x_i = x[n:]
     return x_r + 1j * x_i
 
-    
+
+############################################################
+#                  BASE CLASS DEFINITIONS                 #
+############################################################
+
+class SimulationError(Exception):
+    pass
+
 class Sorter:
     """ A Generic class that executes a sort on the indices.
     It must implement a sort and unsort method.
@@ -220,7 +242,11 @@ class EigSolver:
         pass
 
 
-## -----  SORTERS ----------------------------------------------
+
+############################################################
+#                          SORTERS                         #
+############################################################
+
 @dataclass
 class SolveReport:
     solver: str
@@ -252,7 +278,11 @@ class ReverseCuthillMckee(Sorter):
         logger.debug('Reversing Reverse Cuthill-Mckee sorting.')
         return  x[self.inv_perm]
     
-## -----  PRECONS ----------------------------------------------
+
+############################################################
+#                      PRECONDITIONERS                     #
+############################################################
+
 
 class ILUPrecon(Preconditioner):
     """ Implements the incomplete LU preconditioner on matrix A. """
@@ -267,7 +297,11 @@ class ILUPrecon(Preconditioner):
         self.ilu = sparse.linalg.spilu(A, drop_tol=1e-2, fill_factor=self.fill_factor, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
         self.M = sparse.linalg.LinearOperator(A.shape, self.ilu.solve)
 
-## ----- ITERATIVE SOLVERS -------------------------------------
+
+############################################################
+#                     ITERATIVE SOLVERS                    #
+############################################################
+
 
 class SolverBicgstab(Solver):
     """ Implements the Bi-Conjugate Gradient Stabilized method"""
@@ -341,7 +375,11 @@ class SolverGMRES(Solver):
             x, info = gmres(A, b, atol=self.atol, callback=self.callback, restart=500, callback_type='pr_norm')
         return x, info
 
-## -----  DIRECT SOLVERS ----------------------------------------
+
+############################################################
+#                      DIRECT SOLVERS                     #
+############################################################
+
 
 class SolverSuperLU(Solver):
     """ Implements Scipi's direct SuperLU solver."""
@@ -374,16 +412,15 @@ class SolverUMFPACK(Solver):
         super().__init__()
         self.A: np.ndarray = None
         self.b: np.ndarray = None
-        self.up: um.UmfpackContext = um.UmfpackContext('zl')
-        self.up.control[um.UMFPACK_PRL] = 0  #less terminal printing
-        self.up.control[um.UMFPACK_IRSTEP] = 2
-        self.up.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC
-        self.up.control[um.UMFPACK_ORDERING] = 3
-        self.up.control[um.UMFPACK_PIVOT_TOLERANCE] = 0.001
-        self.up.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = 0.001
-        self.up.control[um.UMFPACK_BLOCK_SIZE] = 64
-        self.up.control[um.UMFPACK_FIXQ] = -1
-        #self.up.control[um.UMFPACK_]
+        self.umfpack: um.UmfpackContext = um.UmfpackContext('zl')
+        self.umfpack.control[um.UMFPACK_PRL] = 0
+        self.umfpack.control[um.UMFPACK_IRSTEP] = 2
+        self.umfpack.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC
+        self.umfpack.control[um.UMFPACK_ORDERING] = 3
+        self.umfpack.control[um.UMFPACK_PIVOT_TOLERANCE] = 0.001
+        self.umfpack.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = 0.001
+        self.umfpack.control[um.UMFPACK_BLOCK_SIZE] = 64
+        self.umfpack.control[um.UMFPACK_FIXQ] = -1
 
         self.fact_symb: bool = False
 
@@ -396,14 +433,14 @@ class SolverUMFPACK(Solver):
         A.indices = A.indices.astype(np.int64)
         if self.fact_symb is False:
             logger.debug('Executing symbollic factorization.')
-            self.up.symbolic(A)
+            self.umfpack.symbolic(A)
             #self.up.report_symbolic()
             self.fact_symb = True
         if not reuse_factorization:
             #logger.debug('Executing numeric factorization.')
-            self.up.numeric(A)
+            self.umfpack.numeric(A)
             self.A = A
-        x = self.up.solve(um.UMFPACK_A, self.A, b, autoTranspose = False )
+        x = self.umfpack.solve(um.UMFPACK_A, self.A, b, autoTranspose = False )
         return x, 0
 
 class SolverPardiso(Solver):
@@ -413,18 +450,32 @@ class SolverPardiso(Solver):
 
     def __init__(self):
         super().__init__()
-        self.solver: PyPardisoSolver = PyPardisoSolver()
+        self.solver: PardisoInterface = PardisoInterface()
+        self.fact_symb: bool = False
         self.A: np.ndarray = None
         self.b: np.ndarray = None
     
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling Pardiso Solver. ID={id}')
-        self.A = A
-        self.b = b
-        x = self.solver.solve(A, b)
-        return x, 0
+        if self.fact_symb is False:
+            logger.debug('Executing symbollic factorization.')
+            self.solver.symbolic(A)
+            self.fact_symb = True
+        if not reuse_factorization:
+            self.solver.numeric(A)
+            self.A = A
+        x, error = self.solver.solve(A, b)
+        if error != 0:
+            logger.error(f'Terminated with error code {error}')
+            logger.error(self.solver.get_error(error))
+            raise SimulationError(f'PARDISO Terminated with error code {error}')
+        return x, error
     
-## -----  DIRECT EIG SOLVERS --------------------------------------
+
+############################################################
+#                 DIRECT EIGENMODE SOLVERS                #
+############################################################
+
 class SolverLAPACK(EigSolver):
 
     def __init__(self):
@@ -458,7 +509,11 @@ class SolverLAPACK(EigSolver):
         lam, vecs = filter_real_modes(lam, vecs, target_k0, 2, 2, sign=sign)
         return lam, vecs
     
-## -----  ITER EIG SOLVERS ---------------------------------------
+
+############################################################
+#                  ITERATIVE EIGEN SOLVERS                 #
+############################################################
+
 
 class SolverARPACK(EigSolver):
     """ Implements the Scipy ARPACK iterative eigenmode solver."""
@@ -578,7 +633,11 @@ class SmartARPACK(EigSolver):
         return eigen_values, eigen_modes
 
 
-## ----- SOLVE ENUMS ---------------------------------------------
+
+############################################################
+#                        SOLVER ENUM                       #
+############################################################
+
 
 class EMSolver(Enum):
     SUPERLU = 1
@@ -611,7 +670,11 @@ class EMSolver(Enum):
         elif self==EMSolver.SMART_ARPACK_BMA:
             return SmartARPACK_BMA()
     
-## -----  SOLVE ROUTINES -----------------------------------------
+
+############################################################
+#                       SOLVE ROUTINE                      #
+############################################################
+
 
 class SolveRoutine:
     """ A generic class describing a solve routine.
@@ -852,11 +915,12 @@ class SolveRoutine:
         NS = solve_ids.shape[0]
 
         A = A.tocsc()
-
-        logger.debug(f'    Removing {NF-NS} prescribed DOFs ({NS} left)')
-
+        
         Asel = A[np.ix_(solve_ids, solve_ids)]
         bsel = b[solve_ids]
+        nnz = Asel.nnz
+
+        logger.debug(f'    Removed {NF-NS} prescribed DOFs ({NS:,} left, {nnz:,} non-zero)')
 
         if solver.real_only:
             logger.debug('    Converting to real matrix')
@@ -878,6 +942,7 @@ class SolveRoutine:
                 precon = str(self.precon)
 
         start = time.time()
+        
         x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse, id=id)
         end = time.time()
         simtime = end-start
@@ -1031,4 +1096,10 @@ class AutomaticRoutine(SolveRoutine):
             return self._try_solver(EMSolver.SUPERLU)
         return self._try_solver(EMSolver.SUPERLU)
     
+
+
+############################################################
+#                    DEFAULT DEFINITION                   #
+############################################################
+
 DEFAULT_ROUTINE = AutomaticRoutine()

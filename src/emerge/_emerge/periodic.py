@@ -7,6 +7,11 @@ from .bc import Periodic
 import numpy as np
 
 
+
+############################################################
+#                         FUNCTIONS                        #
+############################################################
+
 def _rotnorm(v: np.ndarray) -> np.ndarray:
     """Rotate 3D vector field v 90° counterclockwise around z axis.
 
@@ -31,6 +36,11 @@ def _pair_selection(f1: FaceSelection, f2: FaceSelection, translation: tuple[flo
                 f2s.append(FaceSelection([t2,]))
     return f1s, f2s
 
+
+
+############################################################
+#                 BASE PERIODIC CELL CLASS                #
+############################################################
 
 
 class PeriodicCell:
@@ -122,6 +132,12 @@ class PeriodicCell:
     def port_face(self, z: float):
         raise NotImplementedError('')
     
+
+
+############################################################
+#                    RECTANGULAR TILING                   #
+############################################################
+
 class RectCell(PeriodicCell):
     """This class represents the unit cell environment of a regular rectangular tiling.
 
@@ -175,6 +191,12 @@ class RectCell(PeriodicCell):
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
     
+
+
+############################################################
+#                     HEXAGONAL TILING                    #
+############################################################
+
 class HexCell(PeriodicCell):
 
     def __init__(self,

@@ -888,11 +888,11 @@ class MWField:
         else:
             tags = faces.tags
 
-        surface = self.basis.mesh.boundary_surface(tags, None)
+        center = np.mean(self.mesh.nodes, axis=1).squeeze()
+        surface = self.basis.mesh.boundary_surface(tags, center)
         field = self.interpolate(*surface.exyz)
         vertices = surface.nodes
         triangles = surface.tris
-        print(surface._origin, surface._alignment_origin)
         origin = surface._origin
         E = field.E
         H = field.H

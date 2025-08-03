@@ -56,7 +56,7 @@ resonator = em.geo.Cyllinder(
 ).set_material(mat_resonator).prio_up()
 
 # Assemble geometry into model
-model.define_geometry()
+model.commit_geometry()
 
 # --- Solver settings -----------------------------------------------------
 # Only eigenmode solver needed; set center frequency estimate

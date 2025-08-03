@@ -49,14 +49,14 @@ class _HowtoClass:
 
         After making geometries, you should pass all of them to
         the simulation object
-        >>> model.define_geometry(box, sphere,...)
+        >>> model.commit_geometry(box, sphere,...)
 
         You can also directly store geometries into the model class by treating
         it as a list (using __getitem__ and __setitem__)
         >>> model['box'] = emerge.geo.Box(...)
 
         In this case, all geometries will be automatically included. You shoul still call:
-        >>> model.define_geometry()
+        >>> model.commit_geometry()
 
         """
 

@@ -22,12 +22,20 @@ from numba_progress import ProgressBar, ProgressBarType
 from ....mth.optimized import local_mapping, matinv, dot_c, cross_c, compute_distances
 from numba import c16, types, f8, i8, njit, prange
 
-# --- CACHED FACTORIALS ---------------
+
+############################################################
+#                  CACHED FACTORIAL VALUES                 #
+############################################################
+
 
 _FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
 
 
-# --- MAPPING FUNCTIONS ---------------
+
+############################################################
+#                  INDEX MAPPING FUNCTIONS                 #
+############################################################
+
 # These mapping functions return edge and face coordinates in the appropriate order.
 
 @njit(i8[:,:](i8[:,:], i8[:,:], i8[:,:], i8, i8), cache=True, nogil=True)
@@ -73,7 +81,11 @@ def volume_coeff(a: int, b: int, c: int, d: int):
                   *_FACTORIALS[klmn[4]]*_FACTORIALS[klmn[5]]*_FACTORIALS[klmn[6]])/_FACTORIALS[(np.sum(klmn[1:])+3)]
     return output
 
-# --- PRECOMPUTE VOLUME COEFFICINETS --------------------
+
+############################################################
+#        PRECOMPUTATION OF INTEGRATION COEFFICIENTS       #
+############################################################
+
 NFILL = 5
 VOLUME_COEFF_CACHE_BASE = np.zeros((NFILL,NFILL,NFILL,NFILL), dtype=np.float64)
 for I in range(NFILL):
@@ -83,6 +95,11 @@ for I in range(NFILL):
                 VOLUME_COEFF_CACHE_BASE[I,J,K,L] = volume_coeff(I,J,K,L)
 
 VOLUME_COEFF_CACHE = VOLUME_COEFF_CACHE_BASE
+
+
+############################################################
+#  COMPUTATION OF THE BARYCENTRIC COORDINATE COEFFICIENTS #
+############################################################
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
 def tet_coefficients_bcd(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
@@ -125,6 +142,11 @@ def tet_coefficients_bcd(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> tupl
 
     return bbs, ccs, dds, V
 
+
+############################################################
+#              MAIN CURL-CURL MATRIX ASSEMBLY             #
+############################################################
+
 def tet_mass_stiffness_matrices(field: Nedelec2,
                            er: np.ndarray, 
                            ur: np.ndarray) -> tuple[csr_matrix, csr_matrix]:
@@ -156,6 +178,11 @@ def tet_mass_stiffness_matrices(field: Nedelec2,
     B = coo_matrix((dataB, (rows, cols)), shape=(nE*2 + nTri*2, nE*2 + nTri*2)).tocsr()
 
     return E, B
+
+
+############################################################
+#           NUMBA ACCELLERATE SUB-MATRIX ASSEMBLY          #
+############################################################
 
 @njit(types.Tuple((c16[:,:],c16[:,:]))(f8[:,:], f8[:], i8[:,:], i8[:,:], c16[:,:], c16[:,:]), nogil=True, cache=True, parallel=False, fastmath=True)
 def ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_map, Ms, Mm):
@@ -392,6 +419,11 @@ def ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_ma
     Fmat = Fmat*KB
 
     return Dmat, Fmat
+
+
+############################################################
+#             NUMBA ACCELLERATED MATRIX BUILDER            #
+############################################################
 
 @njit(types.Tuple((c16[:], c16[:], i8[:], i8[:]))(f8[:,:], 
                                                       i8[:,:], 

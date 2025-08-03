@@ -70,7 +70,7 @@ rpatch = em.geo.remove(rpatch, cutout2)
 rpatch = em.geo.add(rpatch, line)
 
 # Assign copper material for visualization only
-rpatch.material = em.lib.COPPER
+rpatch.material = em.lib.MET_COPPER
 
 # --- Assign materials and simulation settings ---------------------------
 # Dielectric material with some transparency for display
@@ -82,7 +82,7 @@ model.mw.resolution = 0.2
 model.mw.set_frequency_range(f1, f2, 21)
 
 # --- Combine geometry into simulation -----------------------------------
-model.define_geometry()
+model.commit_geometry()
 
 # --- Mesh refinement settings --------------------------------------------
 # Finer boundary mesh on patch edges for accuracy

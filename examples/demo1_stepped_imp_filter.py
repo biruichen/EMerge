@@ -33,7 +33,7 @@ m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
 # supply it with a thickness, the desired air-box height, the units at which we supply
 # the dimensions and the PCB material.
 
-layouter = em.geo.PCBLayouter(th, unit=mil, material=pcbmat, layers=3)
+layouter = em.geo.PCB(th, unit=mil, material=pcbmat, layers=3)
 
 # We will route our PCB using the "method chaining" syntax. First we call the .new() method
 # to start a new trace. This will returna StripPath object on which we may call methods that
@@ -65,8 +65,8 @@ layouter.determine_bounds(leftmargin=0, topmargin=200, rightmargin=0, bottommarg
 
 pcb = layouter.gen_pcb(True, merge=True)
 
-# We now pass all the geometries we have created to the .define_geometry() method.
-m.define_geometry()
+# We now pass all the geometries we have created to the .commit_geometry() method.
+m.commit_geometry()
 
 # We set our desired resolution (fraction of the wavelength)
 m.mw.set_resolution(0.08)

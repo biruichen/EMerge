@@ -27,6 +27,7 @@ from .mth.optimized import outward_normal
 from loguru import logger
 from functools import cache
 from .bc import Periodic
+from .mth.pairing import pair_coordinates
 
 @njit(f8(f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
@@ -87,8 +88,6 @@ class Mesh3D:
         
         self.geometry: Mesher = mesher
 
-        self.exterior_face_tags: list[int] = None
-        
         # All spatial objects
         self.nodes: np.ndarray = None
         self.n_i2t: dict = None
@@ -143,6 +142,7 @@ class Mesh3D:
         ## Memory
         self.ftag_to_tri: dict[int, list[int]] = dict()
         self.ftag_to_node: dict[int, list[int]] = dict()
+        self.ftag_to_edge: dict[int, list[int]] = dict()
         self.vtag_to_tet:  dict[int, list[int]] = dict()
     
     @property
@@ -245,6 +245,17 @@ class Mesh3D:
             nodes.extend(self.ftag_to_node[facetag])
         
         return np.array(sorted(list(set(nodes))))
+
+    def get_edges(self, face_tags: Union[int, list[int]]) -> np.ndarray:
+        '''Returns a numpyarray of all the edges that belong to the given face tags'''
+        if isinstance(face_tags, int):
+            face_tags = [face_tags,]
+        
+        edges = []
+        for facetag in face_tags:
+            edges.extend(self.ftag_to_edge[facetag])
+        
+        return np.array(sorted(list(set(edges))))
     
     
     def update(self, periodic_bcs: list[Periodic] = None):
@@ -405,7 +416,8 @@ class Mesh3D:
             self.ftag_to_node[t] = node_tags
             node_tags = np.squeeze(np.array(node_tags)).reshape(-1,3).T
             self.ftag_to_tri[t] = [self.get_tri(node_tags[0,i], node_tags[1,i], node_tags[2,i]) for i in range(node_tags.shape[1])]
-
+            self.ftag_to_edge[t] = sorted(list(np.unique(self.tri_to_edge[:,self.ftag_to_tri[t]].flatten())))
+        
         vol_dimtags = gmsh.model.get_entities(3)
         for d,t in vol_dimtags:
             domain_tag, v_tags, node_tags = gmsh.model.mesh.get_elements(3, t)
@@ -457,16 +469,8 @@ class Mesh3D:
         node_ids_1 = sorted(list(set(node_ids_1)))
         node_ids_2 = sorted(list(set(node_ids_2)))
         dv = np.array(bc.dv)
-        nodemapdict = defaultdict(lambda: [None, None])
         
-        mult = int(10**(-np.round(np.log10(dsmin))+2))
-        
-        for i1, i2 in zip(node_ids_1, node_ids_2):
-            nodemapdict[gen_key(self.nodes[:,i1], mult)][0] = i1
-            nodemapdict[gen_key(self.nodes[:,i2]-dv, mult)][1] = i2
-
-        nodemap = {i1: i2 for i1, i2 in nodemapdict.values()}
-
+        nodemap = pair_coordinates(self.nodes, node_ids_1, node_ids_2, dv, dsmin/2)
         node_ids_2_unsorted = [nodemap[i] for i in sorted(node_ids_1)]
         node_ids_2_sorted = sorted(node_ids_2_unsorted)
         conv_map = {i1: i2 for i1, i2 in zip(node_ids_2_unsorted, node_ids_2_sorted)}
@@ -565,6 +569,20 @@ class Mesh3D:
     def boundary_surface(self, 
                          face_tags: Union[int, list[int]], 
                          origin: tuple[float, float, float] = None) -> SurfaceMesh:
+        """Returns a SurfaceMesh class that is a 2D mesh isolated from the 3D mesh
+
+        The mesh will be based on the given set of face tags.
+
+        In order to properly allign the normal vectors, an alignment origin can be provided.
+        If not provided, the center point of all boundaries will be used.
+
+        Args:
+            face_tags (Union[int, list[int]]): The list of face tags to use
+            origin (tuple[float, float, float], optional): The normal vecor alignment origin.. Defaults to None.
+
+        Returns:
+            SurfaceMesh: The resultant surface mesh
+        """
         tri_ids = self.get_triangles(face_tags)
         if origin is None:
             nodes = self.nodes[:,self.get_nodes(face_tags)]
