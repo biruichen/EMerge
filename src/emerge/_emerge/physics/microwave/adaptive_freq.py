@@ -49,14 +49,17 @@ Modification history
 
 """
 
+# type: ignore
+
 import numpy as np
 from typing import Literal
 from loguru import logger
+
 def cc(z):
     return z.conjugate()
 
 def model(s, poles, residues, d, h):
-    return np.sum(r/(s-p) for p, r in zip(poles, residues)) + d + s*h
+    return sum([r/(s-p) for p, r in zip(poles, residues)]) + d + s*h
 
 def vectfit_step(f: np.ndarray, s: np.ndarray, poles: np.ndarray) -> np.ndarray:
     """

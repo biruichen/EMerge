@@ -24,7 +24,7 @@ import site
 from ctypes.util import find_library
 from enum import Enum
 import numpy as np
-from scipy import sparse
+from scipy import sparse # type: ignore
 from pathlib import Path
 from typing import Iterable, Iterator
 import pickle
@@ -60,7 +60,8 @@ PARDISO_ERROR_CODES = {
 
 
 #: Environment variable that overrides automatic searching
-ENV_VAR = "PYPARDISO_MKL_RT"
+
+ENV_VAR = "EMERGE_PARDISO_PATH"
 
 
 def _candidate_dirs() -> Iterable[Path]:
@@ -71,7 +72,7 @@ def _candidate_dirs() -> Iterable[Path]:
     for p in (                         # likely “local” env first
         Path(sys.prefix),
         Path(getattr(sys, "base_prefix", sys.prefix)),
-        Path(site.USER_BASE),
+        Path(str(site.USER_BASE)),
         *(Path(x) for x in os.getenv("LD_LIBRARY_PATH", "").split(":") if x),
     ):
         if p not in seen:
@@ -93,7 +94,7 @@ def _search_mkl() -> Iterator[Path]:
             if regex.match(path.name):
                 yield path
 
-def cache_path_result(tag: str, compute_fn, force: bool = False):
+def cache_path_result(tag: str, compute_fn, force: bool = False) -> str:
     """
     Retrieve a cached Path object or compute it and store it.
     
@@ -113,13 +114,13 @@ def cache_path_result(tag: str, compute_fn, force: bool = False):
     if not force and cache_file.exists():
         with open(cache_file, "rb") as f:
             filename = pickle.load(f)
-            print(f"Using cached MKL file: {filename}")
-            return filename
+            logger.debug(f"Using cached MKL file: {filename}")
+            return str(filename)
 
     result = compute_fn()
     with open(cache_file, "wb") as f:
         pickle.dump(result, f)
-    return result
+    return str(result)
 
 def search_mkl() -> str:
     """Searches for the file path of the PARDISO MKL executable
@@ -130,11 +131,11 @@ def search_mkl() -> str:
     logger.debug('Searching for MKL executable...')
     for candidate in _search_mkl():
         try:
-            ctypes.CDLL(candidate)
+            ctypes.CDLL(str(candidate))
         except OSError:
             continue  # try the next one
     logger.debug(f'Executable found: {candidate}')
-    return candidate
+    return str(candidate)
 
 def load_mkl() -> ctypes.CDLL:
     """Locate and load **mkl_rt**; raise ImportError on failure."""
@@ -200,6 +201,9 @@ CFLOAT32_P = ctypes.POINTER(CFLOAT32)
 CFLOAT64_P = ctypes.POINTER(CFLOAT64)
 VOID_SIZE = ctypes.sizeof(ctypes.c_void_p)
 
+PT_A: type = CINT32
+PT_B: type = np.int32
+
 if VOID_SIZE == 8:
     PT_A = CINT64
     PT_B = np.int64
@@ -210,7 +214,7 @@ elif VOID_SIZE == 4:
 def c_int(value: int):
     return ctypes.byref(ctypes.c_int32(value))
 
-PARDISO_ARG_TYPES = (ctypes.POINTER(PT_A),CINT32_P,CINT32_P,
+PARDISO_ARG_TYPES: tuple = (ctypes.POINTER(PT_A),CINT32_P,CINT32_P,
     CINT32_P,CINT32_P,CINT32_P,CNONE_P,CINT32_P,CINT32_P,
     CINT32_P,CINT32_P,CINT32_P,CINT32_P,CNONE_P,CNONE_P,CINT32_P,
 )
@@ -314,7 +318,7 @@ class PardisoInterface:
             self.MATRIX_TYPE = PARDISOMType.REAL_SYM_STRUCT
             self.complex = False
 
-    def _prepare_B(self, b: np.ndarray) -> np.ndarray:
+    def _prepare_B(self, b: np.ndarray | sparse.sparray) -> np.ndarray:
         """Fixes the forcing-vector for the solution process
 
         Args:
@@ -324,7 +328,8 @@ class PardisoInterface:
             np.ndarray: The prepared forcing-vector
         """
         if sparse.issparse(b):
-            b = b.todense()
+            b = b.todense() # type: ignore
+        
         if np.iscomplexobj(b):
             b = b.astype(np.complex128)
         else:
@@ -337,7 +342,7 @@ class PardisoInterface:
         Returns:
             int: The error code
         """
-        print("SYMBOLIC FACTORIZATION")
+        
         self._configure(A)
         zerovec = np.zeros_like((A.shape[0], 1), dtype=A.dtype)
         _, error = self._call_solver(A, zerovec, phase=PARDISOPhase.SYMBOLIC_FACTOR)
@@ -349,7 +354,7 @@ class PardisoInterface:
         Returns:
             int: The error code
         """
-        print("NUMERIC FACTORIZATION")
+
         self._configure(A)
         zerovec = np.zeros_like((A.shape[0], 1), dtype=A.dtype)
         _, error = self._call_solver(A, zerovec, phase=PARDISOPhase.NUMERIC_FACTOR)
@@ -372,7 +377,7 @@ class PardisoInterface:
 
     def configure_solver(self, 
         perm_algo: int = 3,
-        nthreads: int = None,
+        nthreads: int | None = None,
         user_perm: int = 0,
         n_refine_steps: int = 0,
         pivot_pert: int = 13,
@@ -388,7 +393,7 @@ class PardisoInterface:
             weighted_matching (int, optional): weighted matching mode. Defaults to 2.
         """
         if nthreads is None:
-            nthreads = int(os.environ.get('OMP_NUM_THREADS'))
+            nthreads = int(os.environ.get('OMP_NUM_THREADS', default="4"))
 
         self.IPARM[1] = perm_algo
         self.IPARM[2] = nthreads
@@ -418,14 +423,15 @@ class PardisoInterface:
         A_indices = A.indices + 1
 
         # Define the appropriate data type (complex vs real)
+
         if self.complex:
             VALUE_P = A.data.ctypes.data_as(CPX16_P)
             RHS_P = b.ctypes.data_as(CPX16_P)
             X_P = x.ctypes.data_as(CPX16_P)
         else:
             VALUE_P = A.data.ctypes.data_as(CFLOAT64_P)
-            RHS_P = b.ctypes.data_as(CFLOAT64_P)
-            X_P = x.ctypes.data_as(CFLOAT64_P)
+            RHS_P = b.ctypes.data_as(CFLOAT64_P) # type: ignore
+            X_P = x.ctypes.data_as(CFLOAT64_P) # type: ignore
 
         # Calls the pardiso function
         self._pardiso_interface(

@@ -18,7 +18,7 @@ class BaseDisplay:
     def show(self):
         raise NotImplementedError('This method is not implemented')
         
-    def add_object(self, obj: GeoObject | Selection | Iterable,*args, **kwargs):
+    def add_object(self, obj: GeoObject | Selection,*args, **kwargs):
         """ Adds an object to the display
 
         Keyword arguments
@@ -352,14 +352,20 @@ class BaseDisplay:
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         raise NotImplementedError('This method is not implemented')
 
-    def add_portmode(self, port: PortBC, k0: float, Npoints: int = 10, dv=(0,0,0), XYZ=None,
-                      field: Literal['E','H'] = 'E'):
+    def add_portmode(self, port: PortBC, 
+                     Npoints: int = 10, 
+                     dv=(0,0,0), 
+                     XYZ=None,
+                     field: Literal['E','H'] = 'E', 
+                     k0: float | None = None,
+                     mode_number: int | None = None):
         raise NotImplementedError('This method is not implemented')
 
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,
               scale: float = 1,
-              scalemode: Literal['lin','log'] = 'lin'):
+              color: tuple[float, float, float] | None = None,
+              scalemode: Literal['lin','log'] = 'lin') -> None:
         
         raise NotImplementedError('This method is not implemented')
     
@@ -370,10 +376,10 @@ class BaseDisplay:
                  field: np.ndarray,
                  scale: Literal['lin','log','symlog'] = 'lin',
                  cmap: cmap_names = 'coolwarm',
-                 clim: tuple[float, float] = None,
+                 clim: tuple[float, float] | None = None,
                  opacity: float = 1.0,
                  symmetrize: bool = True,
-                 animate: bool = False,
+                 _fieldname: str | None = None,
                  **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.

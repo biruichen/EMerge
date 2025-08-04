@@ -27,7 +27,7 @@ ALL PAIRED NODES ARE NO LONGER VISITED
 """
 
 import numpy as np
-from numba import njit, f8, i8
+from numba import njit, f8, i8 # type: ignore
 
 
 ############################################################
@@ -72,7 +72,7 @@ def link_coords(coords: np.ndarray, ids1: np.ndarray, ids2: np.ndarray, disp: np
 #                   MAIN PYTHON INTERFACE                  #
 ############################################################
 
-def pair_coordinates(coords: np.ndarray, ids1: list[int], ids2: list[int], disp: np.ndarray, dsmax: float) -> dict[int, int]:
+def pair_coordinates(coords: np.ndarray, ids1: np.ndarray, ids2: np.ndarray, disp: np.ndarray, dsmax: float) -> dict[int, int]:
     """ This function finds the mapping between a total coordinate set and two lits of indices.
 
     The indices correspond to two faces that are identical but displaced (mesh centroids of periodic boundaries).

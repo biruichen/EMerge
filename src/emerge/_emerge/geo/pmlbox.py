@@ -106,7 +106,7 @@ def _add_pml_layer(center: tuple[float, float, float],
             plate = Plate(np.array([p0x-tW/2, p0y-tD/2, p0z-dz*thickness/2 + dz*(n+1)*thl]), ax1, ax2)
             planes.append(plate)
     
-    pml_box.material = Material(_neff=np.sqrt(material.er*material.ur), _fer=ermat, _fur=urmat)
+    pml_box.material = Material(_neff=np.sqrt(material.er*material.ur), _fer=ermat, _fur=urmat, color='#bbbbff', opacity=0.1)
     pml_box.max_meshsize = thickness/N_mesh_layers
     pml_box._embeddings = planes
     

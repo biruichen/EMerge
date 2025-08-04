@@ -31,8 +31,8 @@ from typing import Literal, Type, Generator, Any
 from loguru import logger
 import numpy as np
 import sys
-import gmsh
-import joblib
+import gmsh # type: ignore
+import joblib # type: ignore
 import os
 import inspect
 from pathlib import Path
@@ -94,15 +94,14 @@ class Simulation3D:
         
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
-        self.display: PVDisplay = None
         self.set_loglevel(loglevel)
 
         ## STATES
         self.__active: bool = False
         self._defined_geometries: bool = False
-        self._cell: PeriodicCell = None
+        self._cell: PeriodicCell | None = None
 
-        self.display = PVDisplay(self.mesh)
+        self.display: PVDisplay = PVDisplay(self.mesh)
 
         if logfile:
             self.set_logfile()
@@ -203,7 +202,9 @@ class Simulation3D:
         if self.save_file:
             self.save()
         # Finalize GMSH
-        gmsh.finalize()
+        if gmsh.isInitialized():
+            gmsh.finalize()
+
         logger.debug('GMSH Shut down successful')
         # set the state to active
         self.__active = False
@@ -214,28 +215,22 @@ class Simulation3D:
 
     def all_geometries(self) -> list[GeoObject]:
         """Returns all geometries stored in the simulation file."""
-        return [obj for obj in self.sim.default.values() if isinstance(obj, GeoObject)]
+        return [obj for obj in self.data.sim.default.values() if isinstance(obj, GeoObject)]
     
     def all_bcs(self) -> list[BoundaryCondition]:
         """Returns all boundary condition objects stored in the simulation file"""
-        return [obj for obj in self.sim.default.values() if isinstance(obj, BoundaryCondition)]
+        return [obj for obj in self.data.sim.default.values() if isinstance(obj, BoundaryCondition)]
     
     def _set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
         self.mesh = mesh
         self.mw.mesh = mesh
-        self.mesher.mesh = mesh
         self.display._mesh = mesh
     
     ############################################################
     #                       PUBLIC FUNCTIONS                  #
     ############################################################
 
-    @property
-    def passed_geometries(self) -> list[GeoObject]:
-        """"""
-        return self.data.sim['geometries']
-    
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
         # Ensure directory exists
@@ -298,7 +293,7 @@ class Simulation3D:
         LOG_CONTROLLER.set_write_file(self.modelpath)
         
     def view(self, 
-             selections: list[Selection] = None, 
+             selections: list[Selection] | None = None, 
              use_gmsh: bool = False,
              volume_opacity: float = 0.1,
              surface_opacity: float = 1,
@@ -317,12 +312,8 @@ class Simulation3D:
             gmsh.fltk.run()
             return
         try:
-            for obj in self.data.sim['geometries']:
-                if obj.dim==2:
-                    opacity=surface_opacity
-                elif obj.dim==3:
-                    opacity=volume_opacity
-                self.display.add_object(obj, show_edges=show_edges, opacity=opacity)
+            for geo in _GEOMANAGER.all_geometries():
+                self.display.add_object(geo)
             if selections:
                 [self.display.add_object(sel, color='red', opacity=0.7) for sel in selections]
             self.display.show()
@@ -331,7 +322,7 @@ class Simulation3D:
             logger.warning('The provided BaseDisplay class does not support object display. Please make' \
             'sure that this method is properly implemented.')
     
-    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
+    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] | None = None):
         """Set the given periodic cell object as the simulations peridicity.
 
         Args:
@@ -341,18 +332,20 @@ class Simulation3D:
         self.mw.bc._cell = cell
         self._cell = cell
 
-    def commit_geometry(self, *geometries: list[GeoObject]) -> None:
+    def commit_geometry(self, *geometries: GeoObject | list[GeoObject]) -> None:
         """Finalizes and locks the current geometry state of the simulation.
 
         The geometries may be provided (legacy behavior) but are automatically managed underwater.
         
         """
+        geometries_parsed: Any = None
         if not geometries:
-            geometries = _GEOMANAGER.all_geometries()
+            geometries_parsed = _GEOMANAGER.all_geometries()
         else:
-            geometries = unpack_lists(geometries + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
-        self.data.sim['geometries'] = geometries
-        self.mesher.submit_objects(geometries)
+            geometries_parsed = unpack_lists(geometries + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
+        
+        self.data.sim['geometries'] = geometries_parsed
+        self.mesher.submit_objects(geometries_parsed)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
           
@@ -440,7 +433,7 @@ class Simulation3D:
             if len(dims_flat)==1:
                 yield dims_flat[0][i_iter]
             else:
-                yield (dim[i_iter] for dim in dims_flat)
+                yield (dim[i_iter] for dim in dims_flat) # type: ignore
         self.mw.cache_matrices = True
 
     ############################################################

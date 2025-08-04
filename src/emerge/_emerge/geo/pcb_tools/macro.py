@@ -25,8 +25,8 @@ def rotation_angle(a: tuple[float, float], b: tuple[float, float]) -> float:
 @dataclass
 class Instruction:
     instr: str
-    args: tuple[int]
-    kwargs: dict[str,float] = None
+    args: tuple[int | float, ...]
+    kwargs: dict[str,float] | None = None
 
     def __post_init__(self):
         if self.kwargs is None:
@@ -37,33 +37,34 @@ char_class = ''.join(re.escape(c) for c in symbols)
 
 pattern = re.compile(rf'([{char_class}])([\d\,\.\-]+)')
 
-def parse_macro(pathstring: str, width: int, direction: tuple[float, float]) -> list[Instruction]:
+def parse_macro(pathstring: str, width: int | float, direction: tuple[float, float]) -> list[Instruction]:
     instructions = pattern.findall(pathstring.replace(' ',''))
     
     oi = []
     for com, val in instructions:
         if ',' in val:
-            ival, width = [float(x) for x in val.split(',')]
+            val_list: list[float] = [float(x) for x in val.split(',')]
+            ival, width = val_list[0], val_list[1]
         else:
             ival = float(val)
         if com == '=':
-            oi.append(Instruction('straight',(ival,),{'width': width}))
+            oi.append(Instruction('straight',(ival,),{'width': width})) #type: ignore
         elif com == '>':
-            oi.append(Instruction('turn',(rotation_angle(direction,(1,0)),) ))
+            oi.append(Instruction('turn',(rotation_angle(direction, (1., 0.)),) ))
             oi.append(Instruction('straight',(ival,),{'width': width}))
-            direction = (1,0)
+            direction = (1. ,0. )
         elif com == '<':
-            oi.append(Instruction('turn',(rotation_angle(direction,(-1,0)),) ))
+            oi.append(Instruction('turn',(rotation_angle(direction, (-1., 0.)),) ))
             oi.append(Instruction('straight',(ival,),{'width': width}))
-            direction = (-1,0)
+            direction = (-1.,0.)
         elif com == 'v':
-            oi.append(Instruction('turn',(rotation_angle(direction,(0,-1)),) ))
+            oi.append(Instruction('turn',(rotation_angle(direction, (0.,-1.)),) ))
             oi.append(Instruction('straight',(ival,),{'width': width}))
-            direction = (0,-1)
+            direction = (0.,-1.)
         elif com == '^':
-            oi.append(Instruction('turn',(rotation_angle(direction,(0,1)),) ))
+            oi.append(Instruction('turn',(rotation_angle(direction, (0.,1.)),) ))
             oi.append(Instruction('straight',(ival,),{'width': width}))
-            direction = (0,1)
+            direction = (0.,1.)
         elif com == '\\':
             oi.append(Instruction('turn',(90,) ))
             oi.append(Instruction('straight',(ival,),{'width': width}))

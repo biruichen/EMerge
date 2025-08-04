@@ -120,7 +120,7 @@ XAX: Axis = Axis(np.array([1, 0, 0]))
 YAX: Axis = Axis(np.array([0, 1, 0]))
 ZAX: Axis = Axis(np.array([0, 0, 1]))
 
-def _parse_vector(vec: np.ndarray | tuple | list | Axis) -> np.ndarray:
+def _parse_vector(vec: np.ndarray | tuple[float, float, float] | list[float] | Axis) -> np.ndarray:
     """ Takes an array, tuple, list or Axis and alwasys returns an array."""
     if isinstance(vec, np.ndarray):
         return vec
@@ -130,7 +130,7 @@ def _parse_vector(vec: np.ndarray | tuple | list | Axis) -> np.ndarray:
         return vec.vector
     return None
 
-def _parse_axis(vec: np.ndarray | tuple | list | Axis) -> Axis:
+def _parse_axis(vec: np.ndarray | tuple[float, float, float] | list[float] | Axis) -> Axis:
     """Takes an array, tuple, list or Axis and always returns an Axis.
 
     Args:

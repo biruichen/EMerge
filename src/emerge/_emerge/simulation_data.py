@@ -84,7 +84,7 @@ def generate_ndim(
     outer_data: dict[str, list[float]],
     inner_data: list[float],
     outer_labels: tuple[str, ...]
-) -> np.ndarray:
+) -> tuple[np.ndarray,...]:
     """
     Generates an N-dimensional grid of values from flattened data, and returns each axis array plus the grid.
 
@@ -126,7 +126,7 @@ def generate_ndim(
     grid[tuple(idxs)] = values
 
     # Return each axis array followed by the grid
-    return (*axes, grid)
+    return tuple(axes) + (grid,)
 
 
 class DataEntry:
@@ -142,7 +142,7 @@ class DataEntry:
 
     def values(self) -> list[Any]:
         """ Return all values stored in the DataEntry"""
-        return self.data.values()
+        return list(self.data.values())
     
     def keys(self) -> list[str]:
         """ Return all names of data stored in the DataEntry"""
@@ -150,12 +150,15 @@ class DataEntry:
     
     def items(self) -> list[tuple[str, Any]]:
         """ Returns a list of all key: value pairs of the DataEntry."""
+        return list(self.data.items())
     
-    def __eq__(self, other: dict[str, float]) -> bool:
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, dict):
+            return False
         allkeys = set(list(self.vars.keys()) + list(other.keys()))
         return all(self.vars[key]==other[key] for key in allkeys)
     
-    def _dist(self, other: dict[str, float]) -> bool:
+    def _dist(self, other: dict[str, float]) -> float:
         return sum([(abs(self.vars.get(key,1e20)-other[key])/other[key]) for key in other.keys()])
     
     def __getitem__(self, key) -> Any:
@@ -218,18 +221,18 @@ class DataContainer:
     
 
 class BaseDataset(Generic[T,M]):
-    def __init__(self, datatype: T, matrixtype: M, scalar: bool):
+    def __init__(self, datatype: type[T], matrixtype: type[M], scalar: bool):
         self._datatype: type[T] = datatype
         self._matrixtype: type[M] = matrixtype
         self._variables: list[dict[str, float]] = []
         self._data_entries: list[T] = []
         self._scalar: bool = scalar
         
-        self._gritted: bool = None
-        self._axes: dict[str, np.ndarray] = None
-        self._ax_ids: dict[str, int] = None
-        self._ids: np.ndarray = None
-        self._gridobj: M = None
+        self._gritted: bool | None = None
+        self._axes: dict[str, np.ndarray]| None = None
+        self._ax_ids: dict[str, int]| None = None
+        self._ids: np.ndarray| None = None
+        self._gridobj: M | None = None
 
         self._data: dict[str, Any] = dict()
     
@@ -238,11 +241,11 @@ class BaseDataset(Generic[T,M]):
 
     @property
     def _fields(self) -> list[str]:
-        return self._datatype._fields
+        return self._datatype._fields # type: ignore
     
     @property
     def _copy(self) -> list[str]:
-        return self._datatype._copy
+        return self._datatype._copy # type: ignore
     
     def store(self, key: str, value: Any) -> None:
         """Stores a variable with some value in the provided key. 
@@ -335,7 +338,7 @@ class BaseDataset(Generic[T,M]):
         self._data_entries.append(new_entry)
         return new_entry
     
-    def _grid_axes(self) -> None:
+    def _grid_axes(self) -> bool:
         """This method attepmts to create a gritted version of the scalar dataset
 
         Returns:
@@ -394,7 +397,7 @@ class BaseDataset(Generic[T,M]):
         return True
     
     @property
-    def grid(self) -> M:
+    def grid(self) -> M | None:
         """Returns the gridded version of the scalar dataset.
 
         Raises:

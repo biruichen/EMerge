@@ -17,39 +17,39 @@
 
 import numpy as np
 import os
-from scipy.sparse import csr_matrix, save_npz, load_npz
+from scipy.sparse import csr_matrix, save_npz, load_npz # type: ignore
 from ...solver import SolveReport
 
 class SimJob:
 
     def __init__(self, 
                  A: csr_matrix,
-                 b: np.ndarray,
+                 b: np.ndarray | None,
                  freq: float,
                  cache_factorization: bool,
                  B: csr_matrix = None
                  ):
 
         self.A: csr_matrix = A
-        self.B: csr_matrix = B
-        self.b: np.ndarray = b
-        self.P: csr_matrix = None
-        self.Pd: csr_matrix = None
+        self.B: csr_matrix | None = B
+        self.b: np.ndarray | None = b
+        self.P: csr_matrix | None= None
+        self.Pd: csr_matrix | None = None
         self.has_periodic: bool = False
 
         self.freq: float = freq
         self.k0: float = 2*np.pi*freq/299792458
         self.cache_factorization: bool = cache_factorization
         self._fields: dict[int, np.ndarray] = dict()
-        self.port_vectors: dict = None
-        self.solve_ids = None
+        self.port_vectors: dict | None = None
+        self.solve_ids: np.ndarray | None = None
 
-        self.store_limit = None
-        self.relative_path = None
-        self._store_location = {}
+        self.store_limit: int | None = None
+        self.relative_path: str | None  = None
+        self._store_location: dict = {}
         self._stored: bool = False
 
-        self._active_port: int = None
+        self._active_port: int = -1
         self.reports: list[SolveReport] = []
         self.id: int = -1
         self.store_if_needed()

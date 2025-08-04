@@ -1,5 +1,5 @@
-from .cs import Axis, _parse_axis, GCS
-from .selection import FaceSelection, SELECTOR_OBJ
+from .cs import Axis, _parse_axis, GCS, _parse_vector
+from .selection import FaceSelection, SELECTOR_OBJ, Selection
 from .geo import GeoPrism, XYPolygon, Alignment, XYPlate
 from .bc import BoundaryCondition
 from typing import Generator
@@ -21,7 +21,7 @@ def _rotnorm(v: np.ndarray) -> np.ndarray:
     ax = ax/np.linalg.norm(ax)
     return ax
 
-def _pair_selection(f1: FaceSelection, f2: FaceSelection, translation: tuple[float, float, float]):
+def _pair_selection(f1: Selection, f2: Selection, translation: tuple[float, float, float]):
     if len(f1.tags) == 1:
         return [f1,], [f2,]
     c1s = [np.array(c) for c in f1.centers]
@@ -32,8 +32,8 @@ def _pair_selection(f1: FaceSelection, f2: FaceSelection, translation: tuple[flo
     for t1, c1 in zip(f1.tags, c1s):
         for t2, c2 in zip(f2.tags, c2s):
             if np.linalg.norm((c1 + ds)-c2) < 1e-6:
-                f1s.append(FaceSelection([t1,]))
-                f2s.append(FaceSelection([t2,]))
+                f1s.append(Selection([t1,]))
+                f2s.append(Selection([t2,]))
     return f1s, f2s
 
 
@@ -42,15 +42,16 @@ def _pair_selection(f1: FaceSelection, f2: FaceSelection, translation: tuple[flo
 #                 BASE PERIODIC CELL CLASS                #
 ############################################################
 
-
+# TODO: This must be moved to mw physics if possible
 class PeriodicCell:
 
     def __init__(self, 
-                 origins: list[tuple[float, float, float]],
-                 vectors: list[tuple[float, float, float] | Axis]):
-        self.origins: list[tuple[float, float, float]] = origins
+                 origins: list[tuple[float, float, float] | list[float] | np.ndarray | Axis],
+                 vectors: list[tuple[float, float, float] | list[float] | np.ndarray | Axis]):
+
+        self.origins: list[tuple[float, float, float]] = [_parse_vector(origin) for origin in origins] # type: ignore
         self.vectors: list[Axis] = [_parse_axis(vec) for vec in vectors]
-        self.excluded_faces: FaceSelection = None
+        self.excluded_faces: Selection | None = None
         self._bcs: list[Periodic] = []
         self._ports: list[BoundaryCondition] = []
 
@@ -71,7 +72,7 @@ class PeriodicCell:
         """
         raise NotImplementedError('This method is not implemented for this subclass.')
     
-    def cell_data(self) -> Generator[tuple[FaceSelection,FaceSelection,tuple[float, float, float]], None, None]:
+    def cell_data(self) -> Generator[tuple[Selection, Selection, np.ndarray], None, None]:
         """An iterator that yields the two faces of the hex cell plus a cell periodicity vector
 
         Yields:
@@ -84,15 +85,17 @@ class PeriodicCell:
         """
         bcs = []
         for f1, f2, a in self.cell_data():
+            f1_new = f1
+            f2_new = f2
             if self.excluded_faces is not None:
-                f1 = f1 - self.excluded_faces
-                f2 = f2 - self.excluded_faces
-            bcs.append(Periodic(f1, f2, a))
+                f1_new = f1 - self.excluded_faces # type: ignore
+                f2_new = f2 - self.excluded_faces # type: ignore
+            bcs.append(Periodic(f1_new, f2_new, tuple(a)))
         self._bcs = bcs
         return bcs
     
     @property
-    def bcs(self) -> list[Periodic]:
+    def bcs(self) -> list[BoundaryCondition]:
         """Returns a list of Periodic boundary conditions for the given PeriodicCell
 
         Args:
@@ -103,7 +106,7 @@ class PeriodicCell:
         """
         if not self._bcs:
             raise ValueError('Periodic Boundary conditions not generated')
-        return self._bcs + self._ports
+        return self._bcs + self._ports # type: ignore
     
     def set_scanangle(self, theta: float, phi: float, degree: bool = True) -> None:
         """Sets the scanangle for the periodic condition. (0,0) is defined along the Z-axis
@@ -126,8 +129,8 @@ class PeriodicCell:
             bc.uy = uy
             bc.uz = uz
         for port in self._ports:
-            port.scan_theta = theta
-            port.scan_phi = phi
+            port.scan_theta = theta # type: ignore
+            port.scan_phi = phi # type: ignore
 
     def port_face(self, z: float):
         raise NotImplementedError('')
@@ -200,9 +203,9 @@ class RectCell(PeriodicCell):
 class HexCell(PeriodicCell):
 
     def __init__(self,
-                 p1: tuple[float, float, float],
-                 p2: tuple[float, float, float],
-                 p3: tuple[float, float, float]):
+                 point1: tuple[float, float, float],
+                 point2: tuple[float, float, float],
+                 point3: tuple[float, float, float]):
         """Generates a Hexagonal periodic tiling by providing 4 coordinates. The layout of the tiling is as following
         Assuming a hexagon with a single vertext at the top and bottom and two vertices on the left and right faces ⬢
 
@@ -211,7 +214,7 @@ class HexCell(PeriodicCell):
             p2 (tuple[float, float, float]): left face bottom vertex
             p3 (tuple[float, float, float]): bottom vertex
         """
-        p1, p2, p3 = [np.array(p) for p in [p1, p2, p3]]
+        p1, p2, p3 = np.array(point1), np.array(point2), np.array(point3)
         p4 = -p1
         self.p1: np.ndarray = p1
         self.p2: np.ndarray = p2
@@ -240,7 +243,7 @@ class HexCell(PeriodicCell):
         poly = XYPolygon(xs, ys).geo(GCS.displace(0,0,zs[0]))
         return poly
     
-    def cell_data(self) -> Generator[FaceSelection, FaceSelection, np.ndarray]:
+    def cell_data(self) -> Generator[tuple[Selection, Selection, np.ndarray], None, None]:
         nrm = np.linalg.norm
 
         o = self.o1[:-1]
@@ -250,7 +253,7 @@ class HexCell(PeriodicCell):
         f2s = SELECTOR_OBJ.inplane(*self.f12[0], *self.f12[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p1 + self.p2)
 
-        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)): # type: ignore
             yield f1, f2, vec
 
         o = self.o2[:-1]
@@ -259,7 +262,7 @@ class HexCell(PeriodicCell):
         f1s = SELECTOR_OBJ.inplane(*self.f21[0], *self.f21[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
         f2s = SELECTOR_OBJ.inplane(*self.f22[0], *self.f22[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p2 + self.p3)
-        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)): # type: ignore
             yield f1, f2, vec
         
         o = self.o3[:-1]
@@ -268,18 +271,18 @@ class HexCell(PeriodicCell):
         f1s = SELECTOR_OBJ.inplane(*self.f31[0], *self.f31[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
         f2s = SELECTOR_OBJ.inplane(*self.f32[0], *self.f32[1]).exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p3 - self.p1)
-        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
+        for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)): # type: ignore
             yield f1, f2, vec
 
     def volume(self, 
                z1: float,
                z2: float) -> GeoPrism:
         xs, ys, zs = zip(self.p1, self.p2, self.p3)
-        xs = np.array(xs)
-        ys = np.array(ys)
-        xs = np.concatenate([xs, -xs])
-        ys = np.concatenate([ys, -ys])
-        poly = XYPolygon(xs, ys)
+        xs2 = np.array(xs) # type: ignore
+        ys2 = np.array(ys) # type: ignore
+        xs3 = np.concatenate([xs2, -xs2]) # type: ignore
+        ys3 = np.concatenate([ys2, -ys2]) # type: ignore
+        poly = XYPolygon(xs3, ys3)
         length = z2-z1
         return poly.extrude(length, cs=GCS.displace(0,0,z1))
     

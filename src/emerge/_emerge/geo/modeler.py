@@ -57,14 +57,13 @@ def get_count(args) -> int:
             return get_count(arg)
     return 1
 
-def get_item(value, n: int):
+def get_item(value: Number | Series | list, n: int) -> Number | Series | Iterable | None:
     if isinstance(value, Number):
         return value
     elif isinstance(value, Series):
         return value[n]
     elif isinstance(value, Iterable):
-        typ = type(value)
-        return typ([get_item(v,n) for v in value])
+        return type(value)([get_item(v, n) for v in value])
     return None
 
 def unpack(*args):
@@ -86,7 +85,7 @@ class PartialFunction:
         self.identity: bool = identity
         self.permute: bool = permute
         self.N: int = 1
-        self.kwargset: list[dict] = None
+        self.kwargset: list[dict] | None = None
 
         for key, value in self.kwargs.items():
             if not isinstance(value, Series):
@@ -98,7 +97,7 @@ class PartialFunction:
             self.N = self.N + 1
     
     def _compile(self) -> None:
-        kwargset = []
+        kwargset: list = []
         N = self.N
 
         if self.identity:
@@ -116,7 +115,8 @@ class PartialFunction:
         self.kwargset = kwargset
 
     def __call__(self, objects: list[GeoObject], index: int) -> list[GeoObject]:
-        
+        if self.kwargset is None:
+            raise ValueError('self.kwargset is not yet defined.')
         kwargs = self.kwargset[index]
         if kwargs is None:
             return objects
@@ -159,7 +159,7 @@ class NDimContainer:
         return n
     
     @property
-    def dimtup(self) -> tuple[int]:
+    def dimtup(self) -> tuple[int, ...]:
         """A dimension tuple containing the dimensions of the NDimContainer
 
         Returns:
@@ -179,7 +179,7 @@ class NDimContainer:
                 self.expanded_dims.append((i,n,N))
         
         if self.Ncopies > 1:
-            self.expanded_dims.append((i+1, (1, self.Ncopies)))
+            self.expanded_dims.append((i+1, 1, self.Ncopies))
 
         self.map = np.arange(self.Ntot).reshape(self.dimtup)
 
@@ -215,7 +215,7 @@ class NDimContainer:
             number: int) -> list:
         dimindex, niter, Nvariations = self.expanded_dims[dim_ex_dim]
         slclist = [slice(None) for _ in self.dimensions]
-        slclist[dimindex] = number
+        slclist[dimindex] = number # type: ignore
         return list(self.map[tuple(slclist)].flatten())
         
         
@@ -286,7 +286,7 @@ class Modeler:
         tags = []
         for obj in objs:
             tags.extend(obj.tags)
-        gmshobj = GeoObject.from_dimtags(objs[0].dim, tags)
+        gmshobj = GeoObject.from_dimtags([(objs[0].dim, tag) for tag in tags])
         for obj in objs:
             gmshobj._take_tools(obj)
         return gmshobj
@@ -388,12 +388,12 @@ class Modeler:
                   position: tuple[float | Series, float | Series, float | Series],
                   cs: CoordinateSystem = GCS,
                   merge: bool = False,
-                  NPoly: int = False):
+                  NPoly: int = False) -> GeoVolume | list[GeoVolume]:
         
         N_objects = self.nvars()
         Rs, Hs, Ps = unpack(radius, height, position)
         N = len(Rs)
-        cyls = []
+        cyls: list[GeoObject] = []
         
         for _ in range(N_objects):
             for r,h,p in zip(Rs, Hs, Ps):
@@ -408,7 +408,7 @@ class Modeler:
         self._apply_presteps(cyls)
 
         if merge:
-            cyls = self._merge_object(cyls)
+            return self._merge_object(cyls)
         
         return cyls
     
@@ -434,7 +434,7 @@ class Modeler:
         N_objects = self.nvars()
         Ws, Ds, Hs, Ps = unpack(width, depth, height, position)
         N = len(Ws)
-        boxes = []
+        boxes: list[GeoVolume] = []
         
         for _ in range(N_objects):
             for w, d, h, p in zip(Ws, Ds, Hs, Ps):
@@ -444,6 +444,6 @@ class Modeler:
         self._apply_presteps(boxes)
 
         if merge:
-            boxes = self._merge_object(boxes)
+            return self._merge_object(boxes)
         
         return boxes

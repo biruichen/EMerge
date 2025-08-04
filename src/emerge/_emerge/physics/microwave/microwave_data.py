@@ -128,7 +128,7 @@ def generate_ndim(
     outer_data: dict[str, list[float]],
     inner_data: list[float],
     outer_labels: tuple[str, ...]
-) -> np.ndarray:
+) -> tuple[np.ndarray,...]:
     """
     Generates an N-dimensional grid of values from flattened data, and returns each axis array plus the grid.
 
@@ -231,10 +231,10 @@ class Sparam:
 
 @dataclass
 class PortProperties:
-    port_number: int | None = None
+    port_number: int = -1
     k0: float | None= None
     beta: float | None = None
-    Z0: float | None = None
+    Z0: float | complex | None = None
     Pout: float | None = None
     mode_number: int = 1
 
@@ -259,7 +259,7 @@ class FarfieldData:
 
     def surfplot(self, 
              polarization: Literal['Ex','Ey','Ez','Etheta','Ephi','normE'], 
-             isotropic: bool = True, dB: bool = False, dBfloor: float = -30, rmax: float = None,
+             isotropic: bool = True, dB: bool = False, dBfloor: float = -30, rmax: float | None = None,
              offset: tuple[float, float, float] = (0,0,0)) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Returns the parameters to be used as positional arguments for the display.add_surf() function.
 
@@ -345,7 +345,7 @@ class EHField:
     
     @property
     def Dy(self) -> np.ndarray:
-        return self.Et*self.er
+        return self.Ey*self.er
     
     @property
     def Dz(self) -> np.ndarray:
@@ -499,16 +499,16 @@ class EHField:
         Returns:
             (X,Y,Z,Field): The coordinates plus field scalar
         """
-        field = getattr(self, field)
+        field_arry = getattr(self, field)
         if metric=='abs':
-            field = np.abs(field)
+            field = np.abs(field_arry)
         elif metric=='real':
-            field = field.real
+            field = field_arry.real
         elif metric=='imag':
-            field = field.imag
+            field = field_arry.imag
         elif metric=='complex':
-            field = field
-        return self.x, self.y, self.z, field
+            field = field_arry
+        return self.x, self.y, self.z, field_arry
 
 class _EHSign:
     """A small class to manage the sign of field components when computing the far-field with Stratton-Chu
@@ -588,7 +588,7 @@ class MWField:
                             mode_number: int,
                             k0: float,
                             beta: float,
-                            Z0: float,
+                            Z0: float | complex | None,
                             Pout: float) -> None:
         self.port_modes.append(PortProperties(port_number=port_number,
                                               mode_number=mode_number,
@@ -609,7 +609,7 @@ class MWField:
     def _field(self) -> np.ndarray:
         if self._mode_field is not None:
             return self._mode_field
-        return sum([self.excitation[mode.port_number]*self._fields[mode.port_number] for mode in self.port_modes]) 
+        return sum([self.excitation[mode.port_number]*self._fields[mode.port_number] for mode in self.port_modes]) # type: ignore
     
     def set_field_vector(self) -> None:
         """Defines the default excitation coefficients for the current dataset"""
@@ -678,9 +678,9 @@ class MWField:
 
     def cutplane(self, 
                      ds: float,
-                     x: float=None,
-                     y: float=None,
-                     z: float=None) -> EHField:
+                     x: float | None = None,
+                     y: float | None = None,
+                     z: float | None = None) -> EHField:
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
@@ -765,8 +765,8 @@ class MWField:
                          faces: FaceSelection | GeoSurface,
                          ang_range: tuple[float, float] = (-180, 180),
                          Npoints: int = 201,
-                         origin: tuple[float, float, float] = None,
-                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                         origin: tuple[float, float, float] | None = None,
+                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute the farfield electric and magnetic field defined by a circle.
 
         Args:
@@ -782,18 +782,18 @@ class MWField:
             tuple[np.ndarray, np.ndarray, np.ndarray]: _description_
         """
         refdir = _parse_axis(ref_direction).np
-        plane_normal = _parse_axis(plane_normal).np
-        theta, phi = arc_on_plane(refdir, plane_normal, ang_range, Npoints)
+        plane_normal_parsed = _parse_axis(plane_normal).np
+        theta, phi = arc_on_plane(refdir, plane_normal_parsed, ang_range, Npoints)
         E,H = self.farfield(theta, phi, faces, origin, syms = syms)
         angs = np.linspace(*ang_range, Npoints)*np.pi/180
         return angs, E ,H
 
     def farfield_3d(self, 
                     faces: FaceSelection | GeoSurface,
-                    thetas: np.ndarray = None,
-                    phis: np.ndarray = None,
-                    origin: tuple[float, float, float] = None,
-                    syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> FarfieldData:
+                    thetas: np.ndarray | None = None,
+                    phis: np.ndarray | None = None,
+                    origin: tuple[float, float, float] | None = None,
+                    syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarfieldData:
         """Compute the farfield in a 3D angular grid
 
         If thetas and phis are not provided, they default to a sample space of 2 degrees.
@@ -823,8 +823,8 @@ class MWField:
     def farfield(self, theta: np.ndarray,
                  phi: np.ndarray,
                  faces: FaceSelection | GeoSurface,
-                 origin: tuple[float, float, float] = None,
-                 syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] = None) -> tuple[np.ndarray, np.ndarray]:
+                 origin: tuple[float, float, float] | None = None,
+                 syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> tuple[np.ndarray, np.ndarray]:
         """Compute the farfield at the provided theta/phi coordinates
 
         Args:
@@ -874,7 +874,7 @@ class MWField:
         
         return Eff, Hff
 
-    def optycal(self, faces: FaceSelection | GeoSurface = None) -> tuple:
+    def optycal(self, faces: FaceSelection | GeoSurface | None = None) -> tuple:
         """Export this models exterior to an Optical acceptable dataset
 
         Args:
@@ -953,7 +953,7 @@ class MWScalar:
                             mode_number: int,
                             k0: float,
                             beta: float,
-                            Z0: float,
+                            Z0: float | complex,
                             Pout: float) -> None:
         i = self._portmap[port_number]
         self.beta[i] = beta
@@ -1026,9 +1026,9 @@ class MWScalarNdim:
 
     def export_touchstone(self, 
                             filename: str,
-                            Z0ref: float = None,
+                            Z0ref: float | None = None,
                             format: Literal['RI','MA','DB'] = 'RI',
-                            custom_comments: list[str] = None,
+                            custom_comments: list[str] | None = None,
                             funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ'):
         """Export the S-parameter data to a touchstone file
 
@@ -1063,9 +1063,9 @@ class MWScalarNdim:
                         filename: str,
                         Smatrix: np.ndarray,
                         frequencies: np.ndarray, 
-                        Z0ref: float = None,
+                        Z0ref: float | None = None,
                         format: Literal['RI','MA','DB'] = 'RI',
-                        custom_comments: list[str] = None,
+                        custom_comments: list[str] | None = None,
                         funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ') -> None:
         """Save an S-parameter matrix to a touchstone file.
         

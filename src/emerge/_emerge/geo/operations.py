@@ -16,12 +16,12 @@
 # <https://www.gnu.org/licenses/>.
 
 from typing import TypeVar
-from ..geometry import GeoSurface, GeoVolume
+from ..geometry import GeoSurface, GeoVolume, GeoObject, GeoPoint, GeoEdge
 from ..cs import CoordinateSystem, GCS
 import gmsh
 import numpy as np
 
-T = TypeVar('T', GeoSurface, GeoVolume)
+T = TypeVar('T', GeoSurface, GeoVolume, GeoObject, GeoPoint, GeoEdge)
 
 def _gen_mapping(obj_in, obj_out) -> dict:
     tag_mapping: dict[int, dict] = {0: dict(),
@@ -60,7 +60,7 @@ def add(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output
+    return output # type: ignore
 
 def remove(main: T, tool: T, 
              remove_object: bool = True,
@@ -90,7 +90,7 @@ def remove(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output
+    return output # type: ignore
 
 subtract = remove
 
@@ -122,7 +122,7 @@ def intersect(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output
+    return output #type:ignore
 
 def embed(main: GeoVolume, other: GeoSurface) -> None:
     ''' Embeds a surface into a volume in the GMSH model.
@@ -138,7 +138,7 @@ def embed(main: GeoVolume, other: GeoSurface) -> None:
     None
     '''
     gmsh.model.geo.synchronize()
-    gmsh.model.mesh.embed(other.dim, [other.tag,], main.dim, main.tags)
+    gmsh.model.mesh.embed(other.dim, other.tags, main.dim, main.tags)
 
 def rotate(main: GeoVolume, 
            c0: tuple[float, float, float],
@@ -189,10 +189,10 @@ def translate(main: GeoVolume,
 
     return main
 
-def mirror(main: GeoVolume,
+def mirror(main: GeoObject,
            origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
            direction: tuple[float, float, float] = (1.0, 0.0, 0.0),
-           make_copy: bool = True) -> GeoVolume:
+           make_copy: bool = True) -> GeoObject:
     """Mirrors a GeoVolume object along a miror plane defined by a direction originating at a point
 
     Args:
@@ -203,6 +203,9 @@ def mirror(main: GeoVolume,
     Returns:
         GeoVolume: The mirrored GeoVolume object
     """
+    origin = np.array(origin)
+    direction = np.array(direction)
+
     a, b, c = direction
     x0, y0, z0 = origin
     d = -(a*x0 + b*y0 + c*z0)
@@ -220,9 +223,9 @@ def mirror(main: GeoVolume,
         fp.mirror(origin, direction)
     return mirror_obj
 
-def change_coordinate_system(main: GeoVolume,
+def change_coordinate_system(main: GeoObject,
                              new_cs: CoordinateSystem = GCS,
-                             old_cs: CoordinateSystem = GCS):
+                             old_cs: CoordinateSystem = GCS) -> GeoObject:
     """Moves the GeoVolume object from a current coordinate system to a new one.
 
     The old and new coordinate system by default are the global coordinate system.

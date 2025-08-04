@@ -15,12 +15,12 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-import gmsh
+import gmsh # type: ignore
 from .geometry import GeoVolume, GeoObject, GeoSurface
 from .selection import Selection, FaceSelection
 from .periodic import PeriodicCell
 import numpy as np
-from typing import Iterable, Callable
+from typing import Iterable, Callable, Any, TypeVar
 from loguru import logger
 from enum import Enum
 from .bc import Periodic
@@ -55,7 +55,9 @@ _DOM_TO_STR = {
     2: "face",
     3: "volume",
 }
-def unpack_lists(_list: list[list], collector: list = None) -> list:
+
+T = TypeVar('T')
+def unpack_lists(_list: Any, collector: list | None = None) -> list[Any]:
     '''Unpack a recursive list of lists'''
     if collector is None:
         collector = []
@@ -116,7 +118,7 @@ class Mesher:
             raise MeshError('Either maximum or minimum mesh size is undefined. Make sure \
                             to set the simulation frequency range before calling mesh instructions.')
     
-    def submit_objects(self, objects: list[GeoObject]) -> None:
+    def submit_objects(self, objects: GeoObject | list[GeoObject] | list[list[GeoObject]]) -> None:
         """Takes al ist of GeoObjects and computes the fragment. 
 
         Args:
@@ -126,16 +128,15 @@ class Mesher:
             objects = [objects,]
 
         objects = unpack_lists(objects)
-        embeddings = []
-
+        embeddings: list = []
         gmsh.model.occ.synchronize()
 
-        final_dimtags = unpack_lists([domain.dimtags for domain in objects])
+        final_dimtags = unpack_lists([domain.dimtags for domain in objects]) # type: ignore
 
         dom_mapping = dict()
-        for dom in objects:
-            embeddings.extend(dom._embeddings)
-            for dt in dom.dimtags:
+        for dom in objects: # type: ignore
+            embeddings.extend(dom._embeddings) # type: ignore
+            for dt in dom.dimtags: # type: ignore
                 dom_mapping[dt] = dom
         
 
@@ -145,24 +146,24 @@ class Mesher:
                                         1: dict(),
                                         2: dict(),
                                         3: dict()}
-        if len(objects) > 0:
+        if len(objects) > 0: # type: ignore
             dimtags, output_mapping = gmsh.model.occ.fragment(final_dimtags, embedding_dimtags)
 
             for domain, mapping in zip(final_dimtags + embedding_dimtags, output_mapping):
                 tag_mapping[domain[0]][domain[1]] = [o[1] for o in mapping]
-            for dom in objects:
-                dom.update_tags(tag_mapping)
+            for dom in objects: # type: ignore
+                dom.update_tags(tag_mapping) # type: ignore
         else:
             dimtags = final_dimtags
         
-        self.objects = objects
+        self.objects = objects # type: ignore
         
         gmsh.model.occ.synchronize()
 
     def _set_mesh_periodicity(self, 
-                     face1: FaceSelection,
-                     face2: FaceSelection,
-                     lattice: tuple[float,float,float]):
+                     face1: Selection,
+                     face2: Selection,
+                     lattice: np.ndarray):
         translation = [1,0,0,lattice[0],
                        0,1,0,lattice[1],
                        0,0,1,lattice[2],
@@ -175,7 +176,7 @@ class Mesher:
         for tag in obj.tags:
             gmsh.model.mesh.setAlgorithm(obj.dim, tag, algorithm.value)
             
-    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
+    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: Selection | None = None):
         """Sets the periodic cell information based on the PeriodicCell class object"""
         if excluded_faces is None:
             for f1, f2, lat in cell.cell_data():
@@ -246,7 +247,7 @@ class Mesher:
     def set_boundary_size(self, object: GeoSurface | FaceSelection, 
                           size:float,
                           growth_rate: float = 1.4,
-                          max_size: float = None):
+                          max_size: float | None = None):
         """Refine the mesh size along the boundary of a conducting surface
 
         Args:

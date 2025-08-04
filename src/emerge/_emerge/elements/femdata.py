@@ -19,7 +19,7 @@ from __future__ import annotations
 from ..mesh3d import Mesh3D
 import numpy as np
 from typing import Callable
-from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse import csr_matrix # type: ignore
 
 from ..mth.optimized import matmul
 
@@ -31,22 +31,22 @@ class FEMBasis:
         self.n_tris: int = self.mesh.n_tris
         self.n_tets: int = self.mesh.n_tets
 
-        self.n_tet_dofs: int = None
-        self.n_tri_dofs: int = None
+        self.n_tet_dofs: int = -1
+        self.n_tri_dofs: int = -1
 
         self.n_field: int = 2*self.n_edges + 2*self.n_tris
 
-        self.tet_to_field: np.ndarray = None
+        self.tet_to_field: np.ndarray = np.array([])
         
-        self.edge_to_field: np.ndarray = None
+        self.edge_to_field: np.ndarray = np.array([])
 
-        self.tri_to_field: np.ndarray = None
+        self.tri_to_field: np.ndarray = np.array([])
 
-        self._rows: np.ndarray = None
-        self._cols: np.ndarray = None
+        self._rows: np.ndarray = np.array([])
+        self._cols: np.ndarray = np.array([])
         
     
-    def interpolate_Ef(self, field: np.ndarray, basis: np.ndarray = None, origin: np.ndarray = None, tetids: np.ndarray = None) -> Callable:
+    def interpolate_Ef(self, field: np.ndarray, basis: np.ndarray | None = None, origin: np.ndarray | None = None, tetids: np.ndarray | None = None) -> Callable:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
         if basis is None:
             basis = np.eye(3)
@@ -61,14 +61,14 @@ class FEMBasis:
             return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids)))
         return func
     
-    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        pass
+    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        raise NotImplementedError()
     
-    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
         """
-        pass
+        raise NotImplementedError()
     
     def empty_tet_matrix(self) -> np.ndarray:
         nnz = self.n_tets*self.n_tet_dofs**2
@@ -151,7 +151,7 @@ class FEMBasis:
     def interpolate_index(self, xs: np.ndarray,
                     ys: np.ndarray,
                     zs: np.ndarray,
-                    tetids: np.ndarray = None) -> np.ndarray:
+                    tetids: np.ndarray | None = None) -> np.ndarray:
         raise NotImplementedError()
     
     def map_edge_to_field(self, edge_ids: np.ndarray) -> np.ndarray:

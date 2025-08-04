@@ -31,7 +31,7 @@ def generate_touchstone(filename: str,
                         freq: np.ndarray,
                         Smat: np.ndarray,
                         data_format: Literal['RI','MA','DB'],
-                        custom_comments: list[str] = None,
+                        custom_comments: list[str] | None = None,
                         funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ') -> None:
     """
     Export S-parameter data to a Touchstone file

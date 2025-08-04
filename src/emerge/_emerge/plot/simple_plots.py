@@ -36,7 +36,7 @@ ggplot_styles = {
 
 plt.rcParams.update(ggplot_styles)
 
-def _gen_grid(xs: tuple, ys: tuple, N = 201) -> list[np.ndarray]:
+def _gen_grid(xs: tuple, ys: tuple, N = 201) -> list[tuple[np.ndarray, np.ndarray]]:
     """Generate a grid of lines for the Smith Chart
 
     Args:
@@ -279,18 +279,18 @@ def smith(f: np.ndarray, S: np.ndarray) -> None:
 def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray, 
                       dblim=[-40, 5], 
                     xunit="GHz", 
-                    levelindicator: int | float =None, 
+                    levelindicator: int | float | None = None, 
                     noise_floor=-150, 
-                    fill_areas: list[tuple]= None, 
-                    spec_area: list[tuple[float]] = None,
+                    fill_areas: list[tuple] | None = None, 
+                    spec_area: list[tuple[float,...]] | None = None,
                     unwrap_phase=False, 
                     logx: bool = False,
-                    labels: list[str] = None,
-                    linestyles: list[str] = None,
-                    colorcycle: list[int] = None,
-                    filename: str = None,
+                    labels: list[str] | None = None,
+                    linestyles: list[str] | None = None,
+                    colorcycle: list[int] | None = None,
+                    filename: str | None = None,
                     show_plot: bool = True,
-                    figdata: tuple = None) -> None:
+                    figdata: tuple | None = None) -> tuple[plt.Figure, plt.Axes, plt.Axes]:
     """Plot S-parameters in dB and phase
 
     Args:
@@ -321,7 +321,7 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
     if colorcycle is None:
         colorcycle = [i for i, S in enumerate(S)]
 
-    unitdivider = {"MHz": 1e6, "GHz": 1e9, "kHz": 1e3}
+    unitdivider: dict[str, float] = {"MHz": 1e6, "GHz": 1e9, "kHz": 1e3}
     fnew = f / unitdivider[xunit]
 
     if figdata is None:
@@ -372,14 +372,14 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
     # Configure magnitude plot (ax_mag)
     ax_mag.set_ylabel("Magnitude (dB)")
     ax_mag.set_xlabel(f"Frequency ({xunit})")
-    ax_mag.axis([min(fnew), max(fnew), dblim[0], max(maxy*1.1,dblim[1])])
+    ax_mag.axis([min(fnew), max(fnew), dblim[0], max(maxy*1.1,dblim[1])]) # type: ignore
     ax_mag.axhline(y=0, color="k", linewidth=1)
     ax_mag.xaxis.set_minor_locator(tck.AutoMinorLocator(2))
     ax_mag.yaxis.set_minor_locator(tck.AutoMinorLocator(2))
     # Configure phase plot (ax_phase)
     ax_phase.set_ylabel("Phase (degrees)")
     ax_phase.set_xlabel(f"Frequency ({xunit})")
-    ax_phase.axis([min(fnew), max(fnew), minphase, maxphase])
+    ax_phase.axis([min(fnew), max(fnew), minphase, maxphase]) # type: ignore
     ax_phase.xaxis.set_minor_locator(tck.AutoMinorLocator(2))
     ax_phase.yaxis.set_minor_locator(tck.AutoMinorLocator(2))
     if logx:
@@ -532,9 +532,9 @@ def plot_ff_polar(
     markers = _broadcast(markers, None) if markers is not None else [None] * n_series
 
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    ax.set_theta_zero_location(zero_location)
-    ax.set_theta_direction(-1 if clockwise else 1)
-    ax.set_rlabel_position(rlabel_angle)
+    ax.set_theta_zero_location(zero_location) # type: ignore
+    ax.set_theta_direction(-1 if clockwise else 1) # type: ignore
+    ax.set_rlabel_position(rlabel_angle) # type: ignore
 
     for i, Ei in enumerate(E_list):
         mag = np.abs(Ei)
