@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import root, fmin
 import gmsh
 
 from ..cs import CoordinateSystem, GCS, Axis
@@ -30,7 +29,7 @@ from .operations import change_coordinate_system
 from .pcb_tools.macro import parse_macro
 from .pcb_tools.calculator import PCBCalculator
 from loguru import logger
-from typing import Literal, Callable
+from typing import Literal, Callable, overload
 from dataclasses import dataclass
 import math
 
@@ -1206,6 +1205,12 @@ class PCB:
         poly = GeoPolygon([planetag,])
         return poly
     
+    @overload
+    def compile_paths(self, merge: Literal[True]) -> GeoSurface: ...
+    
+    @overload
+    def compile_paths(self, merge: Literal[False] = ...) -> list[GeoSurface]: ...
+
     def compile_paths(self, merge: bool = False) -> list[GeoPolygon] | GeoSurface:
         """Compiles the striplines and returns a list of polygons or asingle one.
 
