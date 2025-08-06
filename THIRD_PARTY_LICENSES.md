@@ -691,14 +691,14 @@ Agreement.
 Intel MKL is redistributable **only under Intel’s terms**; review them carefully
 if you ship binaries.
 
-**Link to full text:** <https://software.intel.com/content/www/us/en/develop/articles/intel-simplified-software-license.html>
+**Link to full text:** <https://software.intel.com/sites/landingpage/pintool/intel-simplified-software-license.txt>
 
 ▼ **BEGIN LICENSE (Intel SSL)**  
 Intel Simplified Software License (Version October 2022)
 
 PIN: Copyright (C) Intel Corporation
 
-Use and Redistribution. You may use and redistribute the software, which is provided in binary form only, (the �Software�), without modification, provided the following conditions are met:
+Use and Redistribution. You may use and redistribute the software, which is provided in binary form only, (the Software), without modification, provided the following conditions are met:
 
 * 	Redistributions must reproduce the above copyright notice and these terms of use in the Software and in the documentation and/or other materials provided with the distribution.
 * 	Neither the name of Intel nor the names of its suppliers may be used to endorse or promote products derived from this Software without specific prior written permission.
@@ -735,5 +735,103 @@ THE UNITED NATIONS CONVENTION ON CONTRACTS FOR THE INTERNATIONAL SALE OF GOODS (
 
 ---
 
+## 6. Apache License 2.0 (“Permissive”)
+
+| Package | Version (optional) |
+|---------|--------------------|
+| **nvmath-python[cu12]** | *any* |
+
+`nvmath-python[cu12]` is redistributable under the Apache License 2.0.
+
+**Link to full text:** <https://www.apache.org/licenses/LICENSE-2.0>
+
+▼ **BEGIN LICENSE (Apache-2.0)**  
+
+-------------------------------------------------------------------------------
+Copyright & License Notice
+-------------------------------------------------------------------------------
+
+Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. ALL RIGHTS RESERVED.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing
+permissions and limitations under the License.
+
+▲ **END LICENSE (Apache-2.0)**
+
+---
+
+## 7. MIT License (“Permissive”)
+
+| Package | Version (optional) |
+|---------|--------------------|
+| **cupy-cuda12x** | *any* |
+
+`cupy-cuda12x` is redistributable under the MIT License.
+
+**Link to full text:** <https://opensource.org/licenses/MIT>
+
+▼ **BEGIN LICENSE (MIT)**  
+
+Copyright (c) 2015 Preferred Infrastructure, Inc.
+Copyright (c) 2015 Preferred Networks, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+▲ **END LICENSE (MIT)**
+
+---
+
+## 8. NVIDIA cuDSS SDK License (“Proprietary”)
+
+| Package | Version (optional) |
+|---------|--------------------|
+| **nvidia-cudss-cu12** | *any* |
+
+`nvidia-cudss-cu12` is provided under NVIDIA’s proprietary cuDSS SDK licence.  
+End-users will be prompted to accept this EULA when `pip` downloads the wheel.
+
+**Link to full text:** <https://docs.nvidia.com/cuda/cudss/license.html>
+
+▼ **BEGIN LICENSE (NVIDIA cuDSS)**  
+
+-------------------------------------------------------------------------------
+Copyright & License Notice
+-------------------------------------------------------------------------------
+
+Copyright © 2023-2025, NVIDIA Corporation & Affiliates. ALL RIGHTS RESERVED.
+
+Licensed under the **“License Agreement for NVIDIA Math Libraries
+Software Development Kits” (v. February 10 2022)**.
+
+**Link to full text:** <https://docs.nvidia.com/cuda/cudss/license.html>
+d
+▲ **END LICENSE (NVIDIA cuDSS)**
+
+---
 
 *Last updated: 2025-08-06*

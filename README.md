@@ -64,3 +64,7 @@ Optional:
 ## NOTICE
 
 First time runs will be very slow because Numba needs to generate local C-compiled functions of the assembler and other mathematical functions. These compilations are chached so this should only take time once.
+
+## Third Party License Notice
+
+“This package depends on Intel® Math Kernel Library (MKL), which is licensed separately under the Intel Simplified Software License (October 2022). Installing with pip will fetch the MKL wheel and prompt you to accept that licence.”

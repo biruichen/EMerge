@@ -1,5 +1,5 @@
 """A Python based FEM solver.
-Copyright (C) 2025  name of Robert Fennis
+Copyright (C) 2025 Robert Fennis
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

@@ -455,15 +455,11 @@ class Mesh3D(Mesh):
         Returns:
             tuple[dict[int, int], np.ndarray, np.ndarray]: The node index mapping and the node index arrays
         """
-
-        def gen_key(coord, mult):
-            return tuple([int(round(c*mult)) for c in coord])
         
-        ftag_to_node = dict()
-        face_dimtags = gmsh.model.get_entities(2)
-
         node_ids_1 = []
         node_ids_2 = []
+
+        face_dimtags = gmsh.model.get_entities(2)
         
         for d,t in face_dimtags:
             domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, t)
@@ -472,19 +468,23 @@ class Mesh3D(Mesh):
                 node_ids_1.extend(node_tags)
             if t in bc.face2.tags:
                 node_ids_2.extend(node_tags)
-            ftag_to_node[t] = node_tags
+
+
+        node_ids_1 = sorted(list(set(node_ids_1)))
+        node_ids_2 = sorted(list(set(node_ids_2)))
         
         all_node_ids = np.unique(np.array(node_ids_1 + node_ids_2))
         dsmin = shortest_distance(self.nodes[:,all_node_ids])
 
-        node_ids_1_arry = np.sort(np.unique(np.array(node_ids_1)))
-        node_ids_2_arry = np.sort(np.unique(np.array(node_ids_2)))
+        node_ids_1_arry = np.array(node_ids_1)
+        node_ids_2_arry = np.array(node_ids_2)
         dv = np.array(bc.dv)
         
         nodemap = pair_coordinates(self.nodes, node_ids_1_arry, node_ids_2_arry, dv, dsmin/2)
         node_ids_2_unsorted = [nodemap[i] for i in sorted(node_ids_1)]
         node_ids_2_sorted = sorted(node_ids_2_unsorted)
         conv_map = {i1: i2 for i1, i2 in zip(node_ids_2_unsorted, node_ids_2_sorted)}
+
         return conv_map, np.array(node_ids_2_unsorted), np.array(node_ids_2_sorted)
 
 
