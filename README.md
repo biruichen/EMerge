@@ -13,19 +13,17 @@ You can now install the basic version of emerge from PyPi!
 ```
 pip install emerge
 ```
-If you want to install the library with PyPardiso on Intel machines, you can install the optional dependency with EMerge using:
-```
-pip install emerge[pypardiso]
-```
 On MacOS and Linux you can install it with the very fast UMFPACK through scikit-umfpack
 
 ```
 pip install emerge[scikit-umfpack]
 ```
-On linux and MacOS with intel or AMD chips you can also include both:
 
+### Experimental
+
+If you have a new NVidia card you can try the first test implementation of the cuDSS solver. The dependencies can be installed through:
 ```
-pip install emerge[scikit-umfpack, pypardiso]
+pip install emerge[cudss]
 ```
 The `scikit-umfpack` solver can be installed on Windows as well from binaries with conda. This is a bit more complicated and is described in the installation guide.
 
@@ -57,10 +55,11 @@ To run this FEM library you need the following libraries
  - matplotlib (for the matplotlib base display)
  - pyvista (for the PyVista base display)
  - numba-progress
+ - mkl (x86 devices only)
 
 Optional:
- - pypardiso
  - scikit-umfpack
+ - cudss
 
 ## NOTICE
 
