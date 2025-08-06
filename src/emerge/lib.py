@@ -1,3 +1,17 @@
+"""
+╔══════════════════════════════════════════════════════════════════════╗
+║  library.py – Material-property database                             ║
+║                                                                      ║
+║  This file is released under CC0 1.0 – Public-Domain Dedication.     ║
+║  You may use, copy, modify, and distribute it without restriction.   ║
+║                                                                      ║
+║  All OTHER files in this repository are proprietary. See LICENSE     ║
+║  at the project root for full terms, conditions, and disclaimers.    ║
+║                                                                      ║
+║  DISCLAIMER: Data herein are provided “as is”, with no warranties.   ║
+║  Verify critical values independently before use.                    ║
+╚══════════════════════════════════════════════════════════════════════╝
+"""
 from ._emerge.material import Material, AIR, COPPER
 from ._emerge.const import C0, Z0, PI, EPS0, MU0
 
@@ -5,11 +19,11 @@ EISO: float = (Z0/(2*PI))**0.5
 EOMNI = (3*Z0/(4*PI))**0.5
 
 
-### MATERIALS 
+##MATERIALS 
 VACUUM = Material(color="#2d8cd5", opacity=0.05)
 
 ############################################################
-#                          METALS                         #
+#                         METALS                         #
 ############################################################
 
 GREY = "#bfbfbf"
@@ -39,22 +53,22 @@ MET_ZIRCONIUM        = Material(cond=2.44e7,  color=GREY, opacity=0.5)
 
 
 ############################################################
-#                      SEMICONDUCTORS                     #
+#                       SEMICONDUCTORS                     #
 ############################################################
 
-SEMI_SILICON       = Material(er=11.7,  tand=0.005,     color="#b4b4b4", opacity=0.5)   # Crystalline Si
-SEMI_SILICON_N     = Material(er=7.5,   tand=0.0003,    color="#a0a0a0", opacity=0.5)   # Silicon Nitride (Si₃N₄)
-SEMI_SILICON_OXIDE = Material(er=3.9,   tand=0.0001,    color="#e0e0e0", opacity=0.5)   # Silicon Dioxide (SiO₂)
+SEMI_SILICON       = Material(er=11.7,  tand=0.005,     color="#b4b4b4", opacity=0.5) #  Crystalline Si
+SEMI_SILICON_N     = Material(er=7.5,   tand=0.0003,    color="#a0a0a0", opacity=0.5) #  Silicon Nitride (Si₃N₄)
+SEMI_SILICON_OXIDE = Material(er=3.9,   tand=0.0001,    color="#e0e0e0", opacity=0.5) #  Silicon Dioxide (SiO₂)
 SEMI_GERMANIUM     = Material(er=16.0,  tand=0.001,     color="#787878", opacity=0.5)
-SEMI_GAAS          = Material(er=13.1,  tand=0.0016,    color="#aa8888", opacity=0.5)   # Gallium Arsenide
-SEMI_GA_N          = Material(er=8.9,   tand=0.002,     color="#8888cc", opacity=0.5)   # Gallium Nitride
-SEMI_INP           = Material(er=12.5,  tand=0.0015,    color="#cc99aa", opacity=0.5)   # Indium Phosphide
-SEMI_ALN           = Material(er=8.6,   tand=0.0003,    color="#ccccee", opacity=0.5)   # Aluminum Nitride
-SEMI_AL2O3         = Material(er=9.8,   tand=0.0002,    color="#eaeaea", opacity=0.5)   # Alumina
+SEMI_GAAS          = Material(er=13.1,  tand=0.0016,    color="#aa8888", opacity=0.5) #  Gallium Arsenide
+SEMI_GA_N          = Material(er=8.9,   tand=0.002,     color="#8888cc", opacity=0.5) #  Gallium Nitride
+SEMI_INP           = Material(er=12.5,  tand=0.0015,    color="#cc99aa", opacity=0.5) #  Indium Phosphide
+SEMI_ALN           = Material(er=8.6,   tand=0.0003,    color="#ccccee", opacity=0.5) #  Aluminum Nitride
+SEMI_AL2O3         = Material(er=9.8,   tand=0.0002,    color="#eaeaea", opacity=0.5) #  Alumina
 SEMI_SAPPHIRE      = Material(er=9.4,   tand=0.0001,    color="#ddddff", opacity=0.5)
-SEMI_DIAMOND       = Material(er=5.5,   tand=0.00005,   color="#cceeff", opacity=0.5)   # Synthetic CVD diamond
-SEMI_HBN           = Material(er=4.0,   tand=0.0001,    color="#eeeeff", opacity=0.5)   # Hexagonal Boron Nitride
-SEMI_SIOXNY        = Material(er=5.0,   tand=0.002,     color="#ddddee", opacity=0.5)   # Silicon Oxynitride (SiOxNy)
+SEMI_DIAMOND       = Material(er=5.5,   tand=0.00005,   color="#cceeff", opacity=0.5) #  Synthetic CVD diamond
+SEMI_HBN           = Material(er=4.0,   tand=0.0001,    color="#eeeeff", opacity=0.5) #  Hexagonal Boron Nitride
+SEMI_SIOXNY        = Material(er=5.0,   tand=0.002,     color="#ddddee", opacity=0.5) #  Silicon Oxynitride (SiOxNy)
 
 ############################################################
 #                          LIQUIDS                         #
@@ -62,7 +76,6 @@ SEMI_SIOXNY        = Material(er=5.0,   tand=0.002,     color="#ddddee", opacity
 
 LIQ_WATER     = Material(er=80.1,    cond=0.0,  color="#0080ff", opacity=0.3)
 LIQ_FERRITE   = Material(er=12.0,    ur=2000, tand=0.02, color="#994d4d", opacity=0.3)
-
 
 ############################################################
 #                        DIELECTRICS                       #
@@ -259,12 +272,12 @@ DIEL_XT_Duroid_8100 = Material(er=3.54, tand=0.0049, color="#21912b", opacity=0.
 DIEL_XT_Duroid_81000_004IN_Thick = Material(er=3.32, tand=0.0038, color="#21912b", opacity=0.3)
 
 # Legacy FR Materials
-DIEL_FR1 = Material(er=4.8,  tand=0.025, color="#3c9747", opacity=0.3)  # Paper + phenolic resin
-DIEL_FR2 = Material(er=4.8,  tand=0.02,  color="#3c9747", opacity=0.3)  # Paper + phenolic resin
-DIEL_FR3 = Material(er=4.5,  tand=0.02,  color="#2b7a4b", opacity=0.3)  # Paper + epoxy resin
-DIEL_FR4 = Material(er=4.4,  tand=0.015, color="#1e8449", opacity=0.3)  # Woven glass + epoxy resin (industry standard)
-DIEL_FR5 = Material(er=4.2,  tand=0.012, color="#156e38", opacity=0.3)  # Woven glass + high-temp epoxy resin
-DIEL_FR6 = Material(er=5.2,  tand=0.030, color="#145a32", opacity=0.3)  # Paper + unknown resin, poor thermal performance
+DIEL_FR1 = Material(er=4.8,  tand=0.025, color="#3c9747", opacity=0.3) # Paper + phenolic resin
+DIEL_FR2 = Material(er=4.8,  tand=0.02,  color="#3c9747", opacity=0.3) # Paper + phenolic resin
+DIEL_FR3 = Material(er=4.5,  tand=0.02,  color="#2b7a4b", opacity=0.3) # Paper + epoxy resin
+DIEL_FR4 = Material(er=4.4,  tand=0.015, color="#1e8449", opacity=0.3) # Woven glass + epoxy resin (industry standard)
+DIEL_FR5 = Material(er=4.2,  tand=0.012, color="#156e38", opacity=0.3) # Woven glass + high-temp epoxy resin
+DIEL_FR6 = Material(er=5.2,  tand=0.030, color="#145a32", opacity=0.3) # Paper + unknown resin, poor thermal performance
 
 # Magnetic Materials
 MU_METAL  = Material(cond=1.0e6, ur=200000, color="#666680", opacity=0.3)
@@ -274,16 +287,16 @@ MU_METAL  = Material(cond=1.0e6, ur=200000, color="#666680", opacity=0.3)
 #                           FOAMS                          #
 ############################################################
 
-FOAM_ROHACELL_31    = Material(er=1.05,  tand=0.0005,  color="#f0e1a1", opacity=0.15)  # PMI-based structural foam
-FOAM_ROHACELL_51    = Material(er=1.07,  tand=0.0006,  color="#f0dea0", opacity=0.15)  # denser version
+FOAM_ROHACELL_31    = Material(er=1.05,  tand=0.0005,  color="#f0e1a1", opacity=0.15) # PMI-based structural foam
+FOAM_ROHACELL_51    = Material(er=1.07,  tand=0.0006,  color="#f0dea0", opacity=0.15) # denser version
 FOAM_ROHACELL_71    = Material(er=1.10,  tand=0.0007,  color="#e5d199", opacity=0.15)
-FOAM_PEI       = Material(er=1.15,  tand=0.0035,  color="#e0b56f", opacity=0.15)  # polyetherimide-based foam
-FOAM_PMI       = Material(er=1.10,  tand=0.0008,  color="#d9c690", opacity=0.15)  # polymethacrylimide
+FOAM_PEI       = Material(er=1.15,  tand=0.0035,  color="#e0b56f", opacity=0.15) # polyetherimide-based foam
+FOAM_PMI       = Material(er=1.10,  tand=0.0008,  color="#d9c690", opacity=0.15) # polymethacrylimide
 FOAM_PVC       = Material(er=1.20,  tand=0.0040,  color="#cccccc", opacity=0.15)
-FOAM_EPS            = Material(er=1.03,  tand=0.0050,  color="#f7f7f7", opacity=0.15)  # expanded polystyrene
-FOAM_XPS            = Material(er=1.05,  tand=0.0030,  color="#e0e0e0", opacity=0.15)  # extruded polystyrene
-FOAM_PU        = Material(er=1.10,  tand=0.0080,  color="#d0d0d0", opacity=0.15)  # polyurethane foam
-FOAM_GLAS       = Material(er=3.10,  tand=0.0050,  color="#888888", opacity=0.15)  # cellular glass, denser
-FOAM_AIREX_C70      = Material(er=1.10,  tand=0.0010,  color="#f7e7a3", opacity=0.15)  # PET closed cell
-FOAM_AIREX_T92      = Material(er=1.10,  tand=0.0020,  color="#f6d08a", opacity=0.15)  # higher strength PET
-FOAM_PVC_CORECELL   = Material(er=1.56,  tand=0.0025,  color="#aaaaaa", opacity=0.15)  # structural core PVC
+FOAM_EPS            = Material(er=1.03,  tand=0.0050,  color="#f7f7f7", opacity=0.15) # expanded polystyrene
+FOAM_XPS            = Material(er=1.05,  tand=0.0030,  color="#e0e0e0", opacity=0.15) # extruded polystyrene
+FOAM_PU        = Material(er=1.10,  tand=0.0080,  color="#d0d0d0", opacity=0.15) # polyurethane foam
+FOAM_GLAS       = Material(er=3.10,  tand=0.0050,  color="#888888", opacity=0.15) # cellular glass, denser
+FOAM_AIREX_C70      = Material(er=1.10,  tand=0.0010,  color="#f7e7a3", opacity=0.15) # PET closed cell
+FOAM_AIREX_T92      = Material(er=1.10,  tand=0.0020,  color="#f6d08a", opacity=0.15) # higher strength PET
+FOAM_PVC_CORECELL   = Material(er=1.56,  tand=0.0025,  color="#aaaaaa", opacity=0.15) # structural core PVC

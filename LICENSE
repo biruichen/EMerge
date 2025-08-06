@@ -1,3 +1,42 @@
+──────────────────────────────────────────────────────────────────────────────
+PREAMBLE — Licence map and disclaimers (not part of the GNU GPL text)
+──────────────────────────────────────────────────────────────────────────────
+This repository is distributed under two distinct licences:
+
+  • **Gmsh-derived components**  
+    These files are licensed under the **GNU General Public License,
+    version 2 or (at your option) any later version (“GPL-2.0+”)**, together
+    with the original *Gmsh additional permission* that allows linking with
+    Netgen, METIS, OpenCASCADE and ParaView under their respective licences.
+    When you distribute binaries containing these components, the complete
+    corresponding source code must be offered under GPL-2.0+.
+
+  • **`lib.py` — materials-property database**  
+    This single file is dedicated to the public domain under **CC0 1.0**.
+    You may copy, modify, merge, publish, distribute, sublicense and/or sell
+    copies of `lib.py` without restriction.  The data it contains are
+    provided *“as is”* for informational purposes only; verify all critical
+    values independently.
+
+DISCLAIMER OF WARRANTY  
+This software is provided **“as is,”** without any express or implied
+warranty, including but not limited to merchantability, fitness for a
+particular purpose and non-infringement.  The authors shall not be liable for
+any damages arising from the use or inability to use this software.
+
+DATA ACCURACY NOTICE  
+Material-property data in `lib.py` may be incomplete, out of date or
+unsuitable for engineering design.  Always confirm crucial values from
+independent, authoritative sources.
+
+By using any part of this codebase you acknowledge and accept the terms
+above.
+
+──────────────────────────────────────────────────────────────────────────────
+The complete text of the **GNU General Public License, version 2**
+(immediately followed by the original Gmsh additional permission) follows below.
+──────────────────────────────────────────────────────────────────────────────
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 

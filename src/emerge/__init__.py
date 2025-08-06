@@ -36,7 +36,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS
 ############################################################
 #                      IMPORT MODULES                     #
 ############################################################
-
+from ._emerge import _cache_check
 from ._emerge.logsettings import LOG_CONTROLLER
 from loguru import logger
 
