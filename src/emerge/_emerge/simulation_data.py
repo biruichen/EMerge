@@ -18,7 +18,7 @@
 from __future__ import annotations
 import numpy as np
 from loguru import logger
-from typing import TypeVar, Generic, Any, List, Union, Dict
+from typing import TypeVar, Generic, Any, List, Union, Dict, Generator
 from collections import defaultdict
 
 T = TypeVar("T")
@@ -187,6 +187,10 @@ class DataContainer:
         self.entries.append(entry)
         return entry
     
+    def iterate(self) -> Generator[tuple[dict[str, float], dict[str, Any]], None, None]:
+        for entry in self.entries:
+            yield entry.vars, entry.data
+
     @property
     def last(self) -> DataEntry:
         """Returns the last added entry"""

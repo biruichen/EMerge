@@ -64,17 +64,8 @@ class BoundaryCondition:
         return self.dimension.value
     
     def __repr__(self) -> str:
-        if self.dimension is BCDimension.ANY:
-            return f'{type(self).__name__}{self.tags}'
-        elif self.dimension is BCDimension.EDGE:
-            return f'{type(self).__name__}{self.tags}'
-        elif self.dimension is BCDimension.NODE:
-            return f'{type(self).__name__}{self.tags}'
-        elif self.dimension is BCDimension.FACE:
-            return f'{type(self).__name__}{self.tags}'
-        elif self.dimension is BCDimension.DOMAIN:
-            return f'{type(self).__name__}{self.tags}'
-    
+        return f'{type(self).__name__}{self.tags}'
+
     def __str__(self) -> str:
         return self.__repr__()
     
@@ -183,7 +174,7 @@ class BoundaryConditionSet:
         Returns:
             list[BoundaryCondition]: The list of boundary conditions
         """
-        return [item for item in self. boundary_conditions if isinstance(item, bctype)]
+        return [item for item in self.boundary_conditions if isinstance(item, bctype)]
 
     def reset(self) -> None:
         """Resets the boundary conditions that are defined

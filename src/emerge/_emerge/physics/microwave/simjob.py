@@ -27,7 +27,7 @@ class SimJob:
                  b: np.ndarray | None,
                  freq: float,
                  cache_factorization: bool,
-                 B: csr_matrix = None
+                 B: csr_matrix | None = None
                  ):
 
         self.A: csr_matrix = A
@@ -88,15 +88,20 @@ class SimJob:
 
             b_active = self.b + mode
             A = self.load_if_needed('A')
-            
+
+            aux = {
+                'Active port': str(key),
+            }
 
             if self.has_periodic:
                 P = self.load_if_needed('P')
                 Pd = self.load_if_needed('Pd')
                 b_active = Pd @ b_active
                 A = Pd @ A @ P
+                aux['Periodic reduction'] = str(P.shape)
 
-            yield A, b_active, self.solve_ids, reuse_factorization
+            
+            yield A, b_active, self.solve_ids, reuse_factorization, aux
 
             reuse_factorization = True
         

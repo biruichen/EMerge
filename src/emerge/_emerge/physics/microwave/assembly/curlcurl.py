@@ -22,15 +22,11 @@ from numba_progress import ProgressBar, ProgressBarType
 from ....mth.optimized import local_mapping, matinv, dot_c, cross_c, compute_distances
 from numba import c16, types, f8, i8, njit, prange
 
-
 ############################################################
 #                  CACHED FACTORIAL VALUES                 #
 ############################################################
 
-
 _FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
-
-
 
 ############################################################
 #                  INDEX MAPPING FUNCTIONS                 #
@@ -264,7 +260,6 @@ def ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_ma
             Dmat[ei+0,ej+10] = Q*VAD
             Dmat[ei+10,ej+0] = Q*VBC
             Dmat[ei+10,ej+10] = Q*VBD
-
             
             Fmat[ei+0,ej+0] = Q2*(VABCD*BD1-VABCC*BE1-VAACD*BF1+VAACC*BG1)
             Fmat[ei+0,ej+10] = Q2*(VABDD*BD1-VABCD*BE1-VAADD*BF1+VAACD*BG1)
@@ -313,7 +308,6 @@ def ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_ma
             BH1 = dot_c(GB,BC1)
             BI1 = dot_c(GA,BD1)
             BJ1 = dot_c(GB,BD1)
-
             
             Dmat[ei+0,ej+6] = L1*Lac2*(-6*VAD*AI1-3*VAC*AJ1-3*VAF*AK1)
             Dmat[ei+0,ej+16] = L1*Lab2*(6*VAF*AK1+3*VAD*AI1-3*VAC*AJ1)
@@ -372,7 +366,6 @@ def ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_ma
             VBCEF = VOLUME_COEFF_CACHE[B,E,F,C]
             VADEF = VOLUME_COEFF_CACHE[E,A,D,F]
 
-            
             Lac2 = Ds[ej1, fj]
             Lab2 = Ds[ej1, ej2]
 
@@ -447,7 +440,7 @@ def _matrix_builder(nodes, tets, tris, edges, all_edge_lengths, tet_to_field, te
     dataB = np.empty_like(rows, dtype=np.complex128)
 
     
-    for itet in prange(nT):
+    for itet in prange(nT): # ty: ignore
         p = itet*400
         if np.mod(itet,10)==0:
             pgb.update(10)

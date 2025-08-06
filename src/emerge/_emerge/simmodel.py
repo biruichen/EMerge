@@ -51,10 +51,8 @@ Known problems/solutions:
 --------------------------
 """
 
-
 class SimulationError(Exception):
     pass
-
 
 ############################################################
 #                 BASE 3D SIMULATION MODEL                 #
@@ -93,7 +91,6 @@ class Simulation3D:
         
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
-        self.set_loglevel(loglevel)
 
         ## STATES
         self.__active: bool = False
@@ -101,9 +98,6 @@ class Simulation3D:
         self._cell: PeriodicCell | None = None
 
         self.display: PVDisplay = PVDisplay(self.mesh)
-
-        if logfile:
-            self.set_logfile()
 
         self.save_file: bool = save_file
         self.load_file: bool = load_file
@@ -114,6 +108,10 @@ class Simulation3D:
         self.mw: Microwave3D = Microwave3D(self.mesher, self.data.mw)
 
         self._initialize_simulation()
+
+        self.set_loglevel(loglevel)
+        if logfile:
+            self.set_logfile()
 
         self._update_data()
     
@@ -286,6 +284,8 @@ class Simulation3D:
             loglevel ('DEBUG','INFO','WARNING','ERROR'): The loglevel
         """
         LOG_CONTROLLER.set_std_loglevel(loglevel)
+        if loglevel not in ('TRACE','DEBUG'):
+            gmsh.option.setNumber("General.Terminal", 0)
 
     def set_logfile(self) -> None:
         """Adds a file output for the logger."""
@@ -318,7 +318,6 @@ class Simulation3D:
 
         return None
         
-    
     def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] | None = None):
         """Set the given periodic cell object as the simulations peridicity.
 
@@ -332,7 +331,7 @@ class Simulation3D:
     def commit_geometry(self, *geometries: GeoObject | list[GeoObject]) -> None:
         """Finalizes and locks the current geometry state of the simulation.
 
-        The geometries may be provided (legacy behavior) but are automatically managed underwater.
+        The geometries may be provided (legacy behavior) but are automatically managed in the background.
         
         """
         geometries_parsed: Any = None
@@ -375,7 +374,12 @@ class Simulation3D:
         self.mesher.set_mesh_size(self.mw.get_discretizer(), self.mw.resolution)
         
         try:
+            gmsh.logger.start()
             gmsh.model.mesh.generate(3)
+            logs = gmsh.logger.get()
+            gmsh.logger.stop()
+            for log in logs:
+                logger.trace('[GMSH] '+log)
         except Exception:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)

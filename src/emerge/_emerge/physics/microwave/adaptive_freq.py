@@ -108,10 +108,6 @@ def vectfit_step(f: np.ndarray, s: np.ndarray, poles: np.ndarray) -> np.ndarray:
     b = np.concatenate((b.real, b.imag))
     x, residuals, rnk, s = np.linalg.lstsq(A, b, rcond=-1)
 
-    residues = x[:N]
-    d = x[N]
-    h = x[N+1]
-
     # We only want the "tilde" part in (A.4)
     x = x[-N:]
 
@@ -197,7 +193,7 @@ def vectfit_auto(f: np.ndarray,
     w = s.imag
     pole_locs = np.linspace(w[0], w[-1], n_poles+2)[1:-1]
     lr = loss_ratio
-    init_poles = poles = np.concatenate([[p*(-lr + 1j), p*(-lr - 1j)] for p in pole_locs])
+    poles = np.concatenate([[p*(-lr + 1j), p*(-lr - 1j)] for p in pole_locs])
 
     if inc_real:
         poles = np.concatenate((poles, [1]))

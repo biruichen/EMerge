@@ -299,7 +299,7 @@ class GeoObject:
         for tag in self.tags:
             newtags.extend(tagmap.get(tag, [tag,]))
         self.tags = newtags
-        logger.debug(f'Replaced {self.old_tags} with {self.tags}')
+        logger.debug(f'{self} Replaced {self.old_tags} -> {self.tags}')
     
     def update_tags(self, tag_mapping: dict[int,dict]) -> GeoObject:
         ''' Update the tag definition of a GeoObject after fragementation.'''

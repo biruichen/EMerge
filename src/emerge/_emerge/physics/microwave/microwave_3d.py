@@ -24,20 +24,21 @@ from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
-from scipy.sparse.linalg import inv as sparse_inverse # type: ignore
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
 from .port_functions import compute_avg_power_flux
 from .simjob import SimJob
+
 from concurrent.futures import ThreadPoolExecutor
-import numpy as np
 from loguru import logger
 from typing import Callable, Literal
-import time
-import threading
 import multiprocessing as mp
 from cmath import sqrt as csqrt
+
+import numpy as np
+import threading
+import time
 
 class SimulationError(Exception):
     pass
@@ -51,9 +52,10 @@ def run_job_multi(job: SimJob) -> SimJob:
     Returns:
         SimJob: The solved SimJob
     """
-    routine = DEFAULT_ROUTINE.duplicate().configure('MP')
-    for A, b, ids, reuse in job.iter_Ab():
+    routine = DEFAULT_ROUTINE.duplicate()._configure_routine('MP')
+    for A, b, ids, reuse, aux in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
+        report.add(**aux)
         job.submit_solution(solution, report)
     return job
 
@@ -117,7 +119,6 @@ class Microwave3D:
         self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
         self.basis: Nedelec2 | None = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
-        self.set_order(order)
         self.cache_matrices: bool = True
 
         ## States
@@ -128,6 +129,8 @@ class Microwave3D:
         self._params: dict[str, float] = dict()
         self._simstart: float = 0.0
         self._simend: float = 0.0
+
+        self.set_order(order)
 
     def reset_data(self):
         self.data = MWData()
@@ -352,7 +355,7 @@ class Microwave3D:
             raise ValueError('The field basis is not yet defined.')
 
         logger.debug('Finding PEC TEM conductors')
-        pecs: list[PEC] = self.bc.oftype(PEC) # type: ignore
+        pecs: list[PEC] = self.bc.get_conductors() # type: ignore
         mesh = self.mesh
 
         # Process all PEC Boundary Conditions
@@ -472,13 +475,10 @@ class Microwave3D:
         if freq is None:
             freq = self.frequencies[0]
         
-    
         k0 = 2*np.pi*freq/299792458
         kmax = k0*np.sqrt(ermax.real*urmax.real)
-
-        logger.info('Assembling BMA Matrices')
         
-        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.bc.boundary_conditions)
+        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.bc)
         
         logger.debug(f'Total of {Amatrix.shape[0]} Degrees of freedom.')
         logger.debug(f'Applied frequency: {freq/1e9:.2f}GHz')
@@ -515,7 +515,7 @@ class Microwave3D:
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
 
             beta = min(k0*np.sqrt(ermax*urmax), np.emath.sqrt(-eigen_values[i]))
-            #beta = np.emath.sqrt(eigen_values[i])
+
             residuals = -1
 
             portfE = nlf.interpolate_Ef(Emode)
@@ -628,19 +628,21 @@ class Microwave3D:
         ## DEFINE SOLVE FUNCTIONS
         def get_routine():
             if not hasattr(thread_local, "routine"):
-                thread_local.routine = self.solveroutine.duplicate().configure('MT')
+                thread_local.routine = self.solveroutine.duplicate()._configure_routine('MT')
             return thread_local.routine
 
         def run_job(job: SimJob):
             routine = get_routine()
-            for A, b, ids, reuse in job.iter_Ab():
+            for A, b, ids, reuse, aux in job.iter_Ab():
                 solution, report = routine.solve(A, b, ids, reuse, id=job.id)
+                report.add(**aux)
                 job.submit_solution(solution, report)
             return job
         
         def run_job_single(job: SimJob):
-            for A, b, ids, reuse in job.iter_Ab():
+            for A, b, ids, reuse, aux in job.iter_Ab():
                 solution, report = self.solveroutine.solve(A, b, ids, reuse, id=job.id)
+                report.add(**aux)
                 job.submit_solution(solution, report)
             return job
         
@@ -753,6 +755,15 @@ class Microwave3D:
         thread_local.__dict__.clear()
         logger.info('Solving complete')
 
+        for freq, job in zip(self.frequencies, results):
+            self.data.setreport(job.reports, freq=freq, **self._params)
+
+        for variables, data in self.data.sim.iterate():
+            logger.trace(f'Sim variable: {variables}')
+            for item in data['report']:
+                item.pretty_print(logger.trace)
+
+        self.solveroutine.reset()
         ### Compute S-parameters and return
         self._post_process(results, er, ur, cond)
         return self.data
@@ -883,8 +894,6 @@ class Microwave3D:
             fielddata._der = np.squeeze(er[0,0,:])
             fielddata._dur = np.squeeze(ur[0,0,:])
 
-            self.data.setreport(job.reports, freq=freq, **self._params)
-
             logger.info(f'Post Processing simulation frequency = {freq/1e9:.3f} GHz') 
 
             # Recording port information
@@ -915,20 +924,18 @@ class Microwave3D:
                 Pout = 0.0 + 0j
 
                 # Active port power
-                logger.debug('Active ports:')
                 tris = mesh.get_triangles(active_port.tags)
                 tri_vertices = mesh.tris[:,tris]
                 pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
-                logger.debug(f'    Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
+                logger.debug(f'[{active_port.port_number}] Active port amplitude = {np.abs(pfield):.3f} (Excitation = {np.abs(pmode):.2f})')
                 Pout = pmode
                 
                 #Passive ports
-                logger.debug('Passive ports:')
                 for bc in all_ports:
                     tris = mesh.get_triangles(bc.tags)
                     tri_vertices = mesh.tris[:,tris]
                     pfield, pmode = self._compute_s_data(bc, fieldf,tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
-                    logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
+                    logger.debug(f'[{bc.port_number}] Passive amplitude = {np.abs(pfield):.3f}')
                     scalardata.write_S(bc.port_number, active_port.port_number, pfield/Pout)
                 active_port.active=False
             
@@ -988,8 +995,8 @@ class Microwave3D:
             elif bc.modetype(k0) == 'TM':
                 const = 1/((erp[0,0,:] + erp[1,1,:] + erp[2,2,:])/3)
             const = np.squeeze(const)
-            field_p = sparam_field_power(self.mesh.nodes, tri_vertices, bc, k0, fieldfunction, const)
-            mode_p = sparam_mode_power(self.mesh.nodes, tri_vertices, bc, k0, const)
+            field_p = sparam_field_power(self.mesh.nodes, tri_vertices, bc, k0, fieldfunction, const, 5)
+            mode_p = sparam_mode_power(self.mesh.nodes, tri_vertices, bc, k0, const, 5)
             return field_p, mode_p
 
     # def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> MWData:
@@ -1099,7 +1106,7 @@ class Microwave3D:
     #             tris = mesh.get_triangles(active_port.tags)
     #             tri_vertices = mesh.tris[:,tris]
     #             pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
-    #             logger.debug(f'    Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
+    #             logger.debug(f'Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
     #             Pout = pmode
                 
     #             #Passive ports
@@ -1108,7 +1115,7 @@ class Microwave3D:
     #                 tris = mesh.get_triangles(bc.tags)
     #                 tri_vertices = mesh.tris[:,tris]
     #                 pfield, pmode = self._compute_s_data(bc, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
-    #                 logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
+    #                 logger.debug(f'Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
     #                 scalardata.write_S(bc.port_number, active_port.port_number, pfield/Pout)
 
     #             active_port.active=False

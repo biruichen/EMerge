@@ -19,19 +19,21 @@ from numba_progress import ProgressBar
 from ...mesh3d import SurfaceMesh
 import numpy as np
 from loguru import logger
-from numba import c8, c16, f8, i8, njit, prange, typeof, f4
-from numba.types import Tuple as TupleType
+from numba import c16, njit, prange, f8
+from numba.types import Tuple as TupleType  # ty: ignore
 from numba_progress.progress import ProgressBarType
+from ...const import Z0
 
 LR = 0.001
+
 @njit(
-    TupleType((c8[:, :], c8[:, :]))(
-        c8[:, :],
-        c8[:, :],
-        f4[:, :],
-        f4[:, :],
-        f4[:, :],
-        f4,
+    TupleType((c16[:, :], c16[:, :]))(
+        c16[:, :],
+        c16[:, :],
+        f8[:, :],
+        f8[:, :],
+        f8[:, :],
+        f8,
         ProgressBarType,
     ),
     parallel=True,
@@ -86,17 +88,15 @@ def stratton_chu_ff(Ein, Hin, vis, wns, tpout, k0, pgb):
 
     N = tpout.shape[1]
 
-    Eout = np.zeros((3, N)).astype(np.complex64)
-    Hout = np.zeros((3, N)).astype(np.complex64)
+    Eout = np.zeros((3, N)).astype(np.complex128)
+    Hout = np.zeros((3, N)).astype(np.complex128)
 
-    Eoutx = np.zeros((N,)).astype(np.complex64)
-    Eouty = np.zeros((N,)).astype(np.complex64)
-    Eoutz = np.zeros((N,)).astype(np.complex64)
+    Eoutx = np.zeros((N,)).astype(np.complex128)
+    Eouty = np.zeros((N,)).astype(np.complex128)
+    Eoutz = np.zeros((N,)).astype(np.complex128)
 
-    Z0 = np.float32(376.73031366857)
-
-    Q = np.complex64(-1j * k0 / (4 * np.pi))
-    ii = np.complex64(1j)
+    Q = np.complex128(-1j * k0 / (4 * np.pi))
+    ii = np.complex128(1j)
 
     NxHx = ny * Hz - nz * Hy
     NxHy = nz * Hx - nx * Hz
@@ -106,7 +106,7 @@ def stratton_chu_ff(Ein, Hin, vis, wns, tpout, k0, pgb):
     NxEy = nz * Ex - nx * Ez
     NxEz = nx * Ey - ny * Ex
 
-    for j in prange(Nids):
+    for j in prange(Nids): # ty: ignore
         xi = vx[j]
         yi = vy[j]
         zi = vz[j]
@@ -147,7 +147,7 @@ def stratton_chu(Ein, Hin, mesh: SurfaceMesh, theta: np.ndarray, phi: np.ndarray
     areas = mesh.areas
     vis = mesh.edge_centers
 
-    wns = np.zeros_like(vis).astype(np.float32)
+    wns = np.zeros_like(vis).astype(np.float64)
 
     tri_normals = mesh.normals
     tri_ids = mesh.tri_to_edge
@@ -164,12 +164,12 @@ def stratton_chu(Ein, Hin, mesh: SurfaceMesh, theta: np.ndarray, phi: np.ndarray
     tpout = np.array([theta, phi])
     with ProgressBar(total=Ntot, ncols=100, dynamic_ncols=False) as pgb:
         Eout, Hout = stratton_chu_ff(
-            Ein.astype(np.complex64),
-            Hin.astype(np.complex64),
-            vis.astype(np.float32),
-            wns.astype(np.float32),
-            tpout.astype(np.float32),
-            np.float32(k0),
+            Ein.astype(np.complex128),
+            Hin.astype(np.complex128),
+            vis.astype(np.float64),
+            wns.astype(np.float64),
+            tpout.astype(np.float64),
+            np.float64(k0),
             pgb,
         )
     return Eout.astype(np.complex128), Hout.astype(np.complex128)
