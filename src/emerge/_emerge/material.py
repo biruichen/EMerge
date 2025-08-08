@@ -18,7 +18,6 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Callable
-
 @dataclass
 class Material:
     """The Material class generalizes a material in the EMerge FEM environment.

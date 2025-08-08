@@ -87,7 +87,7 @@ m.mesher.set_domain_size(air, 3 * mm)
 # Build mesh and view
 m.generate_mesh()
 m.view()
-quit()
+
 # --- Boundary conditions -----------------------------------------------
 # Define modal (TEM) ports at input and output
 p1 = m.mw.bc.ModalPort(mp1, 1, TEM=True)
