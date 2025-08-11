@@ -213,8 +213,18 @@ class PVDisplay(BaseDisplay):
         self._plot.add_key_event("m", self.activate_ruler) # type: ignore
         self._plot.add_key_event("f", self.activate_object) # type: ignore
 
-        self._ctr: int = 0
-
+        self._ctr: int = 0 
+        
+        self.camera_position = (1, -1, 1)     # +X, +Z, -Y
+        
+    def _update_camera(self):
+        x,y,z = self._plot.camera.position
+        d = (x**2+y**2+z**2)**(0.5)
+        px, py, pz = self.camera_position
+        dp = (px**2+py**2+pz**2)**(0.5)
+        px, py, pz = px/dp, py/dp, pz/dp
+        self._plot.camera.position = (d*px, d*py, d*pz)
+        
     def activate_ruler(self):
         self._plot.disable_picking()
         self._selector.turn_off()
@@ -228,6 +238,7 @@ class PVDisplay(BaseDisplay):
     def show(self):
         """ Shows the Pyvista display. """
         self._ruler.min_length = max(1e-3, min(self._mesh.edge_lengths))
+        self._update_camera()
         self._add_aux_items()
         if self._do_animate:
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
@@ -300,7 +311,25 @@ class PVDisplay(BaseDisplay):
         cells[:,1:] = self._mesh.tets[:,tets].T
         cells[:,0] = 4
         celltypes = np.full(ntets, fill_value=pv.CellType.TETRA, dtype=np.uint8)
-        points = self._mesh.nodes.T
+        points = self._mesh.nodes.copy().T
+        return pv.UnstructuredGrid(cells, celltypes, points)
+    
+    def _volume_edges(self, obj: GeoObject | Selection) -> pv.UnstructuredGrid:
+        """Adds the edges of objects
+
+        Args:
+            obj (DomainSelection | None, optional): _description_. Defaults to None.
+
+        Returns:
+            pv.UnstructuredGrid: The unstrutured grid object
+        """
+        edge_ids = self._mesh.domain_edges(obj.dimtags)
+        nedges = edge_ids.shape[0]
+        cells = np.zeros((nedges,3), dtype=np.int64)
+        cells[:,1:] = self._mesh.edges[:,edge_ids].T
+        cells[:,0] = 2
+        celltypes = np.full(nedges, fill_value=pv.CellType.CUBIC_LINE, dtype=np.uint8)
+        points = self._mesh.nodes.copy().T
         return pv.UnstructuredGrid(cells, celltypes, points)
     
     def mesh_surface(self, surface: FaceSelection) -> pv.UnstructuredGrid:
@@ -310,7 +339,8 @@ class PVDisplay(BaseDisplay):
         cells[:,1:] = self._mesh.tris[:,tris].T
         cells[:,0] = 3
         celltypes = np.full(ntris, fill_value=pv.CellType.TRIANGLE, dtype=np.uint8)
-        points = self._mesh.nodes.T
+        points = self._mesh.nodes.copy().T
+        points[:,2] += self.set.z_boost
         return pv.UnstructuredGrid(cells, celltypes, points)
     
     def mesh(self, obj: GeoObject | Selection | Iterable) -> pv.UnstructuredGrid | None:
@@ -328,8 +358,10 @@ class PVDisplay(BaseDisplay):
 
     ## OBLIGATORY METHODS
     def add_object(self, obj: GeoObject | Selection, *args, **kwargs):
-        kwargs = setdefault(kwargs, color=obj.color_rgb, opacity=obj.opacity, silhouette=True, pickable=True)
-        self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
+        kwargs = setdefault(kwargs, color=obj.color_rgb, opacity=obj.opacity, silhouette=False, show_edges=False, pickable=True)
+        
+        actor = self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
+        self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=1, show_edges=True)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         """Adds a scatter point cloud
@@ -348,7 +380,7 @@ class PVDisplay(BaseDisplay):
                      XYZ=None,
                      field: Literal['E','H'] = 'E', 
                      k0: float | None = None,
-                     mode_number: int | None = None) -> None:
+                     mode_number: int = 0) -> None:
         
         if XYZ:
             X,Y,Z = XYZ
@@ -385,6 +417,7 @@ class PVDisplay(BaseDisplay):
                 k0 = port.get_mode(0).k0
             else:
                 k0 = 1
+        port.selected_mode = mode_number
         F = port.port_mode_3d_global(xf,yf,zf,k0, which=field)
 
         Fx = F[0,:].reshape(X.shape).T

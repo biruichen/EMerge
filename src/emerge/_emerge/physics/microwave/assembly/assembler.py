@@ -312,16 +312,11 @@ class Assembler:
                     gamma = bc.get_gamma(K0)
                     logger.trace(f'..robin bc γ={gamma:.3f}')
 
-                    def Ufunc(x,y): 
-                        return bc.get_Uinc(x,y,K0)
+                    def Ufunc(x,y,z): 
+                        return bc.get_Uinc(x,y,z,K0)
                     
-                    ibasis = bc.get_inv_basis()
-                    if ibasis is None:
-                        basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
-                        ibasis = np.linalg.pinv(basis)
-                        logger.trace(f'..Using computed basis: {ibasis.flatten()}')
                     if bc._include_force:
-                        Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points) # type: ignore
+                        Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, gauss_points) # type: ignore
                         port_vectors[bc.port_number] += b_p # type: ignore
                         logger.trace(f'..included force vector term with norm {np.linalg.norm(b_p):.3f}')
                     else:
