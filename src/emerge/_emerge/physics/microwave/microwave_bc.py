@@ -20,7 +20,7 @@ import numpy as np
 from loguru import logger
 from typing import Callable, Literal
 from ...selection import Selection, FaceSelection
-from ...cs import CoordinateSystem, Axis, GCS
+from ...cs import CoordinateSystem, Axis, GCS, _parse_axis
 from ...coord import Line
 from ...geometry import GeoSurface, GeoObject
 from dataclasses import dataclass
@@ -28,7 +28,23 @@ from collections import defaultdict
 from ...bc import BoundaryCondition, BoundaryConditionSet, Periodic
 from ...periodic import PeriodicCell, HexCell, RectCell
 from ...material import Material
-from ...const import Z0, C0, PI, EPS0, MU0
+from ...const import Z0, C0, EPS0, MU0
+
+
+
+############################################################
+#                     UTILITY FUNCTIONS                    #
+############################################################
+
+def _inner_product(function: Callable, x: np.ndarray, y: np.ndarray, z: np.ndarray, ax: Axis) -> float:
+            Exyz = function(x,y,z)
+            return np.sum(Exyz[0,:]*ax.x + Exyz[1,:]*ax.y + Exyz[2,:]*ax.z)
+        
+        
+
+############################################################
+#                   MAIN BC MANAGER CLASS                  #
+############################################################
 
 class MWBoundaryConditionSet(BoundaryConditionSet):
 
@@ -82,6 +98,10 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         self._cell._ports.append(port)
         return port
 
+
+############################################################
+#                    BOUNDARY CONDITIONS                   #
+############################################################
 
 
 class PEC(BoundaryCondition):
@@ -313,7 +333,7 @@ class PortMode:
         self.energy = np.mean(np.abs(self.modefield)**2)
 
     def __str__(self):
-        return f'PortMode(k0={self.k0}, beta={self.beta}, neff={self.neff}, energy={self.energy})'
+        return f'PortMode(k0={self.k0}, beta={self.beta}({self.neff:.3f}))'
     
     def set_power(self, power: complex) -> None:
         self.norm_factor = np.sqrt(1/np.abs(power))
@@ -449,7 +469,7 @@ class ModalPort(PortBC):
         self.port_number: int= port_number
         self.active: bool = active
         self.power: float = power
-        
+        self.alignment_vectors: list[Axis] = []
 
         self.selected_mode: int = 0
         self.modes: dict[float, list[PortMode]] = defaultdict(list)
@@ -459,6 +479,7 @@ class ModalPort(PortBC):
         self.initialized: bool = False
         self._first_k0: float | None = None
         self._last_k0: float | None = None
+        
 
         if cs is None:
             logger.info('Constructing coordinate system from normal port')
@@ -474,6 +495,17 @@ class ModalPort(PortBC):
     def modetype(self, k0: float) -> Literal['TEM','TE','TM']:
         return self.get_mode(k0).modetype
     
+    def align_modes(self, *axes: tuple | np.ndarray | Axis) -> None:
+        """Set a reriees of Axis objects that define a sequence of mode field
+        alignments.
+
+        The modes will be sorted to maximize the inner product: |∬ E(x,y) · ax dS|
+        
+        Args:
+            *axes (tuple, np.ndarray, Axis): The alignment vectors.
+        """ 
+        self.alignment_vectors = [_parse_axis(ax) for ax in axes]
+        
     @property
     def nmodes(self) -> int:
         if self._last_k0 is None:
@@ -488,6 +520,26 @@ class ModalPort(PortBC):
     def sort_modes(self) -> None:
         """Sorts the port modes based on total energy
         """
+        
+        if len(self.alignment_vectors) > 0:
+            logger.trace(f'Sorting modes based on alignment vectors: {self.alignment_vectors}')
+            X, Y, Z = self.selection.sample(5)
+            X = X.flatten()
+            Y = Y.flatten()
+            Z = Z.flatten()
+            for k0, modes in self.modes.items():
+                logger.trace(f'Aligning modes for k0={k0:.3f} rad/m')
+                new_modes = []
+                for ax in self.alignment_vectors:
+                    logger.trace(f'.mode vector {ax}')
+                    integrals = [_inner_product(m.E_function, X, Y, Z, ax) for m in modes]
+                    integral, opt_mode = sorted([pair for pair in zip(integrals, modes)], key=lambda x: abs(x[0]), reverse=True)[0]
+                    opt_mode.polarity = np.sign(integral.real)
+                    logger.trace(f'Optimal mode = {opt_mode} ({integral}), polarization alignment = {opt_mode.polarity}')
+                    new_modes.append(opt_mode)
+                    
+                self.modes[k0] = new_modes
+            return
         for k0, modes in self.modes.items():
             self.modes[k0] = sorted(modes, key=lambda m: m.energy, reverse=True)
 
@@ -871,7 +923,6 @@ class LumpedPort(PortBC):
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
 
-
 class LumpedElement(RobinBC):
     
     _include_stiff: bool = True
@@ -948,8 +999,6 @@ class LumpedElement(RobinBC):
         """
         return 1j*k0*Z0/self.surfZ(k0)
     
-
-
 class SurfaceImpedance(RobinBC):
     
     _include_stiff: bool = True
@@ -959,29 +1008,45 @@ class SurfaceImpedance(RobinBC):
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  material: Material | None = None,
+                 surface_conductance: float | None = None,
+                 surface_roughness: float = 0,
+                 sr_model: Literal['Hammerstad-Jensen'] = 'Hammerstad-Jensen',
                  ):
-        """Generates a lumped power boundary condition.
-        
-        The lumped port boundary condition assumes a uniform E-field along the "direction" axis.
-        The port with and height must be provided manually in meters. The height is the size
-        in the "direction" axis along which the potential is imposed. The width dimension
-        is orthogonal to that. For a rectangular face its the width and for a cyllindrical face
-        its the circumpherance.
+        """Generates a SurfaceImpedance bounary condition.
+
+        The surface impedance model treats a 2D surface selection as a finite conductor. It is not
+        intended to be used for dielectric materials.
+
+        The surface resistivity is computed based on the material properties: σ, ε and μ. 
+
+        The user may also supply the surface condutivity directly. 
+
+        Optionally, a surface roughness in meters RMS may be supplied. In the current implementation
+        The Hammersstad-Jensen model is used increasing the resistivity by a factor (1 + 2/π tan⁻¹(1.4(Δ/δ)²).
 
         Args:
-            face (FaceSelection, GeoSurface): The port surface
-            port_number (int): The port number
-            width (float): The port width (meters).
-            height (float): The port height (meters).
-            direction (Axis): The port direction as an Axis object (em.Axis(..) or em.ZAX)
-            active (bool, optional): Whether the port is active. Defaults to False.
-            power (float, optional): The port output power. Defaults to 1.
-            Z0 (float, optional): The port impedance. Defaults to 50.
+            face (FaceSelection | GeoSurface): The face to apply this condition to.
+            material (Material | None, optional): The matrial to assign. Defaults to None.
+            surface_conductance (float | None, optional): The specific bulk conductivity to use. Defaults to None.
+            surface_roughness (float, optional): The surface roughness. Defaults to 0.
+            sr_model (Literal[&#39;Hammerstad, optional): The surface roughness model. Defaults to 'Hammerstad-Jensen'.
         """
         super().__init__(face)
 
-        self.material: Material = material 
-    
+        self._material: Material | None = material
+        self._mur: float | complex = 1.0
+        self._epsr: float | complex = 1.0
+
+        self.sigma: float = 0.0
+        if material is not None:
+            self.sigma = material.cond
+            self._mur = material.ur
+            self._epsr = material.er
+        if surface_conductance is not None:
+            self.sigma = surface_conductance
+        
+        self._sr: float = surface_roughness
+        self._sr_model: str = sr_model
     
     def get_basis(self) -> np.ndarray | None:
         return None
@@ -1004,9 +1069,10 @@ class SurfaceImpedance(RobinBC):
             complex: The γ-constant
         """
         w0 = k0*C0
-        sigma = self.material.cond
+        sigma = self.sigma
         rho = 1/sigma
-        d_skin = (2*rho/(w0*MU0) * ((1+(w0*EPS0*rho)**2)**0.5 + rho*w0*EPS0))**0.5
-        d_skin = (2*rho/(w0*MU0))**0.5
+        d_skin = (2*rho/(w0*MU0*self._mur) * ((1+(w0*EPS0*self._epsr*rho)**2)**0.5 + rho*w0*EPS0*self._epsr))**0.5
         R = rho/d_skin
+        if self._sr_model=='Hammerstad-Jensen' and self._sr > 0.0:
+            R = R * (1 + 2/np.pi * np.arctan(1.4*(self._sr/d_skin)**2))
         return 1j*k0*Z0/R

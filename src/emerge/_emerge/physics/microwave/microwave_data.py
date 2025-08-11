@@ -777,7 +777,7 @@ class MWField:
             syms (list[Literal['Ex','Ey','Ez','Hx','Hy','Hz']], optional): E and H-plane symmetry planes where Ex is E-symmetry in x=0. Defaults to []
 
         Returns:
-            tuple[np.ndarray, np.ndarray, np.ndarray]: _description_
+            tuple[np.ndarray, np.ndarray, np.ndarray]: Angles (N,), E(3,N), H(3,N)
         """
         refdir = _parse_axis(ref_direction).np
         plane_normal_parsed = _parse_axis(plane_normal).np

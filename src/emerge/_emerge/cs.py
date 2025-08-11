@@ -128,7 +128,7 @@ def _parse_vector(vec: np.ndarray | tuple[float, float, float] | list[float] | A
         return np.array(vec)
     elif isinstance(vec, Axis):
         return vec.vector
-    return None
+    return np.array(vec)
 
 def _parse_axis(vec: np.ndarray | tuple[float, float, float] | list[float] | Axis) -> Axis:
     """Takes an array, tuple, list or Axis and always returns an Axis.
@@ -145,7 +145,7 @@ def _parse_axis(vec: np.ndarray | tuple[float, float, float] | list[float] | Axi
         return Axis(np.array(vec))
     elif isinstance(vec, Axis):
         return vec
-    return None
+    return Axis(np.array(vec))
 
 @dataclass
 class Plane:

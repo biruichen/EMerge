@@ -25,3 +25,6 @@ filename = "uv.lock"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
+
+[[tool.bumpversion.files]]
+filename = "src/emerge/__init__.py"
