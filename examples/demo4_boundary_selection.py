@@ -36,7 +36,7 @@ wga = 22.86*mm
 wgb = 10.16*mm
 L = 50*mm
 
-model = em.Simulation3D('Test Mode')
+model = em.Simulation('Test Mode')
 
 # first lets define a WR90 waveguide
 wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
@@ -112,7 +112,7 @@ rad = model.mw.bc.AbsorbingBoundary(radiation_boundary)
 model.mw.modal_analysis(port, 1)
 
 # Run the simulation
-data = model.mw.frequency_domain()
+data = model.mw.run_sweep()
 
 
 # First the S11 plot

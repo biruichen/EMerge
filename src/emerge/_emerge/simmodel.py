@@ -58,7 +58,7 @@ class SimulationError(Exception):
 #                 BASE 3D SIMULATION MODEL                 #
 ############################################################
 
-class Simulation3D:
+class Simulation:
 
     def __init__(self, 
                  modelname: str, 
@@ -67,7 +67,7 @@ class Simulation3D:
                  save_file: bool = False,
                  logfile: bool = False,
                  path_suffix: str = ".EMResults"):
-        """Generate a Simulation3D class object.
+        """Generate a Simulation class object.
 
         As a minimum a file name should be provided. Additionally you may provide it with any
         class that inherits from BaseDisplay. This will then be used for geometry displaying.
@@ -128,11 +128,11 @@ class Simulation3D:
         """Get the data from the current data container"""
         return self.data.sim[name]
     
-    def __enter__(self) -> Simulation3D:
+    def __enter__(self) -> Simulation:
         """This method is depricated with the new atexit system. It still exists for backwards compatibility.
 
         Returns:
-            Simulation3D: the Simulation3D object
+            Simulation: the Simulation object
         """
         return self
 
@@ -408,7 +408,7 @@ class Simulation3D:
         Example:
          >>> for W, H in model.parameter_sweep(True, width=widths, height=heights):
          >>>    // build simulation
-         >>>    data = model.frequency_domain()
+         >>>    data = model.run_sweep()
          >>> // Extract the data
          >>> widths, heights, frequencies, S21 = data.ax('width','height','freq').S(2,1)
         """
@@ -459,3 +459,4 @@ class Simulation3D:
         """
         logger.warning('define_geometry() will be derpicated. Use commit_geometry() instead.')
         self.commit_geometry(*args)
+        

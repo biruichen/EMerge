@@ -35,7 +35,7 @@ f2 = 1.6e9              # stop frequency
 
 # --- Create simulation object -------------------------------------------
 # Using PVDisplay backend for 3D visualization
-model = em.Simulation3D('MyPatchAntenna', loglevel='DEBUG')
+model = em.Simulation('MyPatchAntenna', loglevel='DEBUG')
 
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
@@ -111,7 +111,7 @@ abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
 pec = model.mw.bc.PEC(rpatch)
 
 # --- Run frequency-domain solver ----------------------------------------
-data = model.mw.frequency_domain()
+data = model.mw.run_sweep()
 
 # --- Post-process S-parameters ------------------------------------------
 freqs = data.scalar.grid.freq

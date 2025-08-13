@@ -172,26 +172,26 @@ class Plate(GeoSurface):
         tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
         super().__init__(tags)
 
-class Cyllinder(GeoVolume):
+class Cylinder(GeoVolume):
 
     def __init__(self, 
                  radius: float,
                  height: float,
                  cs: CoordinateSystem = None,
                  Nsections: int = None):
-        """Generates a Cyllinder object in 3D space.
+        """Generates a Cylinder object in 3D space.
         The cyllinder will always be placed in the origin of the provided CoordinateSystem.
         The bottom cyllinder plane is always placed in the XY-plane. The lenth of the cyllinder is
         oriented along the Z-axis.
 
         By default the cyllinder uses the Open Cascade modeling for a cyllinder. In this representation
         the surface of the cyllinder is approximated with a tolerance thay may be irregular.
-        As an alternative, the argument Nsections may be provided in which case the Cyllinder is replaced
+        As an alternative, the argument Nsections may be provided in which case the Cylinder is replaced
         by an extrusion of a regular N-sided polygon.
 
         Args:
-            radius (float): The radius of the Cyllinder
-            height (float): The height of the Cyllinder
+            radius (float): The radius of the Cylinder
+            height (float): The height of the Cylinder
             cs (CoordinateSystem, optional): The coordinate system. Defaults to None.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
@@ -233,7 +233,7 @@ class Cyllinder(GeoVolume):
         xo, yo, zo = self.cs.in_global_cs(x.flatten(), y.flatten(), z.flatten())
         return xo, yo, zo
 
-class CoaxCyllinder(GeoVolume):
+class CoaxCylinder(GeoVolume):
     """A coaxial cylinder with an inner and outer radius."""
     
     def __init__(self, 
@@ -249,12 +249,12 @@ class CoaxCyllinder(GeoVolume):
 
         By default the coax uses the Open Cascade modeling for a cyllinder. In this representation
         the surface of the cyllinder is approximated with a tolerance thay may be irregular.
-        As an alternative, the argument Nsections may be provided in which case the Cyllinder is replaced
+        As an alternative, the argument Nsections may be provided in which case the Cylinder is replaced
         by an extrusion of a regular N-sided polygon.
 
         Args:
-            radius (float): The radius of the Cyllinder
-            height (float): The height of the Cyllinder
+            radius (float): The radius of the Cylinder
+            height (float): The height of the Cylinder
             cs (CoordinateSystem, optional): The coordinate system. Defaults to None.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
@@ -267,8 +267,8 @@ class CoaxCyllinder(GeoVolume):
         self.rin = rin
         self.height = height
 
-        self.cyl_out = Cyllinder(rout, height, cs, Nsections=Nsections)
-        self.cyl_in = Cyllinder(rin, height, cs, Nsections=Nsections)
+        self.cyl_out = Cylinder(rout, height, cs, Nsections=Nsections)
+        self.cyl_in = Cylinder(rin, height, cs, Nsections=Nsections)
         self.cyl_in._exists = False
         self.cyl_out._exists = False
         cyltags, _ = gmsh.model.occ.cut(self.cyl_out.dimtags, self.cyl_in.dimtags)

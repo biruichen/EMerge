@@ -28,7 +28,7 @@ th = 1 * mm            # PML thickness
 dx = 2 * mm              # distance from horn exit to PML start
 
 # Create simulation object
-m = em.Simulation3D('HornAntenna', loglevel='DEBUG')
+m = em.Simulation('HornAntenna', loglevel='DEBUG')
 
 # --- Coordinate system for horn geometry -------------------------------
 hornCS = em.CS(em.YAX, em.ZAX, em.XAX)
@@ -87,7 +87,7 @@ abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
 # --- Run frequency-domain solver ----------------------------------------
-data = m.mw.frequency_domain()
+data = m.mw.run_sweep()
 
 # --- Plot return loss ---------------------------------------------------
 scal = data.scalar.grid

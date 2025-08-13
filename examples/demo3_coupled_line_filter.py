@@ -37,7 +37,7 @@ Dtot = 750              # total clearance (mil)
 extra = 100             # extra margin (mil)
 
 # --- Simulation setup ----------------------------------------------------
-model = em.Simulation3D('Demo3', loglevel='DEBUG')
+model = em.Simulation('Demo3', loglevel='DEBUG')
 
 # --- Material and layouter -----------------------------------------------
 mat = em.Material(er=3.55, color="#488343", opacity=0.1)
@@ -82,8 +82,8 @@ stripline = pcb.compile_paths(merge=True)
 pcb.determine_bounds(topmargin=150, bottommargin=150)
 
 # --- Generate dielectric and air blocks ----------------------------------
-diel = pcb.gen_pcb()                     # substrate dielectric block
-air = pcb.gen_air(4 * th)               # surrounding air box
+diel = pcb.generate_pcb()                     # substrate dielectric block
+air = pcb.generate_air(4 * th)               # surrounding air box
 # assign our custom material to the dielectric block
 diel.material = mat
 
@@ -118,7 +118,7 @@ d.add_object(stripline, color='red')
 d.show()
 
 # --- Run frequency-domain solver ----------------------------------------
-data = model.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+data = model.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)
 
 # --- Extract and plot S-parameters ---------------------------------------
 f = data.scalar.grid.freq                  # frequency axis

@@ -20,7 +20,7 @@ from __future__ import annotations
 from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
-from .shapes import Box, Plate, Cyllinder
+from .shapes import Box, Plate, Cylinder
 from .polybased import XYPolygon
 from .operations import change_coordinate_system
 from .pcb_tools.macro import parse_macro
@@ -1247,14 +1247,14 @@ class PCB:
         plate = change_coordinate_system(plate, self.cs)
         return plate # type: ignore
 
-    def generate_vias(self, merge=False) -> list[Cyllinder] | Cyllinder:
+    def generate_vias(self, merge=False) -> list[Cylinder] | Cylinder:
         """Generates the via objects.
 
         Args:
             merge (bool, optional): Whether to merge the result into a final object. Defaults to False.
 
         Returns:
-            list[Cyllinder] | Cyllinder: Either al ist of cylllinders or a single one (merge=True)
+            list[Cylinder] | Cylinder: Either al ist of cylllinders or a single one (merge=True)
         """
         vias = []
         for via in self.vias:
@@ -1263,7 +1263,7 @@ class PCB:
             z0 = via.z1*self.unit
             xg, yg, zg = self.cs.in_global_cs(x0, y0, z0)
             cs = CoordinateSystem(self.cs.xax, self.cs.yax, self.cs.zax, np.array([xg, yg, zg]))
-            cyl = Cyllinder(via.radius*self.unit, (via.z2-via.z1)*self.unit, cs, via.segments)
+            cyl = Cylinder(via.radius*self.unit, (via.z2-via.z1)*self.unit, cs, via.segments)
             cyl.material = COPPER
             vias.append(cyl)
         if merge:

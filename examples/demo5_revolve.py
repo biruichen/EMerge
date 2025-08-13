@@ -3,7 +3,7 @@ import emerge as em
 
 For now it just shows you how to work with the revolve system.
 """
-model = em.Simulation3D('Revolve test')
+model = em.Simulation('Revolve test')
 
 mm = 0.001
 rad_feed = 30*mm

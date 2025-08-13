@@ -27,7 +27,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
+m = em.Simulation('Demo1_SIF', loglevel='DEBUG')
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -63,7 +63,7 @@ layouter.determine_bounds(leftmargin=0, topmargin=200, rightmargin=0, bottommarg
 
 # We can now generate the PCB and air box. The material assignment is automatic!
 
-pcb = layouter.gen_pcb(True, merge=True)
+pcb = layouter.generate_pcb(True, merge=True)
 
 # We now pass all the geometries we have created to the .commit_geometry() method.
 m.commit_geometry()
@@ -111,7 +111,7 @@ if False:
     m.display.show()
 
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
+sol = m.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)
 
 # Our "sol" variable is of type MWData (Microwave Data). This contains a set of scalar data 
 # like S-parameters and field data like the E/H field. The scalar data is in sol.scalar and the 
