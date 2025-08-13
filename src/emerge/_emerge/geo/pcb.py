@@ -1079,7 +1079,7 @@ class PCB:
         plane = change_coordinate_system(plane, self.cs) # type: ignore
         return plane # type: ignore
     
-    def gen_pcb(self, 
+    def generate_pcb(self, 
                 split_z: bool = True,
                 layer_tolerance: float = 1e-6,
                 merge: bool = True) -> GeoVolume:
@@ -1119,7 +1119,7 @@ class PCB:
         box = change_coordinate_system(box, self.cs)
         return box # type: ignore
 
-    def gen_air(self, height: float) -> GeoVolume:
+    def generate_air(self, height: float) -> GeoVolume:
         """Generate the Air Block object
 
         This requires that the width, depth and origin are deterimed. This 
