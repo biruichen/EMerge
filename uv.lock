@@ -236,7 +236,7 @@ wheels = [
 
 [[package]]
 name = "emerge"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "gmsh" },
@@ -778,15 +778,15 @@ wheels = [
 
 [[package]]
 name = "nvidia-cudss-cu12"
-version = "0.6.0.5"
+version = "0.6.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-cublas-cu12" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/86/140de1f2213c807096405a0aecd0b33b921d99be1ecf44a0052274d72e37/nvidia_cudss_cu12-0.6.0.5-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:6deaffc8bc1917cd5f6323cc6f25bb3fd354c9c22a92d21bed906ed1de39de74", size = 53034074, upload-time = "2025-06-16T23:04:42.981Z" },
-    { url = "https://files.pythonhosted.org/packages/84/96/36e3cd59112cef56250c5eacc3418d7d8c0cef3d033590a4f2f0d1300a6a/nvidia_cudss_cu12-0.6.0.5-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:17d1592abc1710fba7c95fdfa0f5a47207aabac13871a87428c0d49c866360cb", size = 53105707, upload-time = "2025-06-16T23:05:19.248Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/ae/8a4f394f37773b4de58c36e64e9fe4b59833d8b5509ca4521c8d5aef0c03/nvidia_cudss_cu12-0.6.0.5-py3-none-win_amd64.whl", hash = "sha256:5273ca09f69ed5e298c772bb803dad6354f532fc7062d8e82cb853beeccc9906", size = 51311818, upload-time = "2025-06-16T23:05:41.997Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/86/140de1f2213c807096405a0aecd0b33b921d99be1ecf44a0052274d72e37/nvidia_cudss_cu12-0.6.1.5-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:6deaffc8bc1917cd5f6323cc6f25bb3fd354c9c22a92d21bed906ed1de39de74", size = 53034074, upload-time = "2025-06-16T23:04:42.981Z" },
+    { url = "https://files.pythonhosted.org/packages/84/96/36e3cd59112cef56250c5eacc3418d7d8c0cef3d033590a4f2f0d1300a6a/nvidia_cudss_cu12-0.6.1.5-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:17d1592abc1710fba7c95fdfa0f5a47207aabac13871a87428c0d49c866360cb", size = 53105707, upload-time = "2025-06-16T23:05:19.248Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/ae/8a4f394f37773b4de58c36e64e9fe4b59833d8b5509ca4521c8d5aef0c03/nvidia_cudss_cu12-0.6.1.5-py3-none-win_amd64.whl", hash = "sha256:5273ca09f69ed5e298c772bb803dad6354f532fc7062d8e82cb853beeccc9906", size = 51311818, upload-time = "2025-06-16T23:05:41.997Z" },
 ]
 
 [[package]]
