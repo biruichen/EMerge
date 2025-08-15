@@ -245,7 +245,6 @@ dependencies = [
     { name = "matplotlib" },
     { name = "mkl", marker = "platform_machine == 'AMD64' or platform_machine == 'x86_64'" },
     { name = "numba" },
-    { name = "numba-progress" },
     { name = "numpy" },
     { name = "pyvista" },
     { name = "scipy" },
@@ -277,7 +276,6 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "mkl", marker = "platform_machine == 'AMD64' or platform_machine == 'x86_64'", specifier = "!=2024.0" },
     { name = "numba", specifier = ">=0.57.0" },
-    { name = "numba-progress", specifier = ">=1.1.3" },
     { name = "numpy", specifier = ">=1.24,<2.3" },
     { name = "nvidia-cudss-cu12", marker = "extra == 'cudss'" },
     { name = "nvmath-python", extras = ["cu12"], marker = "extra == 'cudss'" },
@@ -671,20 +669,6 @@ wheels = [
 ]
 
 [[package]]
-name = "numba-progress"
-version = "1.1.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/40/dd/105af1a9bab618a57ea0748f6a1169de9887953ba1de511daab9083469db/numba_progress-1.1.3.tar.gz", hash = "sha256:4cbdb99f911725c195711e0a0b06e5c89c8ef1126388798779619e11f07b114f", size = 10558, upload-time = "2025-02-03T15:15:56.551Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/ec/0eba33f08e3f83d75ab5cabae7ed60025504b277156ec899beab804f8c18/numba_progress-1.1.3-py3-none-any.whl", hash = "sha256:c06450bb7ef99454d6d3df04a8b26ccc4cc8be5c6e6f5cfdc98badb2d86233f8", size = 7411, upload-time = "2025-02-03T15:15:58.473Z" },
-]
-
-[[package]]
 name = "numpy"
 version = "2.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -778,15 +762,15 @@ wheels = [
 
 [[package]]
 name = "nvidia-cudss-cu12"
-version = "0.6.1.5"
+version = "0.6.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-cublas-cu12" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/86/140de1f2213c807096405a0aecd0b33b921d99be1ecf44a0052274d72e37/nvidia_cudss_cu12-0.6.1.5-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:6deaffc8bc1917cd5f6323cc6f25bb3fd354c9c22a92d21bed906ed1de39de74", size = 53034074, upload-time = "2025-06-16T23:04:42.981Z" },
-    { url = "https://files.pythonhosted.org/packages/84/96/36e3cd59112cef56250c5eacc3418d7d8c0cef3d033590a4f2f0d1300a6a/nvidia_cudss_cu12-0.6.1.5-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:17d1592abc1710fba7c95fdfa0f5a47207aabac13871a87428c0d49c866360cb", size = 53105707, upload-time = "2025-06-16T23:05:19.248Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/ae/8a4f394f37773b4de58c36e64e9fe4b59833d8b5509ca4521c8d5aef0c03/nvidia_cudss_cu12-0.6.1.5-py3-none-win_amd64.whl", hash = "sha256:5273ca09f69ed5e298c772bb803dad6354f532fc7062d8e82cb853beeccc9906", size = 51311818, upload-time = "2025-06-16T23:05:41.997Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/86/140de1f2213c807096405a0aecd0b33b921d99be1ecf44a0052274d72e37/nvidia_cudss_cu12-0.6.0.5-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:6deaffc8bc1917cd5f6323cc6f25bb3fd354c9c22a92d21bed906ed1de39de74", size = 53034074, upload-time = "2025-06-16T23:04:42.981Z" },
+    { url = "https://files.pythonhosted.org/packages/84/96/36e3cd59112cef56250c5eacc3418d7d8c0cef3d033590a4f2f0d1300a6a/nvidia_cudss_cu12-0.6.0.5-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:17d1592abc1710fba7c95fdfa0f5a47207aabac13871a87428c0d49c866360cb", size = 53105707, upload-time = "2025-06-16T23:05:19.248Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/ae/8a4f394f37773b4de58c36e64e9fe4b59833d8b5509ca4521c8d5aef0c03/nvidia_cudss_cu12-0.6.0.5-py3-none-win_amd64.whl", hash = "sha256:5273ca09f69ed5e298c772bb803dad6354f532fc7062d8e82cb853beeccc9906", size = 51311818, upload-time = "2025-06-16T23:05:41.997Z" },
 ]
 
 [[package]]
@@ -1270,18 +1254,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/b9/1ed31d167be802da0fc95020d04cd27b7d7065cc6fbefdd2f9186f60d7bd/tomli-2.2.1-cp313-cp313-win32.whl", hash = "sha256:d3f5614314d758649ab2ab3a62d4f2004c825922f9e370b29416484086b264ec", size = 98724, upload-time = "2024-11-27T22:38:32.837Z" },
     { url = "https://files.pythonhosted.org/packages/c7/32/b0963458706accd9afcfeb867c0f9175a741bf7b19cd424230714d722198/tomli-2.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:a38aa0308e754b0e3c67e344754dff64999ff9b513e691d0e786265c93583c69", size = 109383, upload-time = "2024-11-27T22:38:34.455Z" },
     { url = "https://files.pythonhosted.org/packages/6e/c2/61d3e0f47e2b74ef40a68b9e6ad5984f6241a942f7cd3bbfbdbd03861ea9/tomli-2.2.1-py3-none-any.whl", hash = "sha256:cb55c73c5f4408779d0cf3eef9f762b9c9f147a77de7b258bef0a5628adc85cc", size = 14257, upload-time = "2024-11-27T22:38:35.385Z" },
-]
-
-[[package]]
-name = "tqdm"
-version = "4.67.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737, upload-time = "2024-11-24T20:12:22.481Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/30/dc54f88dd4a2b5dc8a0279bdd7270e735851848b762aeb1c1184ed1f6b14/tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2", size = 78540, upload-time = "2024-11-24T20:12:19.698Z" },
 ]
 
 [[package]]

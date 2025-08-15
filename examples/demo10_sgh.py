@@ -95,17 +95,18 @@ plot_sp(scal.freq, scal.S(1,1))  # S11 vs frequency
 
 # --- Far-field radiation pattern ----------------------------------------
 # Compute E and H on 2D cut for phi=0 plane over -90° to 90°
-ang, E, H = data.field[0].farfield_2d(
+ff_data = data.field[0].farfield_2d(
     (1, 0, 0), (0, 1, 0), radiation_boundary,
     (-90, 90), syms=['Ez','Hy']
 )
+plot_ff(ff_data.ang * 180/np.pi, ff_data.normE/em.lib.EISO, dB=True)
 # Normalize to free-space impedance and convert to dB
 
 m.display.add_object(horn_in, opacity=0.1)
 m.display.add_object(air2, opacity=0.1)
 m.display.add_object(feed, opacity=0.1)
 m.display.add_surf(*data.field[0].farfield_3d(radiation_boundary, syms=['Ez','Hy'])\
-                .surfplot('normE', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
+                .surfplot('normE', 'abs', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
 m.display.add_surf(*data.field[0].cutplane(0.5*mm, z=0).scalar('Ez','real'))
 m.display.show()
 

@@ -448,3 +448,28 @@ class OldBox(GeoVolume):
         
         tags = list(reduce(lambda a,b: a+b, tagslist))
         return FaceSelection(tags)
+
+class Cone(GeoVolume):
+    
+    def __init__(self, p0: tuple[float, float, float],
+                 direction: tuple[float, float, float],
+                 r1: float,
+                 r2: float):
+        """Constructis a cone that starts at position p0 and is aimed in the given direction.
+        r1 is the start radius and r2 the end radius. The magnitude of direction determines its length.
+
+        Args:
+            p0 (tuple[float, float, float]): _description_
+            direction (tuple[float, float, float]): _description_
+            r1 (float): _description_
+            r2 (float): _description_
+        """
+        tag = gmsh.model.occ.add_cone(*p0, *direction, r1, r2)
+        super().__init__(tag)
+        
+        p0 = np.array(p0)
+        ds = np.array(direction)
+        
+        self._add_face_pointer('front', p0, ds)
+        if r2>0:
+            self._add_face_pointer('back', p0+ds, ds)

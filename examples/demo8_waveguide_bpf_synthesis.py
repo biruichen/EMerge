@@ -19,8 +19,8 @@ c0 = 299792458            # speed of light in vacuum (m/s)
 wga = 22.86 * mm          # a-dimension of WR-90 waveguide
 wgb = 10.16 * mm              # b-dimension (height) of waveguide
 # frequency band for final filter response
-f1 = 9.5e9                # start frequency (Hz)
-f2 = 9.8e9                # stop frequency (Hz)
+f1 = 9.6e9                # start frequency (Hz)
+f2 = 10e9                # stop frequency (Hz)
 
 # feed line length and iris thickness
 Lfeed = 20 * mm           # length of input/output waveguide sections

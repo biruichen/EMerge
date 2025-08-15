@@ -472,6 +472,10 @@ class GeoObject:
             return GeoVolume(tags)
         return GeoObject(tags)
     
+    def remove(self) -> None:
+        self._exists = False
+        gmsh.model.occ.remove(self.dimtags, True)
+        
 class GeoVolume(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
     specific geometry data.'''
