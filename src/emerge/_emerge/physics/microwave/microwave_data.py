@@ -1027,6 +1027,42 @@ class MWScalarNdim:
     def S(self, i1: int, i2: int) -> np.ndarray:
         return self.Sp[...,self._portmap[i1], self._portmap[i2]]
     
+    @property
+    def Smat(self) -> np.ndarray:
+        """Returns the full S-matrix
+
+        Returns:
+            np.ndarray: The S-matrix with shape (nF, nP, nP)
+        """
+        Nports = len(self._portmap)
+        nfreq = self.freq.shape[0]
+
+        Smat = np.zeros((nfreq,Nports,Nports), dtype=np.complex128)
+        
+        for i in self._portnumbers:
+            for j in self._portnumbers:
+                Smat[:,i-1,j-1] = self.S(i,j)
+
+        return Smat
+    
+    def emmodel(self, f_sample: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """Returns the required date for a Heavi S-parameter component
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Heavi data
+        """
+        
+        if f_sample is not None:
+            f = f_sample
+            S = self.model_Smat(f_sample)
+        else:
+            f = self.freq
+            S = self.Smat
+        
+        Z0s = self.Z0
+        S = renormalise_s(S, Z0s, 50.0)
+        return f, S
+
     def model_S(self, i: int, j: int, 
             freq: np.ndarray, 
             Npoles: int | Literal['auto'] = 'auto', 
@@ -1062,7 +1098,7 @@ class MWScalarNdim:
         Returns:
             np.ndarray: The (Nf,Np,Np) S-parameter matrix
         """
-        Nports = len(self.datasets[0].excitation)
+        Nports = len(self._portmap)
         nfreq = frequencies.shape[0]
 
         Smat = np.zeros((nfreq,Nports,Nports), dtype=np.complex128)
