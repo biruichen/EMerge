@@ -28,7 +28,7 @@ wgb = 18*mm
 fl = 25*mm
 
 # We start again by defining our simulation model
-model = em.Simulation('Periodic', loglevel='DEBUG')
+model = em.Simulation('Periodic')
 model.check_version("0.6.4") # Checks version compatibility.
 
 # Next we will create a PeriodicCell class (in our case a hexagonal cell). This class

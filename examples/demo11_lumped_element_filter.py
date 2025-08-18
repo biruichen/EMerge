@@ -28,7 +28,7 @@ def Cf(C):
 # --- PCB and lumped-component parameters ---------------------------------
 pack = '0603'         # package footprint for lumped components
 # Create simulation and PCB layouter with substrate thickness and material
-m = em.Simulation('LumpedFilter', loglevel='DEBUG')
+m = em.Simulation('LumpedFilter')
 m.check_version("0.6.4") # Checks version compatibility.
 
 th = 0.5         # substrate thickness (meters)

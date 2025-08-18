@@ -32,7 +32,7 @@ mat_resonator = em.lib.Material(er=34, color="#ededed")
 Nmodes = 5
 
 # --- Create simulation ---------------------------------------------------
-model = em.Simulation('DielectricResonatorFilter', loglevel='INFO')
+model = em.Simulation('DielectricResonatorFilter')
 model.check_version("0.6.4") # Checks version compatibility.
 
 # --- Build geometry ------------------------------------------------------
