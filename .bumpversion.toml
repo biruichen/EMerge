@@ -28,3 +28,6 @@ filename = "pyproject.toml"
 
 [[tool.bumpversion.files]]
 filename = "src/emerge/__init__.py"
+
+[[tool.bumpversion.files]]
+filename = "examples/*"
