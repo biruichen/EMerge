@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 import numpy as np
-from ..cs import CoordinateSystem, GCS, Axis
+from ..cs import CoordinateSystem, GCS, Axis, _parse_axis
 from ..geometry import GeoVolume, GeoPolygon, GeoEdge, GeoSurface
 from .shapes import Alignment
 import gmsh
@@ -158,7 +158,35 @@ def rotate_point(point: tuple[float, float, float],
     rotated += o
     return tuple(rotated)
 
+def _dist(p1: tuple[float, float], p2: tuple[float, float]) -> float:
+    return ((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)**(0.5)
 
+def _pair_points(x1: np.ndarray,
+                 y1: np.ndarray,
+                 x2: np.ndarray,
+                 y2: np.ndarray) -> list[tuple[int,int]]:
+    if x1.shape[0]==x2.shape[0]:
+        return [(i,i) for i in range(x1.shape[0])]
+
+    #create point tuples
+    p1s = [(x,y) for x,y in zip(x1, y1)]
+    p2s = [(x,y) for x,y in zip(x2, y2)]
+    
+    pairs = []
+    for i, p1 in enumerate(p1s):
+        d1 = _dist(p1, p2s[i-1])
+        d2 = _dist(p1, p2s[i])
+        d3 = _dist(p1, p2s[i+1])
+        mind = min([d1, d2, d3])
+        if mind==d1:
+            pairs.append((i,i-1))
+            continue
+        elif mind==d2:
+            pairs.append((i,i))
+        else:
+            pairs.append((i,i+1))
+    return pairs
+            
 def orthonormalize(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Generates a set of orthonormal vectors given an input vector X
 
@@ -233,8 +261,9 @@ class XYPolygon:
     """This class generalizes a polygon in an un-embedded XY space that can be embedded in 3D space.
     """
     def __init__(self, 
-                 xs: np.ndarray | list | tuple = None,
-                 ys: np.ndarray | list | tuple = None):
+                 xs: np.ndarray | list | tuple | None = None,
+                 ys: np.ndarray | list | tuple | None = None,
+                 cs: CoordinateSystem | None = None):
         """Constructs an XY-plane placed polygon.
 
         Args:
@@ -250,7 +279,13 @@ class XYPolygon:
         self.y: np.ndarray = np.asarray(ys)
 
         self.fillets: list[tuple[float, int]] = []
+        
+        self._cs: CoordinateSystem = cs
 
+    @property
+    def center(self) -> tuple[float, float]:
+        return np.mean(self.x), np.mean(self.y)
+    
     @property
     def length(self):
         return sum([((self.x[i2]-self.x[i1])**2 + (self.y[i2]-self.y[i1])**2)**0.5 for i1, i2 in zip(range(self.N-1),range(1, self.N))])
@@ -282,6 +317,10 @@ class XYPolygon:
         """
         return 0.5*np.abs(np.dot(self.x,np.roll(self.y,1))-np.dot(self.y,np.roll(self.x,1)))
 
+    def incs(self, cs: CoordinateSystem) -> XYPolygon:
+        self._cs = cs
+        return self
+
     def extend(self, xpts: list[float], ypts: list[float]) -> XYPolygon:
         """Adds a series for x and y coordinates to the existing polygon.
 
@@ -301,7 +340,7 @@ class XYPolygon:
         for i in range(self.N):
             yield (self.x[i], self.y[i])
 
-    def fillet(self, radius: float, *indices: int) -> None:
+    def fillet(self, radius: float, *indices: int) -> XYPolygon:
         """Add a fillet rounding with a given radius to the provided nodes.
 
         Example:
@@ -313,8 +352,9 @@ class XYPolygon:
         """
         for i in indices:
             self.fillets.append((radius, i))
+        return self
 
-    def _finalize(self, cs: CoordinateSystem = None) -> GeoPolygon:
+    def _make_wire(self, cs: CoordinateSystem) -> tuple[list[int], list[int], int]:
         """Turns the XYPolygon object into a GeoPolygon that is embedded in 3D space.
 
         The polygon will be placed in the XY-plane of the provided coordinate center.
@@ -340,13 +380,27 @@ class XYPolygon:
         
         add = 0
         for radius, index in self.fillets:
-            t1 = lines[index + add]
-            t2 = lines[(index+add-1) % len(lines)]
+            t1 = lines[(index + add-1) % len(lines)]
+            t2 = lines[index + add]
             tag = gmsh.model.occ.fillet2_d(t1, t2, radius)
             lines.insert(index, tag)
             add += 1
 
         wiretag = gmsh.model.occ.add_wire(lines)
+        return ptags, lines, wiretag
+        
+    def _finalize(self, cs: CoordinateSystem) -> GeoPolygon:
+        """Turns the XYPolygon object into a GeoPolygon that is embedded in 3D space.
+
+        The polygon will be placed in the XY-plane of the provided coordinate center.
+
+        Args:
+            cs (CoordinateSystem, optional): The coordinate system in which to put the polygon. Defaults to None.
+
+        Returns:
+            GeoPolygon: The resultant 3D GeoPolygon object.
+        """
+        ptags, lines, wiretag = self._make_wire(cs)
         surftag = gmsh.model.occ.add_plane_surface([wiretag,])
         poly = GeoPolygon([surftag,])
         poly.points = ptags
@@ -384,6 +438,8 @@ class XYPolygon:
         Returns:
             GeoPolygon: The resultant object.
         """
+        if self._cs is not None:
+            return self._finalize(self._cs)
         if cs is None:
             cs = GCS
         return self._finalize(cs) 
@@ -500,7 +556,34 @@ class XYPolygon:
         self.extend(xs, ys)
         return self
     
+    def connect(self, other: XYPolygon) -> GeoVolume:
+        """Connect two XYPolygons with a defined coordinate system
 
+        The coordinate system must be defined before this function can be used. To add a coordinate systme without
+        rendering the Polygon to a GeoVolume, use:
+        >>> polygon.incs(my_cs_obj)
+        
+        Args:
+            other (XYPolygon): _descrThe otheiption_
+
+        Returns:
+            GeoVolume: The resultant volume object
+        """
+        if self._cs is None:
+            raise RuntimeError('Cannot connect XYPolygons without a defined coordinate system. Set this first using .incs()')
+        if other._cs is None:
+            raise RuntimeError('Cannot connect XYPolygons without a defined coordinate system. Set this first using .incs()')
+        p1, l1, w1 = self._make_wire(self._cs)
+        p2, l2, w2 = other._make_wire(other._cs)
+        o1 = np.array(self._cs.in_global_cs(*self.center, 0)).flatten()
+        o2 = np.array(other._cs.in_global_cs(*other.center, 0)).flatten()
+        dts = gmsh.model.occ.addThruSections([w1, w2], True, parametrization="IsoParametric")
+        vol = GeoVolume([t for d,t in dts if d==3])
+        
+        vol._add_face_pointer('front',o1, self._cs.zax.np)
+        vol._add_face_pointer('back', o2, other._cs.zax.np)
+        return vol
+            
 class Disc(GeoSurface):
     
     def __init__(self, origin: tuple[float, float, float],
@@ -525,8 +608,7 @@ class Curve(GeoEdge):
                  degree: int = 3,
                  weights: list[float] | None = None,
                  knots: list[float] | None = None,
-                 ctype: Literal['Spline','BSpline','Bezier'] = 'Bezier',
-                 dstart: tuple[float, float, float] | None = None):
+                 ctype: Literal['Spline','BSpline','Bezier'] = 'Spline'):
         """Generate a Spline/Bspline or Bezier curve based on a series of points
 
         This calls the different curve features in OpenCASCADE.
@@ -547,11 +629,6 @@ class Curve(GeoEdge):
         self.xpts: np.ndarray = xpts
         self.ypts: np.ndarray = ypts
         self.zpts: np.ndarray = zpts
-        
-        if dstart is None:
-            dstart = (xpts[1]-xpts[0], ypts[1]-ypts[0], zpts[1]-zpts[0])
-        
-        self.dstart: tuple[float, float, float] = dstart
 
         points = [gmsh.model.occ.add_point(x,y,z) for x,y,z in zip(xpts, ypts, zpts)]
         
@@ -570,6 +647,14 @@ class Curve(GeoEdge):
         tags = gmsh.model.occ.addWire([tags,])
         gmsh.model.occ.remove([(0,tag) for tag in points])
         super().__init__(tags)
+    
+        gmsh.model.occ.synchronize()
+        p1 = gmsh.model.getValue(self.dim, self.tags[0], [0,])
+        p2 = gmsh.model.getValue(self.dim, self.tags[0], [1e-6])
+        self.dstart: tuple[float, float, float] = (p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2])
+    
+        
+        
     
     @property
     def p0(self) -> tuple[float, float, float]:
@@ -653,7 +738,7 @@ class Curve(GeoEdge):
             zp[2] += d/2*dz
             dp = tuple(Z)
         
-        return Curve(xp, yp, zp, ctype='Spline', dstart=dp)
+        return Curve(xp, yp, zp, ctype='Spline')
     
     @staticmethod
     def helix_lh(pstart: tuple[float, float, float],
@@ -731,9 +816,12 @@ class Curve(GeoEdge):
             zp[2] += d/2*dz
             dp = tuple(Z)
         
-        return Curve(xp, yp, zp, ctype='Spline', dstart=dp)
+        return Curve(xp, yp, zp, ctype='Spline')
         
-    def pipe(self, crossection: GeoSurface | XYPolygon, max_mesh_size: float | None = None) -> GeoVolume:
+    def pipe(self, crossection: GeoSurface | XYPolygon, 
+             max_mesh_size: float | None = None,
+             start_tangent: Axis | tuple[float, float, float] | np.ndarray | None = None,
+             x_axis: Axis | tuple[float, float, float] | np.ndarray | None = None) -> GeoVolume:
         """Extrudes a surface or XYPolygon object along the given curve
 
         If a GeoSurface object is used, make sure it starts at the center of the curve. This property
@@ -744,25 +832,31 @@ class Curve(GeoEdge):
         Args:
             crossection (GeoSurface | XYPolygon): The cross section definition to be used
             max_mesh_size (float, optional): The maximum mesh size. Defaults to None
+            start_tangent (Axis, tuple, ndarray, optional): The input polygon plane normal direction. Defaults to None
+            x_axis (Axis, tuple, ndarray optional): The reference X-axis to align the input polygon. Defaults to None
         Returns:
             GeoVolume: The resultant volume object
         """
         if isinstance(crossection, XYPolygon):
-            zax = self.dstart
-            cs = Axis(np.array(zax)).construct_cs(self.p0)
-            surf = crossection.geo(cs)
+            if start_tangent is None:
+                start_tangent = self.dstart
+            if x_axis is not None:
+                xax = _parse_axis(x_axis)
+                zax = _parse_axis(self.dstart)
+                yax = zax.cross(xax)
+                cs = CoordinateSystem(xax, yax, zax, self.p0)
+            else:
+                zax = self.dstart
+                cs = Axis(np.array(zax)).construct_cs(self.p0)
+                surf = crossection.geo(cs)
         else:
             surf = crossection
         x1, y1, z1, x2, y2, z2 = gmsh.model.occ.getBoundingBox(*surf.dimtags[0])
         diag = ((x2-x1)**2 + (y2-y1)**2 + (z2-z1)**2)**(0.5)
-        
         pipetag = gmsh.model.occ.addPipe(surf.dimtags, self.tags[0], 'GuidePlan')
-        
         self.remove()
         surf.remove()
-        
         volume = GeoVolume(pipetag[0][1])
-        
         volume.max_meshsize = diag/2
         return volume
         

@@ -249,7 +249,7 @@ class MWData:
         self.sim.new(**vars)['report'] = report
     
 @dataclass
-class FarfieldData:
+class FarFieldData:
     E: np.ndarray
     H: np.ndarray
     theta: np.ndarray
@@ -816,7 +816,7 @@ class MWField:
                          ang_range: tuple[float, float] = (-180, 180),
                          Npoints: int = 201,
                          origin: tuple[float, float, float] | None = None,
-                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarfieldData:#tuple[np.ndarray, np.ndarray, np.ndarray]:
+                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarFieldData:#tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute the farfield electric and magnetic field defined by a circle.
 
         Args:
@@ -836,14 +836,14 @@ class MWField:
         theta, phi = arc_on_plane(refdir, plane_normal_parsed, ang_range, Npoints)
         E,H = self.farfield(theta, phi, faces, origin, syms = syms)
         angs = np.linspace(*ang_range, Npoints)*np.pi/180
-        return FarfieldData(E, H, theta, phi, ang=angs)
+        return FarFieldData(E, H, theta, phi, ang=angs)
 
     def farfield_3d(self, 
                     faces: FaceSelection | GeoSurface,
                     thetas: np.ndarray | None = None,
                     phis: np.ndarray | None = None,
                     origin: tuple[float, float, float] | None = None,
-                    syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarfieldData:
+                    syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarFieldData:
         """Compute the farfield in a 3D angular grid
 
         If thetas and phis are not provided, they default to a sample space of 2 degrees.
@@ -868,7 +868,7 @@ class MWField:
         E = E.reshape((3, ) + T.shape)
         H = H.reshape((3, ) + T.shape)
         
-        return FarfieldData(E, H, T, P)
+        return FarFieldData(E, H, T, P)
 
     def farfield(self, theta: np.ndarray,
                  phi: np.ndarray,
@@ -924,7 +924,7 @@ class MWField:
         
         return Eff, Hff
 
-    def optycal(self, faces: FaceSelection | GeoSurface | None = None) -> tuple:
+    def optycal_surface(self, faces: FaceSelection | GeoSurface | None = None) -> tuple:
         """Export this models exterior to an Optical acceptable dataset
 
         Args:
@@ -948,7 +948,24 @@ class MWField:
         H = field.H
         k0 = self.k0
         return vertices, triangles, E, H, origin, k0
-        
+    
+    def optycal_antenna(self, faces: FaceSelection | GeoSurface | None = None,
+                        origin: tuple[float, float, float] | None = None,
+                        syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> dict:
+        """Export this models exterior to an Optical acceptable dataset
+
+        Args:
+            faces (FaceSelection | GeoSurface): The faces to export. Defaults to None
+
+        Returns:
+            tuple: _description_
+        """
+        freq = self.freq
+        def function(theta: np.ndarray, phi: np.ndarray, k0: float):
+            E, H = self.farfield(theta, phi, faces, origin, syms)
+            return E[0,:], E[1,:], E[2,:], H[0,:], H[1,:], H[2,:]
+    
+        return dict(freq=freq, ff_function=function)
 
 class MWScalar:
     """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
