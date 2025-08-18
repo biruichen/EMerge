@@ -4,7 +4,7 @@ import emerge as em
 For now it just shows you how to work with the revolve system.
 """
 model = em.Simulation('Revolve test')
-model.check_version("0.6.4") # Checks version compatibility.
+model.check_version("0.6.5") # Checks version compatibility.
 
 mm = 0.001
 rad_feed = 30*mm

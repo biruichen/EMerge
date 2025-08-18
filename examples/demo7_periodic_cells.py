@@ -29,7 +29,7 @@ fl = 25*mm
 
 # We start again by defining our simulation model
 model = em.Simulation('Periodic')
-model.check_version("0.6.4") # Checks version compatibility.
+model.check_version("0.6.5") # Checks version compatibility.
 
 # Next we will create a PeriodicCell class (in our case a hexagonal cell). This class
 # is simply meant to simplify our lives and improve the simulation setup flow.
