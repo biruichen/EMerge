@@ -22,7 +22,7 @@ from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cylinder
 from .polybased import XYPolygon
-from .operations import change_coordinate_system
+from .operations import change_coordinate_system, unite
 from .pcb_tools.macro import parse_macro
 from .pcb_tools.calculator import PCBCalculator
 
@@ -310,7 +310,6 @@ class StripCurve(StripTurn):
         points: list[tuple[float, float]] = []
         Npts = int(np.ceil(abs(self.angle/self.dang)))
         R = self.radius-np.sign(self.angle)*self.width/2
-        print(R, self.circ_origin, self._xhat, self._yhat)
         for i in range(Npts):
             ang = abs((i+1)/Npts * self.angle * np.pi/180)
             pnew = self.circ_origin + R*(self._xhat*np.cos(ang)+self._yhat*np.sin(ang))
@@ -324,7 +323,6 @@ class StripCurve(StripTurn):
 
         Npts = int(np.ceil(abs(self.angle/self.dang)))
         R = self.radius+np.sign(self.angle)*self.width/2
-        print(R, self.circ_origin, self._xhat, self._yhat)
         for i in range(Npts):
             ang = abs((i+1)/Npts * self.angle * np.pi/180)
             pnew = self.circ_origin + R*(self._xhat*np.cos(ang)+self._yhat*np.sin(ang))
@@ -1247,7 +1245,13 @@ class PCB:
         plate = change_coordinate_system(plate, self.cs)
         return plate # type: ignore
 
-    def generate_vias(self, merge=False) -> list[Cylinder] | Cylinder:
+    @overload
+    def generate_vias(self, merge=Literal[True]) -> GeoVolume: ...
+    
+    @overload
+    def generate_vias(self, merge=Literal[False]) -> list[Cylinder]: ...
+        
+    def generate_vias(self, merge=False) -> list[Cylinder] | GeoVolume:
         """Generates the via objects.
 
         Args:
@@ -1321,7 +1325,7 @@ class PCB:
         Returns:
             list[Polygon] | GeoSurface: The output stripline polygons possibly merged if merge = True.
         """
-        polys = []
+        polys: list[GeoSurface] = []
         allx = []
         ally = []
 
@@ -1359,13 +1363,14 @@ class PCB:
 
         self.traces = polys
         if merge:
-            tags = []
-            for p in polys:
-                tags.extend(p.tags)
-                if p.material != COPPER:
-                    logger.warning(f'Merging a polygon with material {p.material} into a single polygon that will be COPPER.')
-            polys = GeoSurface(tags)
-            polys.material = COPPER
+            polys = unite(*polys)
+            # tags = []
+            # for p in polys:
+            #     tags.extend(p.tags)
+            #     if p.material != COPPER:
+            #         logger.warning(f'Merging a polygon with material {p.material} into a single polygon that will be COPPER.')
+            # polys = GeoSurface(tags)
+            # polys.material = COPPER
         return polys
                 
 ############################################################

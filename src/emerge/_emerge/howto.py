@@ -69,7 +69,7 @@ class _HowtoClass:
         
         The naming convention is left(-X), right(+X), front(-Y), back(+Y), bottom(-Z), top(+Z)
         All outside faces can be selected using
-        >>> outside = object.outside()
+        >>> outside = object.boundary()
         
         If objects are the results from operations, you can access the faces from the
         source objects using the optional tool argument

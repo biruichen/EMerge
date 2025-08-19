@@ -78,8 +78,8 @@ model.generate_mesh()
 model.view()
 
 # --- Boundary selections for BCs & port -------------------------------------
-abc_sel = airbox.outside('bottom')     # absorbing boundary applied at bottom face of airbox
-port_sel = feed.outside('front','back')# port faces on the feed (two opposite faces)
+abc_sel = airbox.boundary(exclude=('bottom',))     # absorbing boundary applied at bottom face of airbox
+port_sel = feed.boundary(exclude=('front','back'))# port faces on the feed (two opposite faces)
 
 # --- Boundary conditions -----------------------------------------------------
 abc = model.mw.bc.AbsorbingBoundary(abc_sel)                     # open-space termination

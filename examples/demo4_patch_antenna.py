@@ -103,7 +103,7 @@ port = model.mw.bc.LumpedPort(
     active=True, Z0=50
 )
 # Apply absorbing boundary on underside of airbox to simulate open space
-boundary_selection = air.outside('bottom')
+boundary_selection = air.boundary(exclude=('bottom',))
 
 model.view(selections=[boundary_selection,])
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
