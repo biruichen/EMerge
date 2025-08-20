@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# HELIX ANTENNA DEMO - Simulation setup, mesh, sweep, and far-field plots
+# HELIX ANTENNA DEMO — Simulation setup, mesh, sweep, and far-field plots
 #
 # This script builds a helical radiator with a short feed, places it in an
 # airbox, applies a lumped port and absorbing boundary, runs a frequency sweep,
@@ -25,7 +25,7 @@ porth = 2*mm                    # vertical height of the feed extrusion
 
 # --- Simulation object -------------------------------------------------------
 model = em.Simulation('helix')
-model.check_version("0.6.7") # Checks version compatibility.
+model.check_version("0.6.6") # Checks version compatibility.
 
 dfeed = 3*mm                    # straight feed length before the helix starts
 

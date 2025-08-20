@@ -381,7 +381,7 @@ class Modeler:
         self._add_function(function)
         return self
     
-    def cyllinder(self,
+    def cylinder(self,
                   radius: float | Series,
                   height: float | Series,
                   position: tuple[float | Series, float | Series, float | Series],

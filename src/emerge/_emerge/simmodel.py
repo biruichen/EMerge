@@ -245,12 +245,11 @@ class Simulation:
         vM, vm, vp = [float(x) for x in version.split('.')]
         cM, cm, cp = [float(x) for x in __version__.split('.')]
         if vM != cM:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
         if vm != cm:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
         if vp != cp:
             logger.warning(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
-            logger.warning("\n You can upgrade your version of emerge with: pip --upgrade emerge")
             logger.warning("You may suppress this error by removing the call to .check_version().")
             input('Press enter to proceed...')
 
@@ -320,26 +319,24 @@ class Simulation:
     def view(self, 
              selections: list[Selection] | None = None, 
              use_gmsh: bool = False,
-             plot_mesh: bool = False,
-             volume_mesh: bool = True,
-             opacity: float | None = None) -> None:
+             volume_opacity: float = 0.1,
+             surface_opacity: float = 1,
+             show_edges: bool = True) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
 
         Args:
-            selections (list[Selection] | None, optional): Optional selections to highlight. Defaults to None.
-            use_gmsh (bool, optional): If GMSH's GUI should be used. Defaults to False.
-            plot_mesh (bool, optional): If the mesh should be plot instead of the object. Defaults to False.
-            volume_mesh (bool, optional): If the internal mesh should be plot instead of only the surface boundary mesh. Defaults to True
-            opacity (float | None, optional): The object/mesh opacity. Defaults to None.
-
+            selections (list[Selection], optional): Additional selections to highlight. Defaults to None.
+            use_gmsh (bool, optional): Whether to use the GMSH display. Defaults to False.
+            opacity (float, optional): The global opacity of all objects.. Defaults to None.
+            show_edges (bool, optional): Whether to show the geometry edges. Defaults to None.
         """
         if not (self.display is not None and self.mesh.defined) or use_gmsh:
             gmsh.model.occ.synchronize()
             gmsh.fltk.run()
             return
         for geo in _GEOMANAGER.all_geometries():
-            self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh)
+            self.display.add_object(geo)
         if selections:
             [self.display.add_object(sel, color='red', opacity=0.3) for sel in selections]
         self.display.show()

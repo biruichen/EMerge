@@ -282,9 +282,9 @@ class FarFieldData:
     
     @property
     def Etheta(self) -> np.ndarray:
-        thx = np.cos(self.theta)*np.cos(self.phi)
-        thy = np.cos(self.theta)*np.sin(self.phi)
-        thz = -np.sin(self.theta)
+        thx = -np.cos(self.theta)*np.cos(self.phi)
+        thy = -np.cos(self.theta)*np.sin(self.phi)
+        thz = np.sin(self.theta)
         return thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:]
     
     @property
@@ -296,11 +296,11 @@ class FarFieldData:
     
     @property
     def Erhcp(self) -> np.ndarray:
-        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def Elhcp(self) -> np.ndarray:
-        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def AR(self) -> np.ndarray:
@@ -702,11 +702,6 @@ class MWField:
     
     def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> EHField:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
-        if isinstance(xs, (float, int, complex)):
-            xs = np.array([xs,])
-            ys = np.array([ys,])
-            zs = np.array([zs,])
-            
         shp = xs.shape
         xf = xs.flatten()
         yf = ys.flatten()
@@ -736,19 +731,6 @@ class MWField:
                      x: float | None = None,
                      y: float | None = None,
                      z: float | None = None) -> EHField:
-        """Create a cartesian cut plane (XY, YZ or XZ) and compute the E and H-fields there
-
-        Only one coordiante and thus cutplane may be defined. If multiple are defined only the last (x->y->z) is used.
-        
-        Args:
-            ds (float): The discretization step size
-            x (float | None, optional): The X-coordinate in case of a YZ-plane. Defaults to None.
-            y (float | None, optional): The Y-coordinate in case of an XZ-plane. Defaults to None.
-            z (float | None, optional): The Z-coordinate in case of an XY-plane. Defaults to None.
-
-        Returns:
-            EHField: The resultant EHField object
-        """
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
