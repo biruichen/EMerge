@@ -787,7 +787,6 @@ class LumpedPort(PortBC):
                  width: float | None = None,
                  height: float | None = None,
                  direction: Axis | None = None,
-                 Idirection: Axis | None = None,
                  active: bool = False,
                  power: float = 1,
                  Z0: float = 50):
@@ -814,7 +813,7 @@ class LumpedPort(PortBC):
         if width is None:
             if not isinstance(face, GeoObject):
                 raise ValueError(f'The width, height and direction must be defined. Information cannot be extracted from {face}')
-            width, height, direction, Idirection = face._data('width','height','vdir', 'idir')
+            width, height, direction = face._data('width','height','vdir')
             if width is None or height is None or direction is None:
                 raise ValueError(f'The width, height and direction could not be extracted from {face}')
         
@@ -828,7 +827,6 @@ class LumpedPort(PortBC):
         self.width: float = width
         self.height: float = height # type: ignore
         self.Vdirection: Axis = direction # type: ignore
-        self.Idirection: Axis = Idirection # type: ignore
         self.type = 'TEM'
         
         logger.info('Constructing coordinate system from normal port')
@@ -836,7 +834,6 @@ class LumpedPort(PortBC):
 
         self.vintline: Line | None = None
         self.v_integration = True
-        self.iintline: Line | None = None
 
     @property
     def surfZ(self) -> float:
@@ -922,6 +919,7 @@ class LumpedPort(PortBC):
         Ex, Ey, Ez = self.port_mode_3d(xl, yl, k0)
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
+
 
 class LumpedElement(RobinBC):
     
