@@ -83,7 +83,7 @@ freq = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1,1)
 S21 = data.scalar.grid.S(2,1)
 
-plot_sp(freq/1e9, [S11, S21], labels=['S11','S21'])
+plot_sp(freq, [S11, S21], labels=['S11','S21'])
 
 model.display.add_object(diel, opacity=0.2)
 model.display.add_object(trace)

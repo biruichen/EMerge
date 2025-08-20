@@ -120,7 +120,7 @@ data = model.mw.run_sweep()
 f = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1,1)
 
-plot_sp(f/1e9, S11, labels=['S11'])
+plot_sp(f, S11, labels=['S11'])
 
 # First we need to create a boundary mesh
 rad_surf = model.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))

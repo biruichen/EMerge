@@ -130,7 +130,7 @@ S11 = gritted_data.S(1,1)
 S21 = gritted_data.S(2,1)
 
 # This extracts the actual simulation data.
-plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+plot_sp(f, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 # We can also supersample our data by constructing a model using the Vector Fitting algorithm
 
@@ -140,7 +140,7 @@ S21 = gritted_data.model_S(2,1,f)
 
 smith(S11, labels='S11', f=f)
 
-plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+plot_sp(f, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 m.display.add_object(pcb, opacity=0.1)
 m.display.add_object(polies, opacity=0.5)
