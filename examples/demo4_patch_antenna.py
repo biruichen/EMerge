@@ -36,7 +36,7 @@ f2 = 1.6e9              # stop frequency
 # --- Create simulation object -------------------------------------------
 # Using PVDisplay backend for 3D visualization
 model = em.Simulation('MyPatchAntenna')
-model.check_version("0.6.6") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
 dielectric = em.geo.Box(wsub, hsub, th,

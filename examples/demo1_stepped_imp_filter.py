@@ -28,7 +28,7 @@ pcbmat = em.Material(er=er, tand=0.00, color="#217627", opacity=0.2)
 # We start by creating our simulation object.
 
 m = em.Simulation('Demo1_SIF', loglevel='INFO')
-m.check_version("0.6.6") # Checks version compatibility.
+m.check_version("0.6.7") # Checks version compatibility.
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
 # the dimensions and the PCB material.
