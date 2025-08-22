@@ -597,17 +597,13 @@ class PVDisplay(BaseDisplay):
         kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False, multi_colors=True)
         actor = self._plot.add_mesh(grid_no_nan, scalars=name, **kwargs)
 
+
         if self._do_animate:
             def on_update(obj: _AnimObject, phi: complex):
-
                 field_anim = obj.T(np.real(obj.field * phi))
                 obj.grid[name] = field_anim
-                self._objs.append(_AnimObject(field_flat, T, grid_no_nan, actor, on_update))
-                field = obj.T(np.real(obj.field*phi))
-                obj.grid[name] = field
-                self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update)) # type: ignore
-        
-        
+            self._objs.append(_AnimObject(field_flat, T, grid_no_nan, actor, on_update))
+
 
     def add_title(self, title: str) -> None:
         """Adds a title
