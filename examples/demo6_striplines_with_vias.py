@@ -12,7 +12,7 @@ mm = 0.001
 th = 1
 
 model = em.Simulation('Stripline_test')
-model.check_version("0.6.6") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # As usual we start by creating our layouter
 ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
@@ -83,7 +83,7 @@ freq = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1,1)
 S21 = data.scalar.grid.S(2,1)
 
-plot_sp(freq/1e9, [S11, S21], labels=['S11','S21'])
+plot_sp(freq, [S11, S21], labels=['S11','S21'])
 
 model.display.add_object(diel, opacity=0.2)
 model.display.add_object(trace)

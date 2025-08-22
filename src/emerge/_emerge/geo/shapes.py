@@ -213,12 +213,27 @@ class Plate(GeoSurface):
 
 
 class Cylinder(GeoVolume):
-    """3D cylinder geometry."""
+    """Generates a Cylinder object in 3D space.
+        The cylinder will always be placed in the origin of the provided CoordinateSystem.
+        The bottom cylinder plane is always placed in the XY-plane. The length of the cylinder is
+        oriented along the Z-axis.
+
+        By default the cylinder uses the Open Cascade modeling for a cylinder. In this representation
+        the surface of the cylinder is approximated with a tolerance thay may be irregular.
+        As an alternative, the argument Nsections may be provided in which case the Cylinder is replaced
+        by an extrusion of a regular N-sided polygon.
+
+        Args:
+            radius (float): The radius of the Cylinder
+            height (float): The height of the Cylinder
+            cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
+            Nsections (int, optional): The number of sections. Defaults to None.
+        """
     def __init__(self, 
                  radius: float,
                  height: float,
                  cs: CoordinateSystem = GCS,
-                 Nsections: int = None):
+                 Nsections: int | None = None):
         """Generates a Cylinder object in 3D space.
         The cylinder will always be placed in the origin of the provided CoordinateSystem.
         The bottom cylinder plane is always placed in the XY-plane. The length of the cylinder is
@@ -275,13 +290,28 @@ class Cylinder(GeoVolume):
 
 
 class CoaxCylinder(GeoVolume):
-    """A coaxial cylinder with an inner and outer radius."""
+    """Generates a Coaxial cylinder object in 3D space.
+        The coaxial cylinder will always be placed in the origin of the provided CoordinateSystem.
+        The bottom coax plane is always placed in the XY-plane. The lenth of the coax is
+        oriented along the Z-axis.
+
+        By default the coax uses the Open Cascade modeling for a cylinder. In this representation
+        the surface of the cylinder is approximated with a tolerance thay may be irregular.
+        As an alternative, the argument Nsections may be provided in which case the Cylinder is replaced
+        by an extrusion of a regular N-sided polygon.
+
+        Args:
+            radius (float): The radius of the Cylinder
+            height (float): The height of the Cylinder
+            cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
+            Nsections (int, optional): The number of sections. Defaults to None.
+        """
     def __init__(self, 
                  rout: float,
                  rin: float,
                  height: float,
                  cs: CoordinateSystem = GCS,
-                 Nsections: int = None):
+                 Nsections: int | None = None):
         """Generates a Coaxial cylinder object in 3D space.
         The coaxial cylinder will always be placed in the origin of the provided CoordinateSystem.
         The bottom coax plane is always placed in the XY-plane. The lenth of the coax is
@@ -483,7 +513,15 @@ class OldBox(GeoVolume):
 
 
 class Cone(GeoVolume):
-    """3D cone geometry."""
+    """Constructis a cone that starts at position p0 and is aimed in the given direction.
+        r1 is the start radius and r2 the end radius. The magnitude of direction determines its length.
+
+        Args:
+            p0 (tuple[float, float, float]): _description_
+            direction (tuple[float, float, float]): _description_
+            r1 (float): _description_
+            r2 (float): _description_
+        """
     def __init__(self, p0: tuple[float, float, float],
                  direction: tuple[float, float, float],
                  r1: float,

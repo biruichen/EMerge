@@ -43,7 +43,7 @@ lfeed = 100*mil
 
 # A usual we start our simulation file
 model = em.Simulation('Combline_DEMO')
-model.check_version("0.6.6") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.
 # First we create the airbox
@@ -103,7 +103,7 @@ fdense = np.linspace(6e9, 9e9, 2001)
 S11 = data.scalar.grid.model_S(1,1,fdense)
 S21 = data.scalar.grid.model_S(2,1,fdense)
 
-plot_sp(fdense/1e9, [S11, S21], labels=['S11','S21'])
+plot_sp(fdense, [S11, S21], labels=['S11','S21'])
 
 # We can also plot the field inside. First we create a grid of sample point coordinates
 xs = np.linspace(0, Lbox, 41)

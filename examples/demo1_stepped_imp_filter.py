@@ -23,12 +23,12 @@ Hair = 60
 ## Material definition
 
 # We can define the material using the Material class. Just supply the dielectric properties and you are done!
-pcbmat = em.Material(er=2.2, tand=0.00, color="#217627", opacity=0.2)
+pcbmat = em.Material(er=er, tand=0.00, color="#217627", opacity=0.2)
 
 # We start by creating our simulation object.
 
 m = em.Simulation('Demo1_SIF', loglevel='INFO')
-m.check_version("0.6.6") # Checks version compatibility.
+m.check_version("0.6.7") # Checks version compatibility.
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
 # the dimensions and the PCB material.
@@ -130,7 +130,7 @@ S11 = gritted_data.S(1,1)
 S21 = gritted_data.S(2,1)
 
 # This extracts the actual simulation data.
-plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+plot_sp(f, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 # We can also supersample our data by constructing a model using the Vector Fitting algorithm
 
@@ -140,7 +140,7 @@ S21 = gritted_data.model_S(2,1,f)
 
 smith(S11, labels='S11', f=f)
 
-plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+plot_sp(f, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 m.display.add_object(pcb, opacity=0.1)
 m.display.add_object(polies, opacity=0.5)

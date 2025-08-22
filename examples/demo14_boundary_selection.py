@@ -37,7 +37,7 @@ wgb = 10.16*mm
 L = 50*mm
 
 model = em.Simulation('Test Mode')
-model.check_version("0.6.6") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # first lets define a WR90 waveguide
 wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
@@ -120,7 +120,7 @@ data = model.mw.run_sweep()
 f = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1,1)
 
-plot_sp(f/1e9, S11, labels=['S11'])
+plot_sp(f, S11, labels=['S11'])
 
 # First we need to create a boundary mesh
 rad_surf = model.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
