@@ -471,6 +471,7 @@ class PVDisplay(BaseDisplay):
         grid = pv.StructuredGrid(x,y,z)
         field_flat = field.flatten(order='F')
 
+
         if scale=='log':
             T = lambda x: np.log10(np.abs(x))
         elif scale=='symlog':
@@ -486,25 +487,28 @@ class PVDisplay(BaseDisplay):
         self._ctr += 1
         grid[name] = static_field
 
+        grid_no_nan = grid.ptc().threshold(scalars=name)
+
+        # Determine color limits
         if clim is None:
-            fmin = np.min(static_field)
-            fmax = np.max(static_field)
+            fmin = np.nanmin(static_field)
+            fmax = np.nanmax(static_field)
             clim = (fmin, fmax)
-        
         if symmetrize:
-            lim = max(abs(clim[0]),abs(clim[1]))
+            lim = max(abs(clim[0]), abs(clim[1]))
             clim = (-lim, lim)
 
         kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False, multi_colors=True)
-        actor = self._plot.add_mesh(grid, scalars=name, **kwargs)
+        actor = self._plot.add_mesh(grid_no_nan, scalars=name, **kwargs)
 
         if self._do_animate:
             def on_update(obj: _AnimObject, phi: complex):
-                field = obj.T(np.real(obj.field*phi))
-                obj.grid['anim'] = field
-            self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update)) # type: ignore
-        
-        
+                field_anim = obj.T(np.real(obj.field * phi))
+                obj.grid[name] = field_anim
+            self._objs.append(_AnimObject(field_flat, T, grid_no_nan, actor, on_update))
+           
+    
+
     def add_title(self, title: str) -> None:
         """Adds a title
 

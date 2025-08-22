@@ -846,7 +846,7 @@ class Microwave3D:
 
         for i in range(nmodes_found):
             
-            Emode = np.zeros((self.basis.n_field,), dtype=np.complex128)
+
             eig_k0 = np.sqrt(eigen_values[i])
             if eig_k0 < k0_limit:
                 logger.debug(f'Ignoring mode due to low k0: {eig_k0} < {k0_limit}')
@@ -856,11 +856,11 @@ class Microwave3D:
             logger.debug(f'Found k0={eig_k0:.2f}, f0={eig_freq/1e9:.2f} GHz')
             Emode = eigen_modes[:,i]
 
-            scalardata = self.data.scalar.new(freq=eig_freq, **self._params)
+            scalardata = self.data.scalar.new(**self._params)
             scalardata.k0 = eig_k0
             scalardata.freq = eig_freq
 
-            fielddata = self.data.field.new(freq=eig_freq, **self._params)
+            fielddata = self.data.field.new(**self._params)
             fielddata.freq = eig_freq
             fielddata._der = np.squeeze(er[0,0,:])
             fielddata._dur = np.squeeze(ur[0,0,:])
