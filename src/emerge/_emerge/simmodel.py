@@ -26,14 +26,12 @@ from .logsettings import LOG_CONTROLLER
 from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
 from .periodic import PeriodicCell
-from .cacherun import get_build_section, get_run_section
-from .settings import DEFAULT_SETTINGS, Settings
-from .solver import EMSolver, Solver
+from .bc import BoundaryCondition
 from typing import Literal, Generator, Any
 from loguru import logger
 import numpy as np
 import gmsh # type: ignore
-import cloudpickle
+import joblib # type: ignore
 import os
 import inspect
 from pathlib import Path
@@ -70,7 +68,7 @@ class Simulation:
                  loglevel: Literal['TRACE','DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
                  save_file: bool = False,
-                 write_log: bool = False,
+                 logfile: bool = False,
                  path_suffix: str = ".EMResults"):
         """Generate a Simulation class object.
 
@@ -82,7 +80,7 @@ class Simulation:
             loglevel ("DEBUG","INFO","WARNING","ERROR", optional): The loglevel to use for loguru. Defaults to 'INFO'.
             load_file (bool, optional): If the simulatio model should be loaded from a file. Defaults to False.
             save_file (bool, optional): if the simulation file should be stored to a file. Defaults to False.
-            write_log (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
+            logfile (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
             path_suffix (str, optional): The suffix that will be added to the results directory. Defaults to ".EMResults".
         """
 
@@ -96,34 +94,28 @@ class Simulation:
         
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
-        
-        self.settings: Settings = DEFAULT_SETTINGS
 
-        ## Display
-        self.display: PVDisplay = PVDisplay(self.mesh)
-        
-        ## Dataset
-        self.data: SimulationDataset = SimulationDataset()
-        
         ## STATES
         self.__active: bool = False
         self._defined_geometries: bool = False
         self._cell: PeriodicCell | None = None
+
+        self.display: PVDisplay = PVDisplay(self.mesh)
+
         self.save_file: bool = save_file
         self.load_file: bool = load_file
-        self._cache_run: bool = False
-        self._file_lines: str = ''
-        
+
+        self.data: SimulationDataset = SimulationDataset()
+
         ## Physics
-        self.mw: Microwave3D = Microwave3D(self.mesher, self.settings, self.data.mw)
+        self.mw: Microwave3D = Microwave3D(self.mesher, self.data.mw)
 
         self._initialize_simulation()
 
         self.set_loglevel(loglevel)
-        if write_log:
-            self.set_write_log()
+        if logfile:
+            self.set_logfile()
 
-        LOG_CONTROLLER._flush_log_buffer()
         self._update_data()
     
 
@@ -189,10 +181,7 @@ class Simulation:
 
             # Restier the Exit GMSH function on proper program abortion
             register(self._exit_gmsh)
-        else:
-            gmsh.finalize()
-            gmsh.initialize()
-            
+
         # Create a new GMSH model or load it
         if not self.load_file:
             gmsh.model.add(self.modelname)
@@ -223,6 +212,14 @@ class Simulation:
     def _update_data(self) -> None:
         """Writes the stored physics data to each phyics class insatnce"""
         self.mw.data = self.data.mw
+
+    def all_geometries(self) -> list[GeoObject]:
+        """Returns all geometries stored in the simulation file."""
+        return [obj for obj in self.data.sim.default.values() if isinstance(obj, GeoObject)]
+    
+    def all_bcs(self) -> list[BoundaryCondition]:
+        """Returns all boundary condition objects stored in the simulation file"""
+        return [obj for obj in self.data.sim.default.values() if isinstance(obj, BoundaryCondition)]
     
     def _set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
@@ -234,81 +231,6 @@ class Simulation:
     #                       PUBLIC FUNCTIONS                  #
     ############################################################
 
-    def cache_build(self) -> bool:
-        """Checks if all the lines inside this if statement block are the same as those
-        stored from a previous run. If so, then it returns false. Else it returns True.
-        
-        Can be used to capture an entire model simulation.
-        
-        Example:
-        
-        >>> if model.cache_build():
-        >>>     box = em.geo.Box(...)
-        >>>     # Other lines
-        >>>     model.mw.run_sweep()
-        >>> data = model.data.mw
-
-        Returns:
-            bool: If the code is not the same
-        """
-        
-        self.save_file = True
-        self._cache_run = True
-        filestr = get_build_section()
-        self._file_lines = filestr
-        cachepath = self.modelpath / 'pylines.txt'
-        
-        # If there is not pylines file, simulate (can't have been run).
-        if not cachepath.exists():
-            logger.info('No cached data detected, running file')
-            return True
-        
-        with open(cachepath, 'r') as file:
-            lines = file.read()
-        
-        if lines==filestr:
-            logger.info('Cached data detected! Loading data!')
-            self.load()
-            return False
-        logger.info('Different cached data detected, rebuilding file.')
-        return True
-    
-    def cache_run(self) -> bool:
-        """Checks if all the lines before this call are the same as the lines
-        stored from a previous run. If so, then it returns false. Else it returns True.
-        
-        Can be used to capture a run_sweep() call.
-        
-        Example:
-        
-        >>> if model.cache_run():
-        >>>     model.mw.run_sweep()
-        >>> data = model.data.mw
-
-        Returns:
-            bool: If the code is not the same
-        """
-        self.save_file = True
-        self._cache_run = True
-        filestr = get_run_section()
-        self._file_lines = filestr
-        cachepath = self.modelpath / 'pylines.txt'
-        
-        # If there is not pylines file, simulate (can't have been run).
-        if not cachepath.exists():
-            logger.info('No cached data detected, running simulation!')
-            return True
-        
-        with open(cachepath, 'r') as file:
-            lines = file.read()
-        
-        if lines==filestr:
-            logger.info('Cached data detected! Loading data!')
-            self.load()
-            return False
-        logger.info('Different cached data detected, rerunning simulation.')
-        return True
-    
     def check_version(self, version: str) -> None:
         """Compares the provided version number with the version number of EMerge that is running the script.
         
@@ -323,20 +245,13 @@ class Simulation:
         vM, vm, vp = [float(x) for x in version.split('.')]
         cM, cm, cp = [float(x) for x in __version__.split('.')]
         if vM != cM:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
         if vm != cm:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
         if vp != cp:
-            logger.warning("You are running a script designed for a different version of EMerge.")
-            logger.warning(f"The script version: {version}")
-            logger.warning(f"EMerge version:     {__version__}")
-            logger.warning("Usually EMerge works without a problem but Errors may occur.")
-            logger.warning("You can upgrade your version of emerge with: pip --upgrade emerge")
+            logger.warning(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
             logger.warning("You may suppress this error by removing the call to .check_version().")
-            logger.warning("Press Ctrl+C to abort.")
-            ans = input('Press enter to proceed or [Q] to quit:')
-            if ans.lower().strip()=='q':
-                quit()
+            input('Press enter to proceed...')
 
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
@@ -361,14 +276,7 @@ class Simulation:
         # Pack and save data
         dataset = dict(simdata=self.data, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
-        with open(str(data_path), "wb") as f_out:
-            cloudpickle.dump(dataset, f_out)
-            
-        if self._cache_run:
-            cachepath = self.modelpath / 'pylines.txt'
-            with open(str(cachepath), 'w') as f_out:
-                f_out.write(self._file_lines)
-            
+        joblib.dump(dataset, str(data_path))
         logger.info(f"Saved simulation data to: {data_path}")
 
     def load(self) -> None:
@@ -389,8 +297,7 @@ class Simulation:
         #self.mesh.update([])
 
         # Load data
-        with open(str(data_path), "rb") as f_in:
-            datapack= cloudpickle.load(f_in)
+        datapack = joblib.load(str(data_path))
         self.data = datapack['simdata']
         self._set_mesh(datapack['mesh'])
         logger.info(f"Loaded simulation data from: {data_path}")
@@ -405,7 +312,7 @@ class Simulation:
         if loglevel not in ('TRACE','DEBUG'):
             gmsh.option.setNumber("General.Terminal", 0)
 
-    def set_write_log(self) -> None:
+    def set_logfile(self) -> None:
         """Adds a file output for the logger."""
         LOG_CONTROLLER.set_write_file(self.modelpath)
         
@@ -464,15 +371,7 @@ class Simulation:
         self.mesher.submit_objects(geometries_parsed)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
-    
-    def all_geos(self) -> list[GeoObject]:
-        """Returns all geometries in a list
-
-        Returns:
-            list[GeoObject]: A list of all GeoObjects
-        """
-        return _GEOMANAGER.all_geometries()  
-    
+          
     def generate_mesh(self) -> None:
         """Generate the mesh. 
         This can only be done after commit_geometry(...) is called and if frequencies are defined.
@@ -490,7 +389,7 @@ class Simulation:
         if self._cell is not None:
             self.mesher.set_periodic_cell(self._cell)
             
-        self.mw._initialize_bcs(_GEOMANAGER.get_surfaces())
+        self.mw._initialize_bcs()
 
         # Check if frequencies are defined: TODO: Replace with a more generic check
         if self.mw.frequencies is None:
@@ -512,11 +411,9 @@ class Simulation:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
-        
         self.mesh.update(self.mesher._get_periodic_bcs())
         self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
         gmsh.model.occ.synchronize()
-        
         self._set_mesh(self.mesh)
 
     def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float,...], None, None]:
@@ -561,7 +458,7 @@ class Simulation:
 
             logger.info(f'Iterating: {params}')
             if len(dims_flat)==1:
-                yield dims_flat[0][i_iter]
+                yield (dims_flat[0][i_iter],)
             else:
                 yield (dim[i_iter] for dim in dims_flat) # type: ignore
         self.mw.cache_matrices = True
@@ -580,16 +477,6 @@ class Simulation:
             filename (str): The filename
         """
         gmsh.write(filename)
-        
-    def set_solver(self, solver: EMSolver | Solver):
-        """Set a given Solver class instance as the main solver. 
-        Solvers will be checked on validity for the given problem.
-
-        Args:
-            solver (EMSolver | Solver): The solver objects
-        """
-        self.mw.solveroutine.set_solver(solver)
-        
     ############################################################
     #                     DEPRICATED FUNCTIONS                #
     ############################################################

@@ -37,7 +37,7 @@ wgb = 10.16*mm
 L = 50*mm
 
 model = em.Simulation('Test Mode')
-model.check_version("0.6.11") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # first lets define a WR90 waveguide
 wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
@@ -122,11 +122,16 @@ S11 = data.scalar.grid.S(1,1)
 
 plot_sp(f, S11, labels=['S11'])
 
-# And a far-field plot for demonstrative reasons.
-# The θ=0 angle is defined as +x (1,0,0)
-# the arc plane normal is the +z axis (0,0,1)
+# First we need to create a boundary mesh
+rad_surf = model.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
+# Then we need to compute the E-field on the edges.  We will pick the first frequency.
+Ein, Hin = data.field[0].interpolate(*rad_surf.exyz).EH
 
-Efar = data.field[0].farfield_2d((1,0,0), (0,0,1), radiation_boundary)
+# Then we define some angles for our plot
+theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
+phi = 0*theta
+k0 =  data.field[0].k0
+E, H = em.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
 
 # Finally we create the plot
-plot_ff_polar(Efar.ang, Efar.normE)
+plot_ff_polar(theta, em.norm(E))

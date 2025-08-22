@@ -406,30 +406,25 @@ and sparse frequency annotations (e.g., labeled by frequency).
     plt.tight_layout()
     plt.show()
 
-def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray, 
-            dblim=[-40, 5], 
-            xunit="GHz", 
-            levelindicator: int | float | None = None, 
-            noise_floor=-150, 
-            fill_areas: list[tuple] | None = None, 
-            spec_area: list[tuple[float,...]] | None = None,
-            unwrap_phase=False, 
-            logx: bool = False,
-            labels: list[str] | None = None,
-            linestyles: list[str] | None = None,
-            colorcycle: list[int] | None = None,
-            filename: str | None = None,
-            show_plot: bool = True,
-            figdata: tuple | None = None) -> tuple[plt.Figure, plt.Axes, plt.Axes]:
+def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray, 
+                      dblim=[-40, 5], 
+                    xunit="GHz", 
+                    levelindicator: int | float | None = None, 
+                    noise_floor=-150, 
+                    fill_areas: list[tuple] | None = None, 
+                    spec_area: list[tuple[float,...]] | None = None,
+                    unwrap_phase=False, 
+                    logx: bool = False,
+                    labels: list[str] | None = None,
+                    linestyles: list[str] | None = None,
+                    colorcycle: list[int] | None = None,
+                    filename: str | None = None,
+                    show_plot: bool = True,
+                    figdata: tuple | None = None) -> tuple[plt.Figure, plt.Axes, plt.Axes]:
     """Plot S-parameters in dB and phase
-    
-    One may provide:
-     - A single frequency with a single S-parameter
-     - A single frequency with a list of S-parameters
-     - A list of frequencies with a list of S-parameters
 
     Args:
-        f (np.ndarray | list[np.ndarray]): Frequency vector or list of frequencies
+        f (np.ndarray): Frequency vector
         S (list[np.ndarray] | np.ndarray): S-parameters to plot (list or single array)
         dblim (list, optional): Decibel y-axis limit. Defaults to [-80, 5].
         xunit (str, optional): Frequency unit. Defaults to "GHz".
@@ -449,12 +444,7 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
         Ss = [S]
     else:
         Ss = S
-        
-    if not isinstance(f, list):
-        fs = [f for _ in Ss]
-    else:
-        fs = f
-    
+
     if linestyles is None:
         linestyles = ['-' for _ in S]
 
@@ -462,8 +452,7 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
         colorcycle = [i for i, S in enumerate(S)]
 
     unitdivider: dict[str, float] = {"MHz": 1e6, "GHz": 1e9, "kHz": 1e3}
-    
-    fs = [f / unitdivider[xunit] for f in fs]
+    fnew = f / unitdivider[xunit]
 
     if figdata is None:
         # Create two subplots: one for magnitude and one for phase
@@ -474,10 +463,10 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
     minphase, maxphase = -180, 180
 
     maxy = 0
-    for f, s, ls, cid in zip(fs, Ss, linestyles, colorcycle):
+    for s, ls, cid in zip(Ss, linestyles, colorcycle):
         # Calculate and plot magnitude in dB
         SdB = 20 * np.log10(np.abs(s) + 10**(noise_floor/20) * np.random.rand(*s.shape) + 10**((noise_floor-30)/20))
-        ax_mag.plot(f, SdB, label="Magnitude (dB)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
+        ax_mag.plot(fnew, SdB, label="Magnitude (dB)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
         if np.max(SdB) > maxy:
             maxy = np.max(SdB)
         # Calculate and plot phase in degrees
@@ -486,12 +475,12 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
             phase = np.unwrap(phase, period=360)
             minphase = min(np.min(phase), minphase)
             maxphase = max(np.max(phase), maxphase)
-        ax_phase.plot(f, phase, label="Phase (degrees)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
+        ax_phase.plot(fnew, phase, label="Phase (degrees)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
 
         # Annotate level indicators if specified
         if isinstance(levelindicator, (int, float)) and levelindicator is not None:
             lvl = levelindicator
-            fcross = hintersections(f, SdB, lvl)
+            fcross = hintersections(fnew, SdB, lvl)
             for fs in fcross:
                 ax_mag.annotate(
                     f"{str(fs)[:4]}{xunit}",
@@ -511,18 +500,16 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
             f2 = fmax / unitdivider[xunit]
             ax_mag.fill_between([f1, f2], vmin,vmax, color='red', alpha=0.2)
     # Configure magnitude plot (ax_mag)
-    fmin = min([min(f) for f in fs])
-    fmax = max([max(f) for f in fs])
     ax_mag.set_ylabel("Magnitude (dB)")
     ax_mag.set_xlabel(f"Frequency ({xunit})")
-    ax_mag.axis([fmin, fmax, dblim[0], max(maxy*1.1,dblim[1])]) # type: ignore
+    ax_mag.axis([min(fnew), max(fnew), dblim[0], max(maxy*1.1,dblim[1])]) # type: ignore
     ax_mag.axhline(y=0, color="k", linewidth=1)
     ax_mag.xaxis.set_minor_locator(tck.AutoMinorLocator(2))
     ax_mag.yaxis.set_minor_locator(tck.AutoMinorLocator(2))
     # Configure phase plot (ax_phase)
     ax_phase.set_ylabel("Phase (degrees)")
     ax_phase.set_xlabel(f"Frequency ({xunit})")
-    ax_phase.axis([fmin, fmax, minphase, maxphase]) # type: ignore
+    ax_phase.axis([min(fnew), max(fnew), minphase, maxphase]) # type: ignore
     ax_phase.xaxis.set_minor_locator(tck.AutoMinorLocator(2))
     ax_phase.yaxis.set_minor_locator(tck.AutoMinorLocator(2))
     if logx:
@@ -540,13 +527,13 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
 
     
 def plot_ff(
-    theta: np.ndarray | list[np.ndarray],
+    theta: np.ndarray,
     E: Union[np.ndarray, Sequence[np.ndarray]],
     grid: bool = True,
     dB: bool = False,
     labels: Optional[List[str]] = None,
     xlabel: str = "Theta (rad)",
-    ylabel: str = "",
+    ylabel: str = "|E|",
     linestyles: Union[str, List[str]] = "-",
     linewidth: float = 2.0,
     markers: Optional[Union[str, List[Optional[str]]]] = None,
@@ -559,7 +546,7 @@ def plot_ff(
 
     Parameters
     ----------
-    theta : np.ndarray | list[np.ndarray]
+    theta : np.ndarray
         Angle array (radians).
     E : np.ndarray or sequence of np.ndarray
         Complex E-field samples; magnitude will be plotted.
@@ -580,12 +567,6 @@ def plot_ff(
         E_list = [E]
     else:
         E_list = list(E)
-        
-    if not isinstance(theta, list):
-        thetas = [theta for _ in E_list]
-    else:
-        thetas = theta
-        
     n_series = len(E_list)
 
     # Style broadcasting
@@ -602,7 +583,6 @@ def plot_ff(
 
     fig, ax = plt.subplots()
     for i, Ei in enumerate(E_list):
-        theta = thetas[i]
         mag = np.abs(Ei)
         if dB:
             mag = 20*np.log10(mag)
@@ -632,8 +612,6 @@ def plot_ff(
 def plot_ff_polar(
     theta: np.ndarray,
     E: Union[np.ndarray, Sequence[np.ndarray]],
-    dB: bool = False,
-    dBfloor: float = -30,
     labels: Optional[List[str]] = None,
     linestyles: Union[str, List[str]] = "-",
     linewidth: float = 2.0,
@@ -671,8 +649,6 @@ def plot_ff_polar(
         E_list = list(E)
     n_series = len(E_list)
 
-    if dB:
-        E_list = [20*np.log10(np.clip(np.abs(e), a_min=10**(dBfloor/20), a_max = 1e9)) for e in E_list]
     # Style broadcasting
     def _broadcast(param, default):
         if isinstance(param, list):
@@ -689,15 +665,11 @@ def plot_ff_polar(
     ax.set_theta_zero_location(zero_location) # type: ignore
     ax.set_theta_direction(-1 if clockwise else 1) # type: ignore
     ax.set_rlabel_position(rlabel_angle) # type: ignore
-    ymin = min([min(E) for E in E_list])
-    ymax = max([max(E) for E in E_list])
-    yrange = ymax-ymin
 
-    ax.set_ylim(ymin-0.05*yrange, ymax+0.05*yrange)
     for i, Ei in enumerate(E_list):
-        
+        mag = np.abs(Ei)
         ax.plot(
-            theta, Ei,
+            theta, mag,
             linestyle=linestyles[i],
             linewidth=linewidth,
             marker=markers[i],

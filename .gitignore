@@ -8,8 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.vscode
 .mypy_cache
-environment.yml
 
 # paths
 meshes/
@@ -42,9 +42,8 @@ manual_scripts/
 tests/
 trial_scripts/
 wheelhouse/
-benchmarks/
+
 .pytest_cache/
 
 .vscode/
-.idea/
 pytest.ini

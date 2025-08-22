@@ -29,7 +29,7 @@ def Cf(C):
 pack = '0603'         # package footprint for lumped components
 # Create simulation and PCB layouter with substrate thickness and material
 m = em.Simulation('LumpedFilter')
-m.check_version("0.6.11") # Checks version compatibility.
+m.check_version("0.6.7") # Checks version compatibility.
 
 th = 0.5         # substrate thickness (meters)
 Hair = 2.0
@@ -79,7 +79,6 @@ m.commit_geometry()
 # --- Solver and mesh settings -------------------------------------------
 m.mw.set_frequency_range(0.05e9, 0.3e9, 51)       # 50–300 MHz sweep
 m.mesher.set_boundary_size(traces, 0.5 * mm)
-
 # Refine mesh around lumped component faces
 for le in LEs:
     m.mesher.set_face_size(le, 0.1 * mm)
@@ -98,6 +97,9 @@ p2 = m.mw.bc.ModalPort(mp2, 2, TEM=True)
 # Add lumped element BCs for each element
 for le in LEs:
     m.mw.bc.LumpedElement(le)
+# Perfect conductor on copper traces and vias
+m.mw.bc.PEC(traces)
+m.mw.bc.PEC(vias.boundary())
 
 # --- Run frequency-domain simulation ------------------------------------
 data = m.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)

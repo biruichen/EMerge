@@ -6,18 +6,16 @@ from emerge.plot import plot_sp
 This demonstration shows how to add vias with the PCB router. Make sure to go through the other
 PCB related demos (demo1 and demo3) to get more information on the PCBLayouter.
 
-Notice that the results of this simulation are not supposed to be good. Its more about the geometry than the S-parameters.
-
 """
 
-mm = 0.001    # Define a millimeter
-th = 1.0      # mm
+mm = 0.001
+th = 1
 
 model = em.Simulation('Stripline_test')
-model.check_version("0.6.11") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # As usual we start by creating our layouter
-ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B, trace_material=em.lib.MET_COPPER)
+ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
 
 # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
 # None of the transmission lines are conciously matched in any way, this is just about the routing
@@ -48,17 +46,16 @@ ly.determine_bounds(5,5,5,5)
 # Finally we can generate the PCB volumes. Because the trace start halfway through the PCB we turn
 # on the split-z function which cuts the PCB in multiple layers. This improves meshing around the striplines.
 diel = ly.generate_pcb(True, merge=True)
+# We also define the air-box
+air = ly.generate_air(3)
 
-# We also define the air-box with 3mm thickness
-air = ly.generate_air(3.0)
-
-# Finish modelling by calling commit_geometry
+# The rest is as usual
 model.commit_geometry()
 
 model.view()
 
 model.mw.set_frequency_range(1e9, 6e9, 11)
-model.mesher.set_boundary_size(trace, 1*mm)
+model.mesher.set_boundary_size(trace, 0.001)
 
 model.generate_mesh()
 
@@ -74,6 +71,11 @@ model.view(selections=[vias.boundary()])
 p1 = model.mw.bc.LumpedPort(lp1, 1)
 p2 = model.mw.bc.LumpedPort(lp2, 2)
 
+pec = model.mw.bc.PEC(trace)
+
+#We also add a PEC for the outsides of our via.
+pecvia = model.mw.bc.PEC(vias.boundary())
+
 # Finally we run the simulation!
 data = model.mw.run_sweep(True, 4, frequency_groups=8)
 
@@ -87,8 +89,8 @@ model.display.add_object(diel, opacity=0.2)
 model.display.add_object(trace)
 model.display.add_object(vias)
 
-# You can use the cutplane method of the BaseDataset class
-# This is equivalent to the interpolate method except it automatically generates
+# In the latest version, you can use the cutplane method of the dataset class
+# which is equivalent to the interpolate method except it automatically generates
 # the point cloud based on a plane x,y or z coordinate.
 model.display.add_quiver(*data.field[3].cutplane(ds=0.001, z=-0.00025).vector('E'))
 model.display.add_surf(*data.field[3].cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'))
