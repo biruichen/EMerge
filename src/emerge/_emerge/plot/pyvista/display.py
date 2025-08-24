@@ -667,8 +667,10 @@ class PVDisplay(BaseDisplay):
         kwargs = dict()
         if color is not None:
             kwargs['color'] = color
+            
         pl = self._plot.add_arrows(Coo, Vec, scalars=None, clim=None, cmap=None, **kwargs)
 
+        
     def add_contour(self,
                      X: np.ndarray,
                      Y: np.ndarray,

@@ -552,10 +552,11 @@ class Microwave3D:
             
             # Exy = np.max(np.max(Emode))
             # Ez = 0
-            if Ez/Exy < 1e-3 and not TEM:
+            print(Ez/Exy)
+            if Ez/Exy < 1e-1 and not TEM:
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
-            elif Ez/Exy > 1e-3 and not TEM:
+            elif Ez/Exy > 1e-1 and not TEM:
                 logger.debug('High Ez/Et ratio detected, assuming TM mode')
                 mode.modetype = 'TM'
             elif TEM:

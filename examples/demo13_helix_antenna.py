@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# HELIX ANTENNA DEMO — Simulation setup, mesh, sweep, and far-field plots
+# HELIX ANTENNA DEMO - Simulation setup, mesh, sweep, and far-field plots
 #
 # This script builds a helical radiator with a short feed, places it in an
 # airbox, applies a lumped port and absorbing boundary, runs a frequency sweep,

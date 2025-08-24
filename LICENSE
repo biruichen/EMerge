@@ -1,5 +1,5 @@
 ──────────────────────────────────────────────────────────────────────────────
-PREAMBLE — Licence map and disclaimers (not part of the GNU GPL text)
+PREAMBLE - Licence map and disclaimers (not part of the GNU GPL text)
 ──────────────────────────────────────────────────────────────────────────────
 This repository is distributed under two distinct licences:
 
@@ -11,7 +11,7 @@ This repository is distributed under two distinct licences:
     When you distribute binaries containing these components, the complete
     corresponding source code must be offered under GPL-2.0+.
 
-  • **`lib.py` — materials-property database**  
+  • **`lib.py` - materials-property database**  
     This single file is dedicated to the public domain under **CC0 1.0**.
     You may copy, modify, merge, publish, distribute, sublicense and/or sell
     copies of `lib.py` without restriction.  The data it contains are

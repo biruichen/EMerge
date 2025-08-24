@@ -171,8 +171,8 @@ with em.Simulation('FullFilter') as mf:
 
     # Plot the filter response (dB)
     fig, ax = plt.subplots()
-    ax.plot(fdense/1e9, 20*np.log10(np.abs(S11)), label='S11')
-    ax.plot(fdense/1e9, 20*np.log10(np.abs(S21)), label='S21')
+    ax.plot(fdense, 20*np.log10(np.abs(S11)), label='S11')
+    ax.plot(fdense, 20*np.log10(np.abs(S21)), label='S21')
     ax.set_xlabel('Frequency [GHz]')
     ax.set_ylabel('S-parameter [dB]')
     ax.grid(True)
