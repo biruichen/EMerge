@@ -20,9 +20,8 @@ class PCBCalculator:
         self.mat = material
         self.unit = unit
 
-
-    def z0(self, Z0: float, layer: int = -1, ground_layer: int = 0):
+    def z0(self, Z0: float, layer: int = -1, ground_layer: int = 0, f0: float = 1e9):
         th = abs(self.layers[layer] - self.layers[ground_layer])*self.unit
         ws = np.geomspace(1e-6,1e-1,101)
-        Z0ms = microstrip_z0(ws, th, self.mat.er)
+        Z0ms = microstrip_z0(ws, th, self.mat.er.scalar(f0))
         return np.interp(Z0, Z0ms[::-1], ws[::-1])/self.unit

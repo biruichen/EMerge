@@ -21,7 +21,7 @@ from ....elements.nedelec2 import Nedelec2
 from ....elements.nedleg2 import NedelecLegrange2
 from ....mth.optimized import gaus_quad_tri
 from ....mth.pairing import pair_coordinates
-
+from ....material import Material
 from scipy.sparse import csr_matrix
 from loguru import logger
 from ..simjob import SimJob
@@ -188,9 +188,7 @@ class Assembler:
         return E, B, np.array(solve_ids), nedlegfield
 
     def assemble_freq_matrix(self, field: Nedelec2, 
-                        er: np.ndarray, 
-                        ur: np.ndarray, 
-                        sig: np.ndarray,
+                        materials: list[Material],
                         bcs: list[BoundaryCondition],
                         frequency: float,
                         cache_matrices: bool = False) -> SimJob:
@@ -215,11 +213,29 @@ class Assembler:
         # PREDEFINE CONSTANTS
         W0 = 2*np.pi*frequency
         K0 = W0/C0
-
-        mesh = field.mesh
-        er = er - 1j*sig/(W0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
-        is_frequency_dependent: bool = np.any((sig > 0) & (sig < self.conductivity_limit)) # type: ignore
         
+        is_frequency_dependent = False
+        mesh = field.mesh
+
+        for mat in materials:
+            if mat.frequency_dependent:
+                is_frequency_dependent = True
+                break
+
+        er = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        tand = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        cond = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        ur = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        
+        for mat in materials:
+            er = mat.er(frequency, er)
+            ur = mat.ur(frequency, ur)
+            tand = mat.tand(frequency, tand)
+            cond = mat.cond(frequency, cond)
+        
+        er = er*(1-1j*tand) - 1j*cond/(W0*EPS0)
+        
+        is_frequency_dependent = is_frequency_dependent or np.any((cond > 0) & (cond < self.conductivity_limit)) # type: ignore
 
         if cache_matrices and not is_frequency_dependent and self.cached_matrices is not None:
             # IF CACHED AND AVAILABLE PULL E AND B FROM CACHE
@@ -253,10 +269,11 @@ class Assembler:
 
         logger.debug('Implementing PEC Boundary Conditions.')
         pec_ids: list[int] = []
+        
         # Conductivity above al imit, consider it all PEC
         ipec = 0
         for itet in range(field.n_tets):
-            if sig[itet] > self.conductivity_limit:
+            if cond[0,0,itet] > self.conductivity_limit:
                 ipec+=1
                 pec_ids.extend(field.tet_to_field[:,itet])
         if ipec>0:
@@ -388,12 +405,10 @@ class Assembler:
             simjob.Pd = Pmat.getH()
             simjob.has_periodic = has_periodic
 
-        return simjob
+        return simjob, (er, ur, cond)
     
     def assemble_eig_matrix(self, field: Nedelec2, 
-                        er: np.ndarray, 
-                        ur: np.ndarray, 
-                        sig: np.ndarray,
+                        materials: list[Material],
                         bcs: list[BoundaryCondition],
                         frequency: float) -> SimJob:
         """Assembles the eigenmode analysis matrix
@@ -420,9 +435,21 @@ class Assembler:
         w0 = 2*np.pi*frequency
         k0 = w0/C0
 
-        er = er - 1j*sig/(w0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
+        er = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        tand = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        cond = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        ur = np.zeros((3,3,field.mesh.n_tets), dtype=np.complex128)
+        
+        for mat in materials:
+            er = mat.er(frequency, er)
+            ur = mat.ur(frequency, ur)
+            tand = mat.tand(frequency, tand)
+            cond = mat.cond(frequency, cond)
+        
+        er = er*(1-1j*tand) - 1j*cond/(w0*EPS0)
         
         logger.debug('Assembling matrices')
+        
         E, B = tet_mass_stiffness_matrices(field, er, ur)
         self.cached_matrices = (E, B)
 
@@ -439,7 +466,7 @@ class Assembler:
         
         # Conductivity above a limit, consider it all PEC
         for itet in range(field.n_tets):
-            if sig[itet] > self.conductivity_limit:
+            if cond[0,0,itet] > self.conductivity_limit:
                 pec_ids.extend(field.tet_to_field[:,itet])
         
         # PEC Boundary conditions
@@ -461,11 +488,7 @@ class Assembler:
         # Robin BCs
         if len(robin_bcs) > 0:
             logger.debug('Implementing Robin Boundary Conditions.')
-        
-        if len(robin_bcs) > 0:
-            logger.debug('Implementing Robin Boundary Conditions.')
-        
-            gauss_points = gaus_quad_tri(4)
+            
             Bempty = field.empty_tri_matrix()
             for bc in robin_bcs:
 
@@ -550,4 +573,4 @@ class Assembler:
             simjob.Pd = Pmat.getH()
             simjob.has_periodic = has_periodic
 
-        return simjob
+        return simjob, (er, ur, cond)

@@ -79,6 +79,7 @@ m.commit_geometry()
 # --- Solver and mesh settings -------------------------------------------
 m.mw.set_frequency_range(0.05e9, 0.3e9, 51)       # 50–300 MHz sweep
 m.mesher.set_boundary_size(traces, 0.5 * mm)
+
 # Refine mesh around lumped component faces
 for le in LEs:
     m.mesher.set_face_size(le, 0.1 * mm)
@@ -97,6 +98,7 @@ p2 = m.mw.bc.ModalPort(mp2, 2, TEM=True)
 # Add lumped element BCs for each element
 for le in LEs:
     m.mw.bc.LumpedElement(le)
+    
 # Perfect conductor on copper traces and vias
 m.mw.bc.PEC(traces)
 m.mw.bc.PEC(vias.boundary())

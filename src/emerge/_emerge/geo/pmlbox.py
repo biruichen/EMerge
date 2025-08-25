@@ -17,7 +17,7 @@
 
 from ..geometry import GeoVolume
 from .shapes import Box, Alignment, Plate
-from ..material import Material, AIR
+from ..material import Material, AIR, CoordDependent
 import numpy as np
 from functools import partial
 
@@ -31,6 +31,15 @@ def _add_pml_layer(center: tuple[float, float, float],
                    exponent: float,
                    deltamax: float,
                    material: Material) -> GeoVolume:
+    
+    if material.frequency_dependent:
+        raise ValueError('EMerge cannot handle frequency dependent material properties for PML layers at this point.')
+    if material.coordinate_dependent:
+        raise ValueError('Its not possible to define PML regions for materials that are coordinate dependent.')
+    
+    mater = material.er.scalar(1e9)
+    matur = material.ur.scalar(1e9)
+    
     px, py, pz = center
     W,D,H = dims
     dx, dy, dz = direction
@@ -69,15 +78,16 @@ def _add_pml_layer(center: tuple[float, float, float],
     
     def ermat(x, y, z):
         ers = np.zeros((3,3,x.shape[0]), dtype=np.complex128)
-        ers[0,0,:] = material.er * syf(x,y,z)*szf(x,y,z)/sxf(x,y,z)
-        ers[1,1,:] = material.er * szf(x,y,z)*sxf(x,y,z)/syf(x,y,z)
-        ers[2,2,:] = material.er * sxf(x,y,z)*syf(x,y,z)/szf(x,y,z)
+        ers[0,0,:] = mater * syf(x,y,z)*szf(x,y,z)/sxf(x,y,z)
+        ers[1,1,:] = mater * szf(x,y,z)*sxf(x,y,z)/syf(x,y,z)
+        ers[2,2,:] = mater * sxf(x,y,z)*syf(x,y,z)/szf(x,y,z)
         return ers
+    
     def urmat(x, y, z):
         urs = np.zeros((3,3,x.shape[0]), dtype=np.complex128)
-        urs[0,0,:] = material.ur * syf(x,y,z)*szf(x,y,z)/sxf(x,y,z)
-        urs[1,1,:] = material.ur * szf(x,y,z)*sxf(x,y,z)/syf(x,y,z)
-        urs[2,2,:] = material.ur * sxf(x,y,z)*syf(x,y,z)/szf(x,y,z)
+        urs[0,0,:] = matur * syf(x,y,z)*szf(x,y,z)/sxf(x,y,z)
+        urs[1,1,:] = matur * szf(x,y,z)*sxf(x,y,z)/syf(x,y,z)
+        urs[2,2,:] = matur * sxf(x,y,z)*syf(x,y,z)/szf(x,y,z)
         return urs
     
     pml_box = Box(*pml_block_size, new_center, alignment=Alignment.CENTER)
@@ -106,7 +116,9 @@ def _add_pml_layer(center: tuple[float, float, float],
             plate = Plate(np.array([p0x-tW/2, p0y-tD/2, p0z-dz*thickness/2 + dz*(n+1)*thl]), ax1, ax2)
             planes.append(plate)
     
-    pml_box.material = Material(_neff=np.sqrt(material.er*material.ur), _fer=ermat, _fur=urmat, color='#bbbbff', opacity=0.1)
+    erfunc = CoordDependent(max_value=mater, matrix=ermat)
+    urfunc = CoordDependent(max_value=matur, matrix=urmat)
+    pml_box.material = Material(er=erfunc, ur=urfunc,_neff=np.sqrt(mater*matur), color='#bbbbff', opacity=0.1)
     pml_box.max_meshsize = thickness/N_mesh_layers
     pml_box._embeddings = planes
     
@@ -121,9 +133,10 @@ def pmlbox(width: float,
             material: Material = AIR,
             thickness: float = 0.1,
             Nlayers: int = 1,
-            N_mesh_layers: int = 8,
+            N_mesh_layers: int = 5,
             exponent: float = 1.5,
             deltamax: float = 8.0,
+            sides: str = '',
             top: bool = False,
             bottom: bool = False,
             left: bool = False,
@@ -145,10 +158,11 @@ def pmlbox(width: float,
         alignment (Alignment, optional): Which point of the box is placed at the given coordinate. Defaults to Alignment.CORNER.
         material (Material, optional): The material of the box. Defaults to AIR.
         thickness (float, optional): The thickness of the PML Layer. Defaults to 0.1.
-        Nlayers (int, optional): The number of PML layers (1 is reccomended). Defaults to 1.
-        N_mesh_layers (int, optional): The number of mesh layers. Sets the discretization size accordingly. Defaults to 8
+        Nlayers (int, optional): The number of geometrical PML layers. Defaults to 1.
+        N_mesh_layers (int, optional): The number of mesh layers. Sets the discretization size accordingly. Defaults to 5
         exponent (float, optional): The PML gradient growth function. Defaults to 1.5.
         deltamax (float, optional): A PML matching coefficient. Defaults to 8.0.
+        sides (str, optional): A string of pml sides as characters ([T]op, [B]ottom, [L]eft, [R]ight, [F]ront, b[A]ck)
         top (bool, optional): Add a top PML layer. Defaults to True.
         bottom (bool, optional): Add a bottom PML layer. Defaults to False.
         left (bool, optional): Add a left PML layer. Defaults to False.
@@ -159,6 +173,16 @@ def pmlbox(width: float,
     Returns:
         list[GeoVolume]: A list of objects [main box, *pml boxes]
     """
+    
+    sides = sides.lower()
+
+    top    = "t" in sides or top
+    bottom = "b" in sides or bottom
+    left   = "l" in sides or left
+    right  = "r" in sides or right
+    front  = "f" in sides or front
+    back   = "a" in sides or back
+
     px, py, pz = position
     if alignment == Alignment.CORNER:
         px = px + width / 2

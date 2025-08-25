@@ -282,9 +282,9 @@ class FarFieldData:
     
     @property
     def Etheta(self) -> np.ndarray:
-        thx = -np.cos(self.theta)*np.cos(self.phi)
-        thy = -np.cos(self.theta)*np.sin(self.phi)
-        thz = np.sin(self.theta)
+        thx = np.cos(self.theta)*np.cos(self.phi)
+        thy = np.cos(self.theta)*np.sin(self.phi)
+        thz = -np.sin(self.theta)
         return thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:]
     
     @property
@@ -296,11 +296,11 @@ class FarFieldData:
     
     @property
     def Erhcp(self) -> np.ndarray:
-        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def Elhcp(self) -> np.ndarray:
-        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def AR(self) -> np.ndarray:
@@ -702,6 +702,11 @@ class MWField:
     
     def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> EHField:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
+        if isinstance(xs, (float, int, complex)):
+            xs = np.array([xs,])
+            ys = np.array([ys,])
+            zs = np.array([zs,])
+            
         shp = xs.shape
         xf = xs.flatten()
         yf = ys.flatten()
@@ -748,6 +753,7 @@ class MWField:
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
         zs = np.linspace(zb[0], zb[1], int((zb[1]-zb[0])/ds))
+        
         if x is not None:
             Y,Z = np.meshgrid(ys, zs)
             X = x*np.ones_like(Y)
@@ -758,6 +764,7 @@ class MWField:
             X,Y = np.meshgrid(xs, ys)
             Z = z*np.ones_like(Y)
         return self.interpolate(X,Y,Z)
+    
     def cutplane_normal(self,
              point=(0,0,0),
              normal=(0,0,1),

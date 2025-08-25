@@ -23,7 +23,7 @@ Hair = 60
 ## Material definition
 
 # We can define the material using the Material class. Just supply the dielectric properties and you are done!
-pcbmat = em.Material(er=er, tand=0.00, color="#217627", opacity=0.2)
+pcbmat = em.Material(er=er, color="#217627", opacity=0.2)
 
 # We start by creating our simulation object.
 
