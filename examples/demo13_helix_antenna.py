@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# HELIX ANTENNA DEMO — Simulation setup, mesh, sweep, and far-field plots
+# HELIX ANTENNA DEMO - Simulation setup, mesh, sweep, and far-field plots
 #
 # This script builds a helical radiator with a short feed, places it in an
 # airbox, applies a lumped port and absorbing boundary, runs a frequency sweep,
@@ -25,7 +25,7 @@ porth = 2*mm                    # vertical height of the feed extrusion
 
 # --- Simulation object -------------------------------------------------------
 model = em.Simulation('helix')
-model.check_version("0.6.7") # Checks version compatibility.
+model.check_version("0.6.8") # Checks version compatibility.
 
 dfeed = 3*mm                    # straight feed length before the helix starts
 
@@ -34,16 +34,7 @@ dfeed = 3*mm                    # straight feed length before the helix starts
 # with initial radius rad0, 13 degree pitch, tapered end radius r_end
 # The 'startfeed' parameter is radius like parameter to turn the start of the helix downward.
 #
-# This is illustrated in the diagrom below. Normally a helix would start at x1, y1.ArithmeticError
-# If some start startfeed distance is provided, the feed will curve downwards adding an extra distance
-# y1-y0 equal to startfeed/2. You can access the coordinate x0,0 usinging curve_obj.p0
-#
-#             ______
-#           /       `-- (x1,y1)  --> helix
-#         /                
-#       /                  
-#      |                   
-#   (x0,y1)               
+         
 
 # We add the porth height + half of the startfeed distance to the total height to put the helix in the right spot.
 h_curve = em.geo.Curve.helix_lh((0,0,porth+dfeed/2), (0,0,porth+dfeed/2+L), rad0, 13, r_end=0.8*rad0)
@@ -55,6 +46,7 @@ helix = h_curve.pipe(cross_section).set_material(em.lib.MET_COPPER)
 
 # We add a block to make attachment of ports easier.
 block = em.geo.Box(dfeed, dfeed, dfeed, position=h_curve.p0, alignment=em.geo.Alignment.CENTER).set_material(em.lib.MET_COPPER)
+
 # Optional preview of current scene (geometry only at this point)
 model.view()
 

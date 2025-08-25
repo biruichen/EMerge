@@ -29,7 +29,7 @@ dx = 2 * mm              # distance from horn exit to PML start
 
 # Create simulation object
 m = em.Simulation('HornAntenna')
-m.check_version("0.6.7") # Checks version compatibility.
+m.check_version("0.6.8") # Checks version compatibility.
 # --- Coordinate system for horn geometry -------------------------------
 hornCS = em.CS(em.YAX, em.ZAX, em.XAX)
 
@@ -60,20 +60,20 @@ horn_out = em.geo.intersect(horn_out, ibox)
 # Create airbox with PML layers on +X, +Y, +Z faces
 rat = 1.6  # PML extension ratio
 air, *pmls = em.geo.pmlbox(
-    4*mm,          # air padding before PML
-    rat*WH/2,       # half-height in Y
-    rat*HH/2,       # half-width in Z
-    (Lhorn - dx, 0, 0),# PML origin offset along X
+    4*mm,               # air padding before PML
+    rat*WH/2,           # half-height in Y
+    rat*HH/2,           # half-width in Z
+    (Lhorn - dx, 0, 0), # PML origin offset along X
     thickness=4*mm,
     N_mesh_layers=4,
-    top=True, right=True, back=True
+    sides='TRA'         # [T]op, [R]ight, B[A]ck
 )
 # Subtract horn volume from airbox so PML does not cover metal
 air2 = em.geo.subtract(air, horn_out)
 
 # --- Solver parameters --------------------------------------------------
 m.mw.set_frequency_range(90e9, 110e9, 11)  # 90–110 GHz sweep
-m.mw.set_resolution(0.27)                # mesh resolution fraction
+m.mw.set_resolution(0.25)                  # mesh resolution fraction
 
 # --- Assemble geometry and mesh -----------------------------------------
 m.generate_mesh()
@@ -83,6 +83,7 @@ p1 = m.mw.bc.ModalPort(feed.face('left'), 1)     # excite TE10 in feed
 PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, 0, 1, 0))  # perfect magnetic on symmetry
 radiation_boundary = air2.faces('back','top','right', tool=air)  # open faces
 abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
+
 # View mesh and BC selections
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
@@ -91,7 +92,7 @@ data = m.mw.run_sweep()
 
 # --- Plot return loss ---------------------------------------------------
 scal = data.scalar.grid
-plot_sp(scal.freq, scal.S(1,1))  # S11 vs frequency
+plot_sp(scal.freq, scal.S(1,1), labels=['S11'])  # S11 vs frequency
 
 # --- Far-field radiation pattern ----------------------------------------
 # Compute E and H on 2D cut for phi=0 plane over -90° to 90°
@@ -99,7 +100,8 @@ ff_data = data.field[0].farfield_2d(
     (1, 0, 0), (0, 1, 0), radiation_boundary,
     (-90, 90), syms=['Ez','Hy']
 )
-plot_ff(ff_data.ang * 180/np.pi, ff_data.normE/em.lib.EISO, dB=True)
+
+plot_ff(ff_data.ang * 180/np.pi, ff_data.normE/em.lib.EISO, dB=True, ylabel='Gain [dBi]')
 # Normalize to free-space impedance and convert to dB
 
 m.display.add_object(horn_in, opacity=0.1)
@@ -107,6 +109,6 @@ m.display.add_object(air2, opacity=0.1)
 m.display.add_object(feed, opacity=0.1)
 m.display.add_surf(*data.field[0].farfield_3d(radiation_boundary, syms=['Ez','Hy'])\
                 .surfplot('normE', 'abs', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
-m.display.add_surf(*data.field[0].cutplane(0.5*mm, z=0).scalar('Ez','real'))
+m.display.add_surf(*data.field[0].cutplane(0.25*mm, z=0).scalar('Ez','real'))
 m.display.show()
 

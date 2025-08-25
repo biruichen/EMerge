@@ -27,9 +27,8 @@ def index_interp(coords: np.ndarray,
     # Solution has shape (nEdges, nsols)
     nNodes = coords.shape[1]
     
-    prop = np.zeros((nNodes, ), dtype=np.int64)
+    prop = np.full((nNodes, ), -1, dtype=np.int64)
     
-
     for i_iter in range(tetids.shape[0]):
         itet = tetids[i_iter]
         

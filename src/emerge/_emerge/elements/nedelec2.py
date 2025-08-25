@@ -68,30 +68,41 @@ class Nedelec2(FEMBasis):
 
         self.empty_tri_rowcol()
     
-    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         ''' 
         Interpolate the provided field data array at the given xs, ys and zs coordinates
         '''
         if tetids is None:
             tetids = self._all_tet_ids
-        return ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
+        vals = ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals
     
-    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, c: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, c: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
         """
         if tetids is None:
             tetids = self._all_tet_ids
-        return ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
+        vals = ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals
     
     def interpolate_index(self, xs: np.ndarray,
                         ys: np.ndarray,
                         zs: np.ndarray,
-                        tetids: np.ndarray | None = None) -> np.ndarray:
+                        tetids: np.ndarray | None = None,
+                        usenan: bool = True) -> np.ndarray:
         if tetids is None:
             tetids = self._all_tet_ids
 
-        return index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
+        vals = index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
+        if not usenan:
+            vals[vals==-1]==0
+        return vals
+    
     ###### INDEX MAPPINGS
 
     def local_tet_to_triid(self, itet: int) -> np.ndarray:

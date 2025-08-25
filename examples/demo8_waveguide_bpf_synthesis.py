@@ -80,8 +80,8 @@ wgaps = np.linspace(1*mm, 20*mm, 21)
 Ks = []
 hphis = []
 with em.Simulation('IrisSim') as sim:
-    sim.check_version("0.6.7") # Checks version compatibility.
-    for (wgap,) in sim.parameter_sweep(True, wgap=wgaps):
+    sim.check_version("0.6.8") # Checks version compatibility.
+    for wgap in sim.parameter_sweep(True, wgap=wgaps):
         # Define two short waveguide sections separated by iris plate
         wg1 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, -Lfeed - t_thickness/2, 0))
         iris = em.geo.Box(wgap, t_thickness, wgb, (-wgap/2, -t_thickness/2, 0))
@@ -171,8 +171,8 @@ with em.Simulation('FullFilter') as mf:
 
     # Plot the filter response (dB)
     fig, ax = plt.subplots()
-    ax.plot(fdense/1e9, 20*np.log10(np.abs(S11)), label='S11')
-    ax.plot(fdense/1e9, 20*np.log10(np.abs(S21)), label='S21')
+    ax.plot(fdense, 20*np.log10(np.abs(S11)), label='S11')
+    ax.plot(fdense, 20*np.log10(np.abs(S21)), label='S21')
     ax.set_xlabel('Frequency [GHz]')
     ax.set_ylabel('S-parameter [dB]')
     ax.grid(True)

@@ -268,6 +268,19 @@ def change_coordinate_system(main: GeoObject,
         fp.affine_transform(M2)
     return main
 
+def stretch(main: GeoObject, fx: float = 1, fy: float = 1, fz: float = 1, origin: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> GeoObject:
+    """Stretches a geometry with a factor fx, fy and fz along the x, y and Z axes respectively
+    
+    The stretch origin is centered at the provided origin.
+
+    Returns:
+        _type_: _description_
+    """
+    gmsh.model.occ.dilate(main.dimtags, *origin, fx, fy, fz)
+    
+    return main
+
+
 @overload
 def unite(*objects: GeoVolume) -> GeoVolume: ...
 
