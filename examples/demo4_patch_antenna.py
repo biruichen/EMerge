@@ -28,8 +28,8 @@ th = 1.524 * mm         # substrate thickness
 Rair = 100 * mm         # air sphere radius
 
 # Refined frequency range for antenna resonance around 1.54–1.6 GHz
-f1 = 1.565e9             # start frequency
-f2 = 1.585e9             # stop frequency
+f1 = 1.55e9             # start frequency
+f2 = 1.60e9             # stop frequency
 
 # --- Create simulation object -------------------------------------------
 model = em.Simulation('MyPatchAntenna')
@@ -76,7 +76,7 @@ rpatch.material = em.lib.MET_COPPER
 
 # --- Assign materials and simulation settings ---------------------------
 # Dielectric material with some transparency for display
-dielectric.material = em.Material(3.38, color="#207020", opacity=0.6)
+dielectric.material = em.Material(3.38, color="#207020", opacity=0.9)
 
 # Mesh resolution: fraction of wavelength
 model.mw.resolution = 0.15
@@ -95,7 +95,7 @@ model.mesher.set_face_size(port, 0.5 * mm)
 
 # --- Generate mesh and preview ------------------------------------------
 model.generate_mesh()                      # build the finite-element mesh
-model.view(selections=[port], plot_mesh=True)              # show the mesh around the port
+model.view(selections=[port])              # show the mesh around the port
 
 # --- Boundary conditions ------------------------------------------------
 # Define lumped port with specified orientation and impedance
@@ -120,9 +120,10 @@ data = model.mw.run_sweep()
 
 # --- Post-process S-parameters ------------------------------------------
 freqs = data.scalar.grid.freq
-S11 = data.scalar.grid.S(1, 1)            # reflection coefficient
-plot_sp(freqs, S11)                       # plot return loss in dB
-smith(S11, f=freqs, labels='S11')         # Smith chart of S11
+freq_dense = np.linspace(f1, f2, 1001)
+S11 = data.scalar.grid.model_S(1, 1, freq_dense)            # reflection coefficient
+plot_sp(freq_dense, S11)                       # plot return loss in dB
+smith(S11, f=freq_dense, labels='S11')         # Smith chart of S11
 
 # --- Far-field radiation pattern ----------------------------------------
 # Extract 2D cut at phi=0 plane and plot E-field magnitude
@@ -132,7 +133,7 @@ ff2 = data.field.find(freq=1.575e9)\
     .farfield_2d((0, 0, 1), (0, 1, 0), boundary_selection)
 
 plot_ff(ff1.ang*180/np.pi, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO], dB=True, ylabel='Gain [dBi]')                # linear plot vs theta
-plot_ff_polar(ff1.ang, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO])          # polar plot of radiation
+plot_ff_polar(ff1.ang, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO], dB=True, dBfloor=-20)          # polar plot of radiation
 
 # --- 3D radiation visualization -----------------------------------------
 # Add geometry to 3D display
