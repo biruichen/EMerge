@@ -31,7 +31,7 @@ from typing import Literal, Generator, Any
 from loguru import logger
 import numpy as np
 import gmsh # type: ignore
-import joblib # type: ignore
+import cloudpickle
 import os
 import inspect
 from pathlib import Path
@@ -181,7 +181,10 @@ class Simulation:
 
             # Restier the Exit GMSH function on proper program abortion
             register(self._exit_gmsh)
-
+        else:
+            gmsh.finalize()
+            gmsh.initialize()
+            
         # Create a new GMSH model or load it
         if not self.load_file:
             gmsh.model.add(self.modelname)
@@ -283,7 +286,8 @@ class Simulation:
         # Pack and save data
         dataset = dict(simdata=self.data, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
-        joblib.dump(dataset, str(data_path))
+        with open(str(data_path), "wb") as f_out:
+            cloudpickle.dump(dataset, f_out)
         logger.info(f"Saved simulation data to: {data_path}")
 
     def load(self) -> None:
@@ -304,7 +308,8 @@ class Simulation:
         #self.mesh.update([])
 
         # Load data
-        datapack = joblib.load(str(data_path))
+        with open(str(data_path), "rb") as f_in:
+            datapack= cloudpickle.load(f_in)
         self.data = datapack['simdata']
         self._set_mesh(datapack['mesh'])
         logger.info(f"Loaded simulation data from: {data_path}")

@@ -206,6 +206,10 @@ class Selection:
         return [gmsh.model.occ.get_center_of_mass(self.dim, tag) for tag in self.tags]
     
     @property
+    def _metal(self) -> bool:
+        return False
+    
+    @property
     def opacity(self) -> float:
         return 0.6
     ####### DUNDER METHODS

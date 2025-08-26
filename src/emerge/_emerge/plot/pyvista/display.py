@@ -284,15 +284,16 @@ class PVDisplay(BaseDisplay):
         self._ruler.min_length = max(1e-3, min(self._mesh.edge_lengths))
         self._update_camera()
         self._add_aux_items()
+        # self._plot.renderer.enable_depth_peeling(20, 0.8)
+        # self._plot.enable_anti_aliasing(self.set.anti_aliassing)
         if self._do_animate:
             self._wire_close_events()
             self.add_text('Press Q to close!',color='red', position='upper_left')
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
             self._animate()
-            
-            
         else:
             self._plot.show()
+        
         self._reset()
     
     def set_mesh(self, mesh: Mesh3D):
@@ -440,8 +441,20 @@ class PVDisplay(BaseDisplay):
         opacity = obj.opacity
         line_width = 0.5
         color = obj.color_rgb
+        metal = obj._metal
         style='surface'
         
+        # Default render settings
+        metallic = 0.05
+        roughness = 0.5
+        pbr = False
+        
+        if metal:
+            pbr = True
+            metallic = 0.8
+            roughness = 0.3
+        
+        # Default keyword arguments when plotting Mesh mode.
         if mesh is True:
             show_edges = True
             opacity = 0.7
@@ -449,13 +462,28 @@ class PVDisplay(BaseDisplay):
             style='wireframe'
             color=next(C_CYCLE)
         
-        kwargs = setdefault(kwargs, color=color, opacity=opacity, line_width=line_width, show_edges=show_edges, pickable=True, style=style)
+        # Defining the default keyword arguments for PyVista
+        kwargs = setdefault(kwargs, color=color, 
+                            opacity=opacity, 
+                            metallic=metallic, 
+                            pbr=pbr,
+                            roughness=roughness,
+                            line_width=line_width, 
+                            show_edges=show_edges, 
+                            pickable=True, 
+                            style=style)
         mesh_obj = self.mesh(obj)
         
         if mesh is True and volume_mesh is True:
             mesh_obj = mesh_obj.extract_all_edges()
-        
         actor = self._plot.add_mesh(mesh_obj, *args, **kwargs)
+        
+        # Push 3D Geometries back to avoid Z-fighting with 2D geometries.
+        if obj.dim==3:
+            mapper = actor.GetMapper()
+            mapper.SetResolveCoincidentTopology(1)
+            mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(1,1)
+        
         self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=2, show_edges=True)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):

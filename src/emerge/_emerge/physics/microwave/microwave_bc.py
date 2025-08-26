@@ -354,7 +354,7 @@ class FloquetPort(PortBC):
         if cs is None:
             cs = GCS
         self.port_number: int= port_number
-        self.active: bool = True
+        self.active: bool = False
         self.power: float = power
         self.type: str = 'TEM'
         self.mode: tuple[int,int] = (1,0)
@@ -439,7 +439,6 @@ class ModalPort(PortBC):
     def __init__(self,
                  face: FaceSelection | GeoSurface,
                  port_number: int, 
-                 active: bool = False,
                  cs: CoordinateSystem | None = None,
                  power: float = 1,
                  TEM: bool = False,
@@ -457,7 +456,6 @@ class ModalPort(PortBC):
         Args:
             face (FaceSelection, GeoSurface): The port mode face
             port_number (int): The port number as an integer
-            active (bool, optional): Whether the port is set active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system of the port face. Defaults to None.
             power (float, optional): The radiated power. Defaults to 1.
             TEM (bool, optional): Wether the mode should be considered as a TEM mode. Defaults to False
@@ -467,7 +465,7 @@ class ModalPort(PortBC):
         super().__init__(face)
 
         self.port_number: int= port_number
-        self.active: bool = active
+        self.active: bool = False
         self.power: float = power
         self.alignment_vectors: list[Axis] = []
 
@@ -666,7 +664,7 @@ class RectangularWaveguide(PortBC):
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  port_number: int, 
-                 active: bool = False,
+                 mode: tuple[int, int] = (1,0),
                  cs: CoordinateSystem | None = None,
                  dims: tuple[float, float] | None = None,
                  power: float = 1):
@@ -681,7 +679,7 @@ class RectangularWaveguide(PortBC):
         Args:
             face (FaceSelection, GeoSurface): The port boundary face selection
             port_number (int): The port number
-            active (bool, optional): Ther the port is active. Defaults to False.
+            mode: (tuple[int, int], optional): The TE mode number. Defaults to (1,0).
             cs (CoordinateSystem, optional): The local coordinate system. Defaults to None.
             dims (tuple[float, float], optional): The port face. Defaults to None.
             power (float): The port power. Default to 1.
@@ -689,10 +687,10 @@ class RectangularWaveguide(PortBC):
         super().__init__(face)
 
         self.port_number: int= port_number
-        self.active: bool = active
+        self.active: bool = False
         self.power: float = power
         self.type: str = 'TE'
-        self.mode: tuple[int,int] = (1,0)
+        self.mode: tuple[int,int] = mode
 
         if dims is None:
             logger.info("Determining port face based on selection")
@@ -701,13 +699,12 @@ class RectangularWaveguide(PortBC):
             self.dims = (width, height)
             logger.debug(f'Port CS: {self.cs}')
             logger.debug(f'Detected port {self.port_number} size = {width*1000:.1f} mm x {height*1000:.1f} mm')
-        
+        else:
+            self.dims = dims
+            self.cs = cs
         if self.cs is None:
             logger.info('Constructing coordinate system from normal port')
             self.cs = Axis(self.selection.normal).construct_cs()
-        else:
-            self.cs: CoordinateSystem = cs # type: ignore
-
     def get_basis(self) -> np.ndarray:
         return self.cs._basis
         
@@ -755,11 +752,12 @@ class RectangularWaveguide(PortBC):
 
         width = self.dims[0]
         height = self.dims[1]
-
-        E = self.get_amplitude(k0)*np.cos(np.pi*self.mode[0]*(x_local)/width)*np.cos(np.pi*self.mode[1]*(y_local)/height)
-        Ex = 0*E
-        Ey = E
-        Ez = 0*E
+        m, n= self.mode
+        Ev = self.get_amplitude(k0)*np.cos(np.pi*m*(x_local)/width)*np.cos(np.pi*n*(y_local)/height)
+        Eh = self.get_amplitude(k0)*np.sin(np.pi*m*(x_local)/width)*np.sin(np.pi*n*(y_local)/height)
+        Ex = Eh
+        Ey = Ev
+        Ez = 0*Eh
         Exyz =  self._qmode(k0) * np.array([Ex, Ey, Ez])
         return Exyz
 
@@ -787,7 +785,6 @@ class LumpedPort(PortBC):
                  width: float | None = None,
                  height: float | None = None,
                  direction: Axis | None = None,
-                 active: bool = False,
                  power: float = 1,
                  Z0: float = 50):
         """Generates a lumped power boundary condition.
@@ -804,7 +801,6 @@ class LumpedPort(PortBC):
             width (float): The port width (meters).
             height (float): The port height (meters).
             direction (Axis): The port direction as an Axis object (em.Axis(..) or em.ZAX)
-            active (bool, optional): Whether the port is active. Defaults to False.
             power (float, optional): The port output power. Defaults to 1.
             Z0 (float, optional): The port impedance. Defaults to 50.
         """
@@ -819,7 +815,7 @@ class LumpedPort(PortBC):
         
         logger.debug(f'Lumped port: width={1000*width:.1f}mm, height={1000*height:.1f}mm, direction={direction}') # type: ignore
         self.port_number: int= port_number
-        self.active: bool = active
+        self.active: bool = False
 
         self.power: float = power
         self.Z0: float = Z0

@@ -61,8 +61,11 @@ class _GeometryManager:
         self.geometry_list[model].append(geo)
 
     def sign_in(self, modelname: str) -> None:
-        if modelname not in self.geometry_list:
-            self.geometry_list[modelname] = []
+        # if modelname not in self.geometry_list:
+        #     self.geometry_list[modelname] = []
+        if modelname is self.geometry_list:
+            logger.warning(f'{modelname} already exist, Geometries will be reset.')
+        self.geometry_list[modelname] = []
         self.active = modelname
 
     def reset(self, modelname: str) -> None:
@@ -241,6 +244,10 @@ class GeoObject:
     @property
     def opacity(self) -> float:
         return self.material.opacity
+    
+    @property
+    def _metal(self) -> bool:
+        return self.material._metal
     
     @property
     def select(self) -> Selection:
