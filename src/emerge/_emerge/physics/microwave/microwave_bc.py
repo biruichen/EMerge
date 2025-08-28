@@ -306,11 +306,17 @@ class AbsorbingBoundary(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*self.get_beta(k0)
+        if self.order == 2:
+            
+            p0 = 1.06103
+            p2 = -0.84883
+            ky = k0*0.5
+            return 1j*k0*p0 - 1j*p2*ky**2/k0
+        else:
+            Factor = 1
+            return 1j*self.get_beta(k0)*Factor
     
-    def get_Uinc(self, x_local: np.ndarray, y_local: np.ndarray, k0: float) -> np.ndarray:
-        return np.zeros((3, len(x_local)), dtype=np.complex128)
-
+   
 @dataclass
 class PortMode:
     modefield: np.ndarray
@@ -825,9 +831,9 @@ class LumpedPort(PortBC):
         self.Vdirection: Axis = direction # type: ignore
         self.type = 'TEM'
         
-        logger.info('Constructing coordinate system from normal port')
-        self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
-
+        # logger.info('Constructing coordinate system from normal port')
+        # self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
+        self.cs = GCS
         self.vintline: Line | None = None
         self.v_integration = True
 
@@ -881,14 +887,7 @@ class LumpedPort(PortBC):
                      k0: float,
                      which: Literal['E','H'] = 'E') -> np.ndarray:
         ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
-
-        px, py, pz = self.cs.in_local_basis(*self.Vdirection.np)
-        
-        Ex = px*np.ones_like(x_local)
-        Ey = py*np.ones_like(x_local)
-        Ez = pz*np.ones_like(x_local)
-        Exyz = np.array([Ex, Ey, Ez])
-        return Exyz
+        raise RuntimeError('This function should never be called in this context.')
 
     def port_mode_3d_global(self, 
                             x_global: np.ndarray,
@@ -911,10 +910,9 @@ class LumpedPort(PortBC):
         Returns:
             np.ndarray: The E-field in (3,N) indexing.
         """
-        xl, yl, _ = self.cs.in_local_cs(x_global, y_global, z_global)
-        Ex, Ey, Ez = self.port_mode_3d(xl, yl, k0)
-        Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
-        return np.array([Exg, Eyg, Ezg])
+        ON = np.ones_like(x_global)
+        Ex, Ey, Ez = self.Vdirection.np
+        return np.array([Ex*ON, Ey*ON, Ez*ON])
 
 
 class LumpedElement(RobinBC):

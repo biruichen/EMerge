@@ -310,6 +310,8 @@ class Material:
 
         self.color: str = color
         self.opacity: float = opacity
+        self._hash_key: int = -1
+        
         if _neff is None:
             self._neff: Callable = lambda f: np.sqrt(self.ur._fmax(f)*self.er._fmax(f))
         else:
@@ -318,8 +320,14 @@ class Material:
         self._color_rgb = tuple(int(hex_str[i:i+2], 16)/255.0 for i in (0, 2, 4))
         self._metal: bool = _metal
 
+    def __hash__(self):
+        return self._hash_key
+    
     def __str__(self) -> str:
-        return f'Material({self.name})'
+        return f'Material({self.name}, {self._hash_key})'
+    
+    def __repr__(self):
+        return f'Material({self.name}, {self._hash_key})'
     
     def initialize(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, ids: np.ndarray):
         """Initializes the Material properties to be evaluated at xyz-coordinates for
@@ -343,6 +351,7 @@ class Material:
         self.ur.reset()
         self.tand.reset()
         self.cond.reset()
+        self._hash_key = -1
         
     @property
     def frequency_dependent(self) -> bool:

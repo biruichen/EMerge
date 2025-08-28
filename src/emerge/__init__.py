@@ -43,12 +43,13 @@ from loguru import logger
 
 LOG_CONTROLLER.set_default()
 logger.debug('Importing modules')
+LOG_CONTROLLER._set_log_buffer()
 
 from ._emerge.simmodel import Simulation
 from ._emerge.material import Material, FreqCoordDependent, FreqDependent, CoordDependent
 from ._emerge import bc
 from ._emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
-from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
+from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE, cs
 from ._emerge.coord import Line
 from ._emerge import geo
 from ._emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
@@ -63,3 +64,11 @@ from ._emerge.howto import _HowtoClass
 howto = _HowtoClass()
 
 logger.debug('Importing complete!')
+
+
+############################################################
+#                         CONSTANTS                        #
+############################################################
+
+CENTER = geo.Alignment.CENTER
+CORNER = geo.Alignment.CORNER

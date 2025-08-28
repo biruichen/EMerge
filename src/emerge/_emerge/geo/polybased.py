@@ -206,6 +206,7 @@ def orthonormalize(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
     Zaxis = np.abs(Zaxis/np.linalg.norm(Zaxis))
     return Xaxis, Yaxis, Zaxis
 
+
 class GeoPrism(GeoVolume):
     """The GepPrism class generalizes the GeoVolume for extruded convex polygons.
     Besides having a volumetric definitions, the class offers a .front_face 
@@ -216,35 +217,65 @@ class GeoPrism(GeoVolume):
     """
     def __init__(self,
                  volume_tag: int,
-                 front_tag: int,
-                 side_tags: list[int],):
+                 front_tag: int | None = None,
+                 side_tags: list[int] | None = None,
+                 _axis: Axis | None = None):
         super().__init__(volume_tag)
-        self.front_tag: int = front_tag
-        self.back_tag: int = None
-
-        gmsh.model.occ.synchronize()
-        o1 = gmsh.model.occ.get_center_of_mass(2, self.front_tag)
-        n1 = gmsh.model.get_normal(self.front_tag, (0,0))
-        self._add_face_pointer('back', o1, n1)
-
-        tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
         
-        for dim, tag in tags:
-            if (dim,tag) in side_tags:
-                continue
-            o2 = gmsh.model.occ.get_center_of_mass(2, tag)
-            n2 = gmsh.model.get_normal(tag, (0,0))
-            self._add_face_pointer('front', o2, n2)
-            self.back_tag = tag
-            break
+        
+        
+        if front_tag is not None and side_tags is not None:
+            self.front_tag: int = front_tag
+            self.back_tag: int = None
 
-        self.side_tags: list[int] = [dt[1] for dt in tags if dt[1]!=self.front_tag and dt[1]!=self.back_tag]
+            gmsh.model.occ.synchronize()
+            self._add_face_pointer('back', tag=self.front_tag)
 
-        for tag in self.side_tags:
-            o2 = gmsh.model.occ.get_center_of_mass(2, tag)
-            n2 = gmsh.model.get_normal(tag, (0,0))
-            self._add_face_pointer(f'side{tag}', o2, n2)
-            self.back_tag = tag
+            tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
+            
+            for dim, tag in tags:
+                if (dim,tag) in side_tags:
+                    continue
+                self._add_face_pointer('front',tag=tag)
+                self.back_tag = tag
+                break
+
+            self.side_tags: list[int] = [dt[1] for dt in tags if dt[1]!=self.front_tag and dt[1]!=self.back_tag]
+
+            for tag in self.side_tags:
+    
+                self._add_face_pointer(f'side{tag}', tag=tag)
+                self.back_tag = tag
+                
+        elif _axis is not None:
+            _axis = _parse_axis(_axis)
+            gmsh.model.occ.synchronize()
+            tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
+            faces = []
+            for dim, tag in tags:
+                o1 = np.array(gmsh.model.occ.get_center_of_mass(2, tag))
+                n1 = np.array(gmsh.model.get_normal(tag, (0,0)))
+                if abs(np.sum(n1*_axis.np)) > 0.99:
+                    dax = sum(o1 * _axis.np)
+                    faces.append((o1, n1, dax, tag))
+            
+            faces = sorted(faces, key=lambda x: x[2])
+            ftags = []
+            if len(faces) >= 2:
+                ftags.append(faces[0][3])
+                ftags.append(faces[-1][3])
+                self._add_face_pointer('front',faces[0][0], faces[0][1])
+                self._add_face_pointer('back', faces[-1][0], faces[-1][1])
+            elif len(faces)==1:
+                ftags.append(faces[0][3])
+                self._add_face_pointer('cap',faces[0][0], faces[0][1])
+            
+            ictr = 1
+            for dim, tag in tags:
+                if tag in ftags:
+                    continue
+                self._add_face_pointer(f'side{ictr}', tag=tag)
+                ictr += 1
 
     def outside(self, *exclude: Literal['front','back']) -> FaceSelection:
         """Select all outside faces except for the once specified by outside
@@ -462,9 +493,10 @@ class XYPolygon:
         ax, ay, az = axis
         
         volume = gmsh.model.occ.revolve(poly_fin.dimtags, x,y,z, ax, ay, az, angle*np.pi/180)
+        
         tags = [t for d,t in volume if d==3]
-        surftags = [t for d,t in volume if d==2]
-        return GeoPrism(tags, surftags[0], surftags)
+        poly_fin.remove()
+        return GeoPrism(tags, _axis=axis)
 
     @staticmethod
     def circle(radius: float, 

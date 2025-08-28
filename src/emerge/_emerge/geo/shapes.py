@@ -27,6 +27,12 @@ from typing import Literal
 from functools import reduce
 
 class Alignment(Enum):
+    """The alignment Enum describes if a box, cube or rectangle location
+    is specified for the center or the bottom - front - left corner (min X Y and Z)
+
+    Args:
+        Enum (_type_): _description_
+    """
     CENTER = 1
     CORNER = 2
 

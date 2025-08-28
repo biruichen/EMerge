@@ -285,9 +285,18 @@ class GeoObject:
     
     def _add_face_pointer(self, 
                           name: str,
-                          origin: np.ndarray,
-                          normal: np.ndarray):
-        self._face_pointers[name] = _FacePointer(origin, normal)
+                          origin: np.ndarray | None = None,
+                          normal: np.ndarray | None = None,
+                          tag: int | None = None):
+        if tag is not None:
+            o = gmsh.model.occ.get_center_of_mass(2, tag)
+            n = gmsh.model.get_normal(tag, (0,0))
+            self._face_pointers[name] = _FacePointer(o, n)
+            return
+        if origin is not None and normal is not None:
+            self._face_pointers[name] = _FacePointer(origin, normal)
+            return
+        raise ValueError('Eitehr a tag or an origin + normal must be provided!')
     
     def make_copy(self) -> GeoObject:
         new_dimtags = gmsh.model.occ.copy(self.dimtags)

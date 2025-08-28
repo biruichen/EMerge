@@ -53,7 +53,7 @@ def run_job_multi(job: SimJob) -> SimJob:
     Returns:
         SimJob: The solved SimJob
     """
-    routine = DEFAULT_ROUTINE.duplicate()._configure_routine('MP')
+    routine = DEFAULT_ROUTINE._configure_routine('MP')
     for A, b, ids, reuse, aux in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         report.add(**aux)
