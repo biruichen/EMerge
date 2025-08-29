@@ -834,7 +834,7 @@ class LumpedPort(PortBC):
         # logger.info('Constructing coordinate system from normal port')
         # self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
         self.cs = GCS
-        self.vintline: Line | None = None
+        self.vintline: list[Line] = []
         self.v_integration = True
 
     @property

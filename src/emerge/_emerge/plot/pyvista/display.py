@@ -186,7 +186,7 @@ def _norm(x, y, z):
 
 def _select(obj: GeoObject | Selection) -> Selection:
     if isinstance(obj, GeoObject):
-        return obj.select
+        return obj.selection
     return obj
 
 def _merge(lst: Iterable[GeoObject | Selection]) -> Selection:
@@ -523,18 +523,19 @@ class PVDisplay(BaseDisplay):
         d = _min_distance(xf, yf, zf)
 
         if port.vintline is not None:
-            xs, ys, zs = port.vintline.cpoint
-            p_line = pv.Line(
-                pointa=(xs[0], ys[0], zs[0]),
-                pointb=(xs[-1], ys[-1], zs[-1]),
-            )
-            self._plot.add_mesh(
-                p_line,
-                color='red',
-                pickable=False,
-                line_width=3.0,
-            )
-        
+            for line in port.vintline:
+                xs, ys, zs = line.cpoint
+                p_line = pv.Line(
+                    pointa=(xs[0], ys[0], zs[0]),
+                    pointb=(xs[-1], ys[-1], zs[-1]),
+                )
+                self._plot.add_mesh(
+                    p_line,
+                    color='red',
+                    pickable=False,
+                    line_width=3.0,
+                )
+            
         if k0 is None:
             if isinstance(port, ModalPort):
                 k0 = port.get_mode(0).k0
