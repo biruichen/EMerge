@@ -26,7 +26,9 @@ from .logsettings import LOG_CONTROLLER
 from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
 from .periodic import PeriodicCell
-from .bc import BoundaryCondition
+from .cacherun import get_build_section, get_run_section
+from .settings import DEFAULT_SETTINGS, Settings
+from .solver import EMSolver, Solver
 from typing import Literal, Generator, Any
 from loguru import logger
 import numpy as np
@@ -94,21 +96,26 @@ class Simulation:
         
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
+        
+        self.settings: Settings = DEFAULT_SETTINGS
 
+        ## Display
+        self.display: PVDisplay = PVDisplay(self.mesh)
+        
+        ## Dataset
+        self.data: SimulationDataset = SimulationDataset()
+        
         ## STATES
         self.__active: bool = False
         self._defined_geometries: bool = False
         self._cell: PeriodicCell | None = None
-
-        self.display: PVDisplay = PVDisplay(self.mesh)
-
         self.save_file: bool = save_file
         self.load_file: bool = load_file
-
-        self.data: SimulationDataset = SimulationDataset()
-
+        self._cache_run: bool = False
+        self._file_lines: str = ''
+        
         ## Physics
-        self.mw: Microwave3D = Microwave3D(self.mesher, self.data.mw)
+        self.mw: Microwave3D = Microwave3D(self.mesher, self.settings, self.data.mw)
 
         self._initialize_simulation()
 
@@ -216,14 +223,6 @@ class Simulation:
     def _update_data(self) -> None:
         """Writes the stored physics data to each phyics class insatnce"""
         self.mw.data = self.data.mw
-
-    def all_geometries(self) -> list[GeoObject]:
-        """Returns all geometries stored in the simulation file."""
-        return [obj for obj in self.data.sim.default.values() if isinstance(obj, GeoObject)]
-    
-    def all_bcs(self) -> list[BoundaryCondition]:
-        """Returns all boundary condition objects stored in the simulation file"""
-        return [obj for obj in self.data.sim.default.values() if isinstance(obj, BoundaryCondition)]
     
     def _set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
@@ -235,6 +234,81 @@ class Simulation:
     #                       PUBLIC FUNCTIONS                  #
     ############################################################
 
+    def cache_build(self) -> bool:
+        """Checks if all the lines inside this if statement block are the same as those
+        stored from a previous run. If so, then it returns false. Else it returns True.
+        
+        Can be used to capture an entire model simulation.
+        
+        Example:
+        
+        >>> if model.cache_build():
+        >>>     box = em.geo.Box(...)
+        >>>     # Other lines
+        >>>     model.mw.run_sweep()
+        >>> data = model.data.mw
+
+        Returns:
+            bool: If the code is not the same
+        """
+        
+        self.save_file = True
+        self._cache_run = True
+        filestr = get_build_section()
+        self._file_lines = filestr
+        cachepath = self.modelpath / 'pylines.txt'
+        
+        # If there is not pylines file, simulate (can't have been run).
+        if not cachepath.exists():
+            logger.info('No cached data detected, running file')
+            return True
+        
+        with open(cachepath, 'r') as file:
+            lines = file.read()
+        
+        if lines==filestr:
+            logger.info('Cached data detected! Loading data!')
+            self.load()
+            return False
+        logger.info('Different cached data detected, rebuilding file.')
+        return True
+    
+    def cache_run(self) -> bool:
+        """Checks if all the lines before this call are the same as the lines
+        stored from a previous run. If so, then it returns false. Else it returns True.
+        
+        Can be used to capture a run_sweep() call.
+        
+        Example:
+        
+        >>> if model.cache_run():
+        >>>     model.mw.run_sweep()
+        >>> data = model.data.mw
+
+        Returns:
+            bool: If the code is not the same
+        """
+        self.save_file = True
+        self._cache_run = True
+        filestr = get_run_section()
+        self._file_lines = filestr
+        cachepath = self.modelpath / 'pylines.txt'
+        
+        # If there is not pylines file, simulate (can't have been run).
+        if not cachepath.exists():
+            logger.info('No cached data detected, running simulation!')
+            return True
+        
+        with open(cachepath, 'r') as file:
+            lines = file.read()
+        
+        if lines==filestr:
+            logger.info('Cached data detected! Loading data!')
+            self.load()
+            return False
+        logger.info('Different cached data detected, rerunning simulation.')
+        return True
+    
     def check_version(self, version: str) -> None:
         """Compares the provided version number with the version number of EMerge that is running the script.
         
@@ -289,6 +363,12 @@ class Simulation:
         data_path = self.modelpath / 'simdata.emerge'
         with open(str(data_path), "wb") as f_out:
             cloudpickle.dump(dataset, f_out)
+            
+        if self._cache_run:
+            cachepath = self.modelpath / 'pylines.txt'
+            with open(str(cachepath), 'w') as f_out:
+                f_out.write(self._file_lines)
+            
         logger.info(f"Saved simulation data to: {data_path}")
 
     def load(self) -> None:
@@ -384,7 +464,15 @@ class Simulation:
         self.mesher.submit_objects(geometries_parsed)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
-          
+    
+    def all_geos(self) -> list[GeoObject]:
+        """Returns all geometries in a list
+
+        Returns:
+            list[GeoObject]: A list of all GeoObjects
+        """
+        return _GEOMANAGER.all_geometries()  
+    
     def generate_mesh(self) -> None:
         """Generate the mesh. 
         This can only be done after commit_geometry(...) is called and if frequencies are defined.
@@ -402,7 +490,7 @@ class Simulation:
         if self._cell is not None:
             self.mesher.set_periodic_cell(self._cell)
             
-        self.mw._initialize_bcs()
+        self.mw._initialize_bcs(_GEOMANAGER.get_surfaces())
 
         # Check if frequencies are defined: TODO: Replace with a more generic check
         if self.mw.frequencies is None:
@@ -424,9 +512,11 @@ class Simulation:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
+        
         self.mesh.update(self.mesher._get_periodic_bcs())
         self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
         gmsh.model.occ.synchronize()
+        
         self._set_mesh(self.mesh)
 
     def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float,...], None, None]:
@@ -490,6 +580,16 @@ class Simulation:
             filename (str): The filename
         """
         gmsh.write(filename)
+        
+    def set_solver(self, solver: EMSolver | Solver):
+        """Set a given Solver class instance as the main solver. 
+        Solvers will be checked on validity for the given problem.
+
+        Args:
+            solver (EMSolver | Solver): The solver objects
+        """
+        self.mw.solveroutine.set_solver(solver)
+        
     ############################################################
     #                     DEPRICATED FUNCTIONS                #
     ############################################################

@@ -382,3 +382,4 @@ class Material:
      
 AIR = Material(color="#4496f3", opacity=0.05, name='Air')
 COPPER = Material(cond=5.8e7, color="#62290c", _metal=True, name='Copper')
+PEC = Material(color="#ff78aa", opacity=1.0, cond=1e30, _metal=True, name="PEC")

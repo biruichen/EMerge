@@ -73,11 +73,11 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         """
         bcs = self.oftype(PEC)
         for bc in self.oftype(SurfaceImpedance):
-            if bc.sigma > 1e3:
+            if bc.sigma > 10.0:
                 bcs.append(bc)
 
         return bcs
-
+        
     def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort','SurfaceImpedance']) -> FaceSelection:
         tags = []
         for bc in self.boundary_conditions:
@@ -1031,7 +1031,7 @@ class SurfaceImpedance(RobinBC):
         self.sigma: float = 0.0
         
         if material is not None:
-            self.sigma = material.cond
+            self.sigma = material.cond.scalar(1e9)
             self._mur = material.ur
             self._epsr = material.er
         
@@ -1064,7 +1064,7 @@ class SurfaceImpedance(RobinBC):
         
         w0 = k0*C0
         f0 = w0/(2*np.pi)
-        sigma = self.sigma.scalar(f0)
+        sigma = self.sigma
         mur = self._material.ur.scalar(f0)
         er = self._material.er.scalar(f0)
         

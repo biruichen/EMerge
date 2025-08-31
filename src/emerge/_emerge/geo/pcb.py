@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
-from ..material import Material, AIR, COPPER
+from ..material import Material, AIR, COPPER, PEC
 from .shapes import Box, Plate, Cylinder
 from .polybased import XYPolygon
 from .operations import change_coordinate_system, unite
@@ -86,7 +86,7 @@ class PCBPoly:
                  xs: list[float],
                  ys: list[float],
                  z: float = 0,
-                 material: Material = COPPER):
+                 material: Material = PEC):
         self.xs: list[float] = xs
         self.ys: list[float] = ys
         self.z: float = z
@@ -906,12 +906,14 @@ class PCB:
                  unit: float = 0.001,
                  cs: CoordinateSystem | None = None,
                  material: Material = AIR,
+                 trace_material: Material = PEC,
                  layers: int = 2,
                  ):
 
         self.thickness: float = thickness
         self._zs: np.ndarray = np.linspace(-self.thickness, 0, layers)
         self.material: Material = material
+        self.trace_material: Material = trace_material
         self.width: float | None = None
         self.length: float | None = None
         self.origin: np.ndarray = np.array([0.,0.,0.])
@@ -926,6 +928,9 @@ class PCB:
         self.cs: CoordinateSystem = cs
         if self.cs is None:
             self.cs = GCS
+            
+        self.dielectric_priority: int = 11
+        self.via_priority: int = 12
 
         self.traces: list[GeoPolygon] = []
         self.ports: list[GeoPolygon] = []
@@ -1110,7 +1115,7 @@ class PCB:
 
         plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0)) # type: ignore
         plane = change_coordinate_system(plane, self.cs) # type: ignore
-        plane.set_material(COPPER)
+        plane.set_material(self.trace_material)
         return plane # type: ignore
     
     def generate_pcb(self, 
@@ -1140,9 +1145,10 @@ class PCB:
                           position=(x0, y0, z0+z1*self.unit))
                 box.material = self.material
                 box = change_coordinate_system(box, self.cs)
+                box.prio_set(self.dielectric_priority)
                 boxes.append(box)
             if merge:
-                return GeoVolume.merged(boxes) # type: ignore
+                return GeoVolume.merged(boxes).prio_set(self.dielectric_priority) # type: ignore
             return boxes # type: ignore
         
         box = Box(self.width*self.unit, 
@@ -1150,6 +1156,7 @@ class PCB:
                   self.thickness*self.unit, 
                   position=(x0,y0,z0-self.thickness*self.unit))
         box.material = self.material
+        box.prio_set(self.dielectric_priority)
         box = change_coordinate_system(box, self.cs)
         return box # type: ignore
 
@@ -1304,7 +1311,8 @@ class PCB:
             xg, yg, zg = self.cs.in_global_cs(x0, y0, z0)
             cs = CoordinateSystem(self.cs.xax, self.cs.yax, self.cs.zax, np.array([xg, yg, zg]))
             cyl = Cylinder(via.radius*self.unit, (via.z2-via.z1)*self.unit, cs, via.segments)
-            cyl.material = COPPER
+            cyl.material = self.trace_material
+            cyl.prio_set(self.via_priority)
             vias.append(cyl)
         if merge:
             
@@ -1315,7 +1323,7 @@ class PCB:
                  xs: list[float],
                  ys: list[float],
                  z: float = 0,
-                 material: Material = COPPER) -> None:
+                 material: Material = None) -> None:
         """Add a custom polygon to the PCB
 
         Args:
@@ -1324,6 +1332,8 @@ class PCB:
             z (float, optional): The z-height. Defaults to 0.
             material (Material, optional): The material. Defaults to COPPER.
         """
+        if material is None:
+            material = self.trace_material
         self.polies.append(PCBPoly(xs, ys, z, material))
 
     def _gen_poly(self, xys: list[tuple[float, float]], z: float) -> GeoPolygon:
@@ -1385,7 +1395,7 @@ class PCB:
                     ally.append(y)
             
             poly = self._gen_poly(xys2, z)
-            poly.material = COPPER
+            poly.material = self.trace_material
             polys.append(poly)
 
         for pcbpoly in self.polies:

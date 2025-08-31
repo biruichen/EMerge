@@ -50,6 +50,9 @@ class _GeometryManager:
         self.geometry_list: dict[str, list[GeoObject]] = dict()
         self.active: str = ''
 
+    def get_surfaces(self) -> list[GeoSurface]:
+        return [geo for geo in self.all_geometries() if geo.dim==2]
+    
     def all_geometries(self, model: str | None = None) -> list[GeoObject]:
         if model is None:
             model = self.active
@@ -391,6 +394,30 @@ class GeoObject:
         self._priority = level
         return self
     
+    def above(self, other: GeoObject) -> GeoObject:
+        """Puts the priority of this object one higher than the other, then returns this object
+
+        Args:
+            other (GeoObject): The other object to put below this object
+
+        Returns:
+            GeoObject: This object
+        """
+        self._priority = other._priority + 1
+        return self
+    
+    def below(self, other: GeoObject) -> GeoObject:
+        """Puts the priority of this object one lower than the other, then returns this object
+
+        Args:
+            other (GeoObject): The other object to put above this object
+
+        Returns:
+            GeoObject: This object
+        """
+        self._priority = other._priority -1
+        return self
+        
     def prio_up(self) -> GeoObject:
         """Increases the material selection priority by 1
 

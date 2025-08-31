@@ -48,7 +48,8 @@ air = em.geo.Sphere(Rair).background()
 # Metal patch rectangle on top of substrate
 rpatch = em.geo.XYPlate(Wpatch, Lpatch,
                         position=(-Wpatch/2, -Lpatch/2, 0))
-ground = em.geo.XYPlate(wsub, hsub, position=(-wsub/2, -hsub/2, -th))
+
+ground = em.geo.XYPlate(wsub, hsub, position=(-wsub/2, -hsub/2, -th)).set_material(em.lib.PEC)
 
 # Define cutouts for inset feed: two rectangular plates to subtract
 cutout1 = em.geo.XYPlate(wstub, lstub,
@@ -70,9 +71,7 @@ port = em.geo.Plate(
 rpatch = em.geo.remove(rpatch, cutout1)
 rpatch = em.geo.remove(rpatch, cutout2)
 rpatch = em.geo.add(rpatch, line)
-
-# Assign copper material for visualization only
-rpatch.material = em.lib.MET_COPPER
+rpatch.set_material(em.lib.PEC)
 
 # --- Assign materials and simulation settings ---------------------------
 # Dielectric material with some transparency for display
@@ -113,7 +112,6 @@ pec_selection = em.select(rpatch,ground)
 
 # Assigning the boundary conditions
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
-pec = model.mw.bc.PEC(pec_selection)
 
 # --- Run frequency-domain solver ----------------------------------------
 data = model.mw.run_sweep()

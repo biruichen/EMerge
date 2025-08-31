@@ -16,7 +16,7 @@ m.check_version("0.6.11") # Checks version compatibility.
 
 # We create a cyllindrical waveguide in the Y-axis.
 cyl = em.geo.Cylinder(0.012, 0.05, em.YAX.construct_cs())
-
+m.parameter_sweep()
 # We remove 4 ridges from this with a width of 2mm. 
 wr= 0.002
 gap = 0.015
@@ -37,7 +37,7 @@ wg = em.geo.subtract(wg, ridge4)
 
 # We define a resolution and mesh our geometry
 m.mw.set_resolution(0.2)
-m.mw.set_frequency_range(8e9,10e9, 7)
+m.mw.set_frequency_range(8e9, 10e9, 7)
 
 m.generate_mesh()
 
