@@ -504,6 +504,7 @@ class SolverSuperLU(Solver):
         logger.info(f'[ID={id}] Calling SuperLU Solver.')
         self.single = True
         if not reuse_factorization:
+            logger.trace('Computing LU-Decomposition')
             self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', relax=0, diag_pivot_thresh=self._pivoting_threshold, options=self.options)
         x = self.lu.solve(b)
         aux = {
@@ -518,6 +519,7 @@ class SolverUMFPACK(Solver):
 
     def __init__(self):
         super().__init__()
+        logger.trace('Creating UMFPACK solver')
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         
@@ -532,6 +534,7 @@ class SolverUMFPACK(Solver):
     def initialize(self):
         if self.initalized:
             return
+        logger.trace('Initializing UMFPACK Solver')
         self.umfpack = um.UmfpackContext('zl')
         self.umfpack.control[um.UMFPACK_PRL] = 0 # ty: ignore
         self.umfpack.control[um.UMFPACK_IRSTEP] = 2 # ty: ignore
@@ -542,7 +545,9 @@ class SolverUMFPACK(Solver):
         self.umfpack.control[um.UMFPACK_BLOCK_SIZE] = 64 # ty: ignore
         self.umfpack.control[um.UMFPACK_FIXQ] = -1 # ty: ignore
         self.initalized = True
+        
     def reset(self) -> None:
+        logger.trace('Resetting UMFPACK solver state')
         self.fact_symb = False
     
     def set_options(self, pivoting_threshold: float | None = None) -> None:
@@ -562,13 +567,14 @@ class SolverUMFPACK(Solver):
         A.indptr  = A.indptr.astype(np.int64)
         A.indices = A.indices.astype(np.int64)
         if self.fact_symb is False:
-            logger.debug(f'[ID={id}] Executing symbollic factorization.')
+            logger.trace(f'[ID={id}] Executing symbollic factorization.')
             self.umfpack.symbolic(A)
             self.fact_symb = True
         if not reuse_factorization:
-            #logger.debug('Executing numeric factorization.')
+            logger.trace(f'[ID={id}] Executing numeric factorization.')
             self.umfpack.numeric(A)
             self.A = A
+        logger.trace(f'[ID={id}] Solving linear system.')
         x = self.umfpack.solve(um.UMFPACK_A, self.A, b, autoTranspose = False ) # ty: ignore
         aux = {
             "Pivoting Threshold": str(self._pivoting_threshold),
@@ -596,12 +602,14 @@ class SolverPardiso(Solver):
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, SolveReport]:
         logger.info(f'[ID={id}] Calling Pardiso Solver')
         if self.fact_symb is False:
-            logger.debug(f'[ID={id}] Executing symbollic factorization.')
+            logger.trace(f'[ID={id}] Executing symbollic factorization.')
             self.solver.symbolic(A)
             self.fact_symb = True
         if not reuse_factorization:
+            logger.trace(f'[ID={id}] Executing numeric factorization.')
             self.solver.numeric(A)
             self.A = A
+        logger.trace(f'[ID={id}] Solving linear system.')
         x, error = self.solver.solve(A, b)
         if error != 0:
             logger.error(f'[ID={id}] Terminated with error code {error}')
@@ -634,13 +642,15 @@ class CuDSSSolver(Solver):
         logger.info(f'[ID={id}] Calling cuDSS Solver')
         
         if self.fact_symb is False:
-            logger.debug('Executing symbollic factorization')
+            logger.trace(f'[ID={id}] Starting from symbollic factorization.')
             x = self._cudss.from_symbolic(A,b)
             self.fact_symb = True
         else:
             if reuse_factorization:
+                logger.trace(f'[ID={id}] Solving linear system.')
                 x = self._cudss.from_solve(b)
             else:
+                logger.trace(f'[ID={id}] Starting from numeric factorization.')
                 x = self._cudss.from_numeric(A,b)
         
         return x, SolveReport(solver=str(self), exit_code=0, aux={})

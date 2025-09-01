@@ -14,10 +14,10 @@ mm = 0.001    # Define a millimeter
 th = 1.0      # mm
 
 model = em.Simulation('Stripline_test')
-model.check_version("0.6.9") # Checks version compatibility.
+model.check_version("1.0.0") # Checks version compatibility.
 
 # As usual we start by creating our layouter
-ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
+ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B, trace_material=em.lib.MET_COPPER)
 
 # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
 # None of the transmission lines are conciously matched in any way, this is just about the routing
@@ -73,8 +73,6 @@ model.view(selections=[vias.boundary()])
 
 p1 = model.mw.bc.LumpedPort(lp1, 1)
 p2 = model.mw.bc.LumpedPort(lp2, 2)
-pec = model.mw.bc.PEC(trace)
-pecvia = model.mw.bc.PEC(vias.boundary())
 
 # Finally we run the simulation!
 data = model.mw.run_sweep(True, 4, frequency_groups=8)
@@ -93,5 +91,5 @@ model.display.add_object(vias)
 # This is equivalent to the interpolate method except it automatically generates
 # the point cloud based on a plane x,y or z coordinate.
 model.display.add_quiver(*data.field[3].cutplane(ds=0.001, z=-0.00025).vector('E'))
-model.display.add_surf(*data.field[3].cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'))
+model.display.add_surf(*data.field[3].cutplane(ds=0.001, z=-0.00075).scalar('Ez','real'), cmap='coolwarm')
 model.display.show()

@@ -530,3 +530,39 @@ CS = CoordinateSystem
 # The global coordinate system
 GCS = CoordinateSystem(XAX, YAX, ZAX, np.zeros(3), _is_global=True)
 
+def cs(axes: str, origin: tuple[float, float, float] = (0.,0.,0.,)) -> CoordinateSystem:
+    """Generate a coordinate system based on a simple string
+    The string must contain the letters x, X, y, Y, z and/or Z. 
+    Small letters refer to positive axes and capitals to negative axes.
+    
+    The string must be 3 characters long.
+    
+    The first position indices which global axis gets assigned to the new local X-axis
+    The second position indicates the Y-axis
+    The third position indicates the Z-axis
+    
+    Thus, rotating the global XYZ coordinate system 90 degrees around the Z axis would yield: yXz
+
+    Args:
+        axes (str): The axis description
+        origin (tuple[float, float, float], optional): The origin of the coordinate system. Defaults to (0.,0.,0.,).
+
+    Returns:
+        CoordinateSystem: The resultant coordinate system
+    """
+    if len(axes) != 3:
+        raise ValueError('Axis object must be of length 3')
+    
+    axlib = {
+        'x': Axis(np.array([1.0,0.,0.])),
+        'X': Axis(np.array([-1.0,0.,0.])),
+        'y': Axis(np.array([0.,1.0,0.])),
+        'Y': Axis(np.array([0.,-1.0,0.])),
+        'z': Axis(np.array([0.,0.,1.0])),
+        'Z': Axis(np.array([0.,0.,-1.0])),
+    }
+    ax_obj = [axlib[ax] for ax in axes]
+    
+    return (ax_obj[0]*ax_obj[1]*ax_obj[2]).displace(*origin)
+
+

@@ -50,6 +50,9 @@ class _GeometryManager:
         self.geometry_list: dict[str, list[GeoObject]] = dict()
         self.active: str = ''
 
+    def get_surfaces(self) -> list[GeoSurface]:
+        return [geo for geo in self.all_geometries() if geo.dim==2]
+    
     def all_geometries(self, model: str | None = None) -> list[GeoObject]:
         if model is None:
             model = self.active
@@ -250,7 +253,7 @@ class GeoObject:
         return self.material._metal
     
     @property
-    def select(self) -> Selection:
+    def selection(self) -> Selection:
         '''Returns a corresponding Face/Domain or Edge Selection object'''
         if self.dim==1:
             return EdgeSelection(self.tags)
@@ -285,9 +288,18 @@ class GeoObject:
     
     def _add_face_pointer(self, 
                           name: str,
-                          origin: np.ndarray,
-                          normal: np.ndarray):
-        self._face_pointers[name] = _FacePointer(origin, normal)
+                          origin: np.ndarray | None = None,
+                          normal: np.ndarray | None = None,
+                          tag: int | None = None):
+        if tag is not None:
+            o = gmsh.model.occ.get_center_of_mass(2, tag)
+            n = gmsh.model.get_normal(tag, (0,0))
+            self._face_pointers[name] = _FacePointer(o, n)
+            return
+        if origin is not None and normal is not None:
+            self._face_pointers[name] = _FacePointer(origin, normal)
+            return
+        raise ValueError('Eitehr a tag or an origin + normal must be provided!')
     
     def make_copy(self) -> GeoObject:
         new_dimtags = gmsh.model.occ.copy(self.dimtags)
@@ -382,6 +394,30 @@ class GeoObject:
         self._priority = level
         return self
     
+    def above(self, other: GeoObject) -> GeoObject:
+        """Puts the priority of this object one higher than the other, then returns this object
+
+        Args:
+            other (GeoObject): The other object to put below this object
+
+        Returns:
+            GeoObject: This object
+        """
+        self._priority = other._priority + 1
+        return self
+    
+    def below(self, other: GeoObject) -> GeoObject:
+        """Puts the priority of this object one lower than the other, then returns this object
+
+        Args:
+            other (GeoObject): The other object to put above this object
+
+        Returns:
+            GeoObject: This object
+        """
+        self._priority = other._priority -1
+        return self
+        
     def prio_up(self) -> GeoObject:
         """Increases the material selection priority by 1
 
@@ -508,14 +544,14 @@ class GeoVolume(GeoObject):
             self.tags = [tag,]
 
     @property
-    def select(self) -> DomainSelection:
+    def selection(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
 class GeoPoint(GeoObject):
     dim = 0
 
     @property
-    def select(self) -> PointSelection:
+    def selection(self) -> PointSelection:
         return PointSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):
@@ -531,7 +567,7 @@ class GeoEdge(GeoObject):
     dim = 1
 
     @property
-    def select(self) -> EdgeSelection:
+    def selection(self) -> EdgeSelection:
         return EdgeSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):
@@ -549,7 +585,7 @@ class GeoSurface(GeoObject):
     dim = 2
 
     @property
-    def select(self) -> FaceSelection:
+    def selection(self) -> FaceSelection:
         return FaceSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):

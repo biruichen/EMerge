@@ -245,7 +245,7 @@ wheels = [
 
 [[package]]
 name = "emerge"
-version = "0.6.9"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cloudpickle" },
