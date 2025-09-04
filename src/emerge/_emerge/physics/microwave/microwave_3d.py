@@ -19,14 +19,12 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
-from ...geometry import GeoSurface
 from ...elements.femdata import FEMBasis
 from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
 from ...mth.optimized import compute_distances
-from ...settings import Settings
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -55,7 +53,7 @@ def run_job_multi(job: SimJob) -> SimJob:
     Returns:
         SimJob: The solved SimJob
     """
-    routine = DEFAULT_ROUTINE._configure_routine('MP')
+    routine = DEFAULT_ROUTINE.duplicate()._configure_routine('MP')
     for A, b, ids, reuse, aux in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         report.add(**aux)
@@ -124,16 +122,16 @@ class Microwave3D:
     formulation.
 
     """
-    def __init__(self, mesher: Mesher, settings: Settings, mwdata: MWData, order: int = 2):
+    def __init__(self, mesher: Mesher, mwdata: MWData, order: int = 2):
         self.frequencies: list[float] = []
         self.current_frequency = 0
         self.order: int = order
         self.resolution: float = 1
-        self._settings: Settings = settings
+
         self.mesher: Mesher = mesher
         self.mesh: Mesh3D = Mesh3D(self.mesher)
 
-        self.assembler: Assembler = Assembler(self._settings)
+        self.assembler: Assembler = Assembler()
         self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
         self.basis: Nedelec2 | None = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
@@ -192,28 +190,14 @@ class Microwave3D:
         return sorted(self.bc.oftype(PortBC), key=lambda x: x.number) # type: ignore
     
     
-    def _initialize_bcs(self, surfaces: list[GeoSurface]) -> None:
+    def _initialize_bcs(self) -> None:
         """Initializes the boundary conditions to set PEC as all exterior boundaries.
         """
         logger.debug('Initializing boundary conditions.')
 
         tags = self.mesher.domain_boundary_face_tags
-        
-        # Assigning surface impedance boundary condition
-        if self._settings.mw_2dbc:
-            for surf in surfaces:
-                if surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_peclim:
-                    logger.debug(f'Assinging PEC to {surf}')
-                    self.bc.PEC(surf)
-                elif surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_lim:
-                    logger.debug(f'Assigning SurfaceImpedance to {surf}')
-                    self.bc.SurfaceImpedance(surf, surf.material)
-                
-        
         tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
-        
         self.bc.PEC(FaceSelection(tags))
-        
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
         if self.mesher.periodic_cell is not None:
             self.mesher.periodic_cell.generate_bcs()
@@ -263,12 +247,6 @@ class Microwave3D:
             resolution (float): The desired wavelength fraction.
             
         """
-        if resolution > 0.5:
-            logger.warning('Resolutions greater than 0.5 cannot yield accurate results, capping resolution to 0.4')
-            resolution = 0.4
-        elif resolution > 0.334:
-            logger.warning('A resolution greater than 0.33 may cause accuracy issues.')
-        
         self.resolution = resolution
 
     def set_conductivity_limit(self, condutivity: float) -> None:
@@ -314,7 +292,6 @@ class Microwave3D:
         ''' Initializes auxilliary required boundary condition information before running simulations.
         '''
         logger.debug('Initializing boundary conditions')
-        self.bc.cleanup()
         for port in self.bc.oftype(LumpedPort):
             self.define_lumped_port_integration_points(port)
     
@@ -334,25 +311,22 @@ class Microwave3D:
 
         if points.size==0:
             raise SimulationError(f'The lumped port {port} has no nodes associated with it')
-        
         xs = self.mesh.nodes[0,points]
         ys = self.mesh.nodes[1,points]
         zs = self.mesh.nodes[2,points]
 
         dotprod = xs*field_axis[0] + ys*field_axis[1] + zs*field_axis[2]
 
-        start_id = np.argwhere(dotprod == np.min(dotprod)).flatten()
+        start_id = points[np.argwhere(dotprod == np.min(dotprod))]
         
-        xs = xs[start_id]
-        ys = ys[start_id]
-        zs = zs[start_id]
-        
+        start = _pick_central(self.mesh.nodes[:,start_id.flatten()])
+        logger.info(f'Starting node = {_dimstring(start)}')
+        end = start + port.Vdirection.np*port.height
 
-        for x,y,z in zip(xs, ys, zs):
-            start = np.array([x,y,z])
-            end = start + port.Vdirection.np*port.height
-            port.vintline.append(Line.from_points(start, end, 21))
-            logger.trace(f'Port[{port.port_number}] integration line {start} -> {end}.')
+
+        port.vintline = Line.from_points(start, end, 21)
+
+        logger.info(f'Ending node = {_dimstring(end)}')
         
         port.v_integration = True
     
@@ -595,10 +569,10 @@ class Microwave3D:
             elif TEM:
                 G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
-                mode.modetype = 'TEM'
+                mode.modetype='TEM'
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
-                mode.Z0 = abs(voltage**2/(2*P))
+                mode.Z0 = voltage**2/(2*P)
                 logger.debug(f'Port Z0 = {mode.Z0}')
 
             mode.set_power(P*port._qmode(k0)**2)
@@ -1029,8 +1003,7 @@ class Microwave3D:
             if bc.Z0 is None:
                 raise SimulationError('Trying to compute the impedance of a boundary condition with no characteristic impedance.')
             
-            Voltages = [line.line_integral(fieldfunction) for line in bc.vintline]
-            V = sum(Voltages)/len(Voltages)
+            V = bc.vintline.line_integral(fieldfunction)
             
             if bc.active:
                 if bc.voltage is None:

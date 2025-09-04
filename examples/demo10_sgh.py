@@ -10,25 +10,21 @@ absorbing domain with PML layers. We compute return loss (S11) over a
 
 The dimensions come from this paper:
 https://pure.tue.nl/ws/portalfiles/portal/332971061/Uncertainties_in_the_Estimation_of_the_Gain_of_a_Standard_Gain_Horn_in_the_Frequency_Range_of_90_GHz_to_140_GHz.pdf
-
-Adviced solvers/hardware:
- - This model runs best on UMFPACK, PARDISO or CUDSS.
- -
 """
 
 # --- Units ---------------------------------------------------------------
 mm = 0.001               # meters per millimeter
 
 # --- Horn and feed dimensions -------------------------------------------
-wga = 2.01 * mm          # waveguide width
+wga = 2.01 * mm           # waveguide width
 wgb = 1.01 * mm          # waveguide height
-WH = 10 * mm             # Aperture width
-HH = 7 * mm              # Aperture height
-Lhorn = 21 * mm          # Horn length
+WH = 10 * mm            # Aperture width
+HH = 7 * mm             # Aperture height
+Lhorn = 21 * mm        # Horn length
 
 # --- Feed and simulation setup ------------------------------------------
 Lfeed = 2 * mm           # length of feed waveguide
-th = 1 * mm              # PML thickness
+th = 1 * mm            # PML thickness
 dx = 2 * mm              # distance from horn exit to PML start
 
 # Create simulation object
@@ -84,9 +80,9 @@ m.generate_mesh()
 
 # --- Boundary conditions ------------------------------------------------
 p1 = m.mw.bc.ModalPort(feed.face('left'), 1)     # excite TE10 in feed
-PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, plane=em.XZPLANE))  # perfect magnetic on symmetry
+PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, 0, 1, 0))  # perfect magnetic on symmetry
 radiation_boundary = air2.faces('back','top','right', tool=air)  # open faces
-abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,plane=em.YZPLANE))
+abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 
 # View mesh and BC selections
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
@@ -112,7 +108,7 @@ m.display.add_object(horn_in, opacity=0.1)
 m.display.add_object(air2, opacity=0.1)
 m.display.add_object(feed, opacity=0.1)
 m.display.add_surf(*data.field[0].farfield_3d(radiation_boundary, syms=['Ez','Hy'])\
-                .surfplot('normE', 'abs', True, True, -30, 5*mm, (Lhorn,0,0)))
-m.display.add_surf(*data.field[0].cutplane(0.25*mm, z=0).scalar('Ez','real'), cmap='coolwarm', symmetrize=True)
+                .surfplot('normE', 'abs', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
+m.display.add_surf(*data.field[0].cutplane(0.25*mm, z=0).scalar('Ez','real'))
 m.display.show()
 

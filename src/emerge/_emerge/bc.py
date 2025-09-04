@@ -53,7 +53,7 @@ class BoundaryCondition:
         
         
         if isinstance(assignment, GeoObject):
-            assignment = assignment.selection
+            assignment = assignment.select
         
         self.selection: Selection = assignment
         self.tags: list[int] = self.selection.tags
@@ -83,7 +83,7 @@ class BoundaryCondition:
             raise ValueError(f'All tags must have the same dimension, instead its {tags}')
         dimension = tags[0][0]
         if self.dimension is BCDimension.ANY:
-            logger.info(f'Assigning {self} to dimension{BCDimension(dimension)}')
+            logger.info(f'Assigning dimension {BCDimension(dimension)} to {self}')
             self.dimension = BCDimension(dimension)
         elif self.dimension != BCDimension(dimension):
             raise ValueError(f'Current boundary condition has dimension {self.dimension}, but tags have dimension {BCDimension(dimension)}')
@@ -131,13 +131,6 @@ class BoundaryConditionSet:
         self.boundary_conditions: list[BoundaryCondition] = []
         self._initialized: bool = False
     
-    def cleanup(self) -> None:
-        """ Removes non assigned boundary conditions"""
-        logger.trace("Cleaning up boundary conditions.")
-        toremove = [bc for bc in self.boundary_conditions if len(bc.tags)==0]
-        logger.trace(f"Removing: {toremove}")
-        self.boundary_conditions = [bc for bc in self.boundary_conditions if len(bc.tags)>0]
-        
     def _construct_bc(self, constructor: type) -> type:
         def constr(*args, **kwargs):
             obj = constructor(*args, **kwargs)
@@ -207,6 +200,8 @@ class BoundaryConditionSet:
         }
 
         bc.add_tags(bc.selection.dimtags)
+
+        logger.info('Excluding other possible boundary conditions')
 
         for existing_bc in self.boundary_conditions:
             excluded = existing_bc.exclude_bc(bc)

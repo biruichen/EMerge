@@ -3,7 +3,7 @@ allow-direct-references = true
 
 [project]
 name = "emerge"
-version = "1.0.0"
+version = "0.6.9"
 description = "An open source EM FEM simulator in Python"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
@@ -35,9 +35,6 @@ cudss = [
   "nvmath-python[cu12]",
   "cupy-cuda12x"
 ]
-dxf = [
-  "ezdxf"
-]
 
 [build-system]
 requires = ["hatchling"]
@@ -48,7 +45,6 @@ dev = [
     "pipdeptree>=2.28.0",
     "pytest>=8.4.1",
     "scikit-umfpack>=0.4.2",
-    "threadpoolctl>=3.6.0",
 ]
 
 [tool.uv]

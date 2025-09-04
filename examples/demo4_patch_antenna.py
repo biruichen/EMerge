@@ -34,7 +34,7 @@ f2 = 1.60e9             # stop frequency
 # --- Create simulation object -------------------------------------------
 model = em.Simulation('MyPatchAntenna')
 
-model.check_version("1.0.0") # Checks version compatibility.
+model.check_version("0.6.9") # Checks version compatibility.
 
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
@@ -48,8 +48,7 @@ air = em.geo.Sphere(Rair).background()
 # Metal patch rectangle on top of substrate
 rpatch = em.geo.XYPlate(Wpatch, Lpatch,
                         position=(-Wpatch/2, -Lpatch/2, 0))
-
-ground = em.geo.XYPlate(wsub, hsub, position=(-wsub/2, -hsub/2, -th)).set_material(em.lib.PEC)
+ground = em.geo.XYPlate(wsub, hsub, position=(-wsub/2, -hsub/2, -th))
 
 # Define cutouts for inset feed: two rectangular plates to subtract
 cutout1 = em.geo.XYPlate(wstub, lstub,
@@ -71,7 +70,9 @@ port = em.geo.Plate(
 rpatch = em.geo.remove(rpatch, cutout1)
 rpatch = em.geo.remove(rpatch, cutout2)
 rpatch = em.geo.add(rpatch, line)
-rpatch.set_material(em.lib.PEC)
+
+# Assign copper material for visualization only
+rpatch.material = em.lib.MET_COPPER
 
 # --- Assign materials and simulation settings ---------------------------
 # Dielectric material with some transparency for display
@@ -112,6 +113,7 @@ pec_selection = em.select(rpatch,ground)
 
 # Assigning the boundary conditions
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
+pec = model.mw.bc.PEC(pec_selection)
 
 # --- Run frequency-domain solver ----------------------------------------
 data = model.mw.run_sweep()

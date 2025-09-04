@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from .pcb import PCB, PCBLayer
+from .pcb import PCB
 from .pmlbox import pmlbox
 from .horn import Horn
 from .shapes import Cylinder, CoaxCylinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox, Alignment, Cone
