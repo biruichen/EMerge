@@ -414,7 +414,8 @@ class Simulation:
              use_gmsh: bool = False,
              plot_mesh: bool = False,
              volume_mesh: bool = True,
-             opacity: float | None = None) -> None:
+             opacity: float | None = None,
+             labels: bool = False) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
 
@@ -424,21 +425,21 @@ class Simulation:
             plot_mesh (bool, optional): If the mesh should be plot instead of the object. Defaults to False.
             volume_mesh (bool, optional): If the internal mesh should be plot instead of only the surface boundary mesh. Defaults to True
             opacity (float | None, optional): The object/mesh opacity. Defaults to None.
-
+            labels: (bool, optional): If geometry name labels should be shown. Defaults to False.
         """
         if not (self.display is not None and self.mesh.defined) or use_gmsh:
             gmsh.model.occ.synchronize()
             gmsh.fltk.run()
             return
         for geo in _GEOMANAGER.all_geometries():
-            self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh)
+            self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh, label=labels)
         if selections:
-            [self.display.add_object(sel, color='red', opacity=0.3) for sel in selections]
+            [self.display.add_object(sel, color='red', opacity=0.3, label=labels) for sel in selections]
         self.display.show()
 
         return None
         
-    def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] | None = None):
+    def set_periodic_cell(self, cell: PeriodicCell, included_faces: FaceSelection | None = None):
         """Set the given periodic cell object as the simulations peridicity.
 
         Args:
@@ -447,6 +448,7 @@ class Simulation:
         """
         self.mw.bc._cell = cell
         self._cell = cell
+        self._cell.included_faces = included_faces
 
     def commit_geometry(self, *geometries: GeoObject | list[GeoObject]) -> None:
         """Finalizes and locks the current geometry state of the simulation.
@@ -460,7 +462,7 @@ class Simulation:
         else:
             geometries_parsed = unpack_lists(geometries + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
         
-        self.data.sim['geometries'] = geometries_parsed
+        self.data.sim['geos'] = {geo.name: geo for geo in geometries_parsed}
         self.mesher.submit_objects(geometries_parsed)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]

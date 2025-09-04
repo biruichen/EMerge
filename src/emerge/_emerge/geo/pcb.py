@@ -20,7 +20,7 @@ from __future__ import annotations
 from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER, PEC
-from .shapes import Box, Plate, Cylinder
+from .shapes import Box, Plate, Cylinder, Alignment
 from .polybased import XYPolygon
 from .operations import change_coordinate_system, unite
 from .pcb_tools.macro import parse_macro
@@ -49,6 +49,26 @@ SIZE_NAMES = Literal['0402','0603','1005','1608','2012','3216','3225','4532','50
 _SMD_SIZE_DICT = {x: (float(x[:2])*0.05, float(x[2:])*0.1) for x in ['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']}
 
 
+class _PCB_NAME_MANAGER:
+    
+    def __init__(self):
+        self.names: set[str] = set()
+        
+    def __call__(self, name: str | None, classname: str | None = None) -> str:
+        if name is None:
+            return self(classname)
+        
+        if name not in self.names:
+            self.names.add(name)
+            return name
+        for i in range(1_000_000):
+            newname = f'{name}_{i}'
+            if newname not in self.names:
+                self.names.add(newname)
+                return newname
+                
+    
+_NAME_MANAGER = _PCB_NAME_MANAGER()
 ############################################################
 #                         FUNCTIONS                        #
 ############################################################
@@ -80,21 +100,6 @@ def _rot_mat(angle: float) -> np.ndarray:
 ############################################################
 
 
-class PCBPoly:
-
-    def __init__(self, 
-                 xs: list[float],
-                 ys: list[float],
-                 z: float = 0,
-                 material: Material = PEC):
-        self.xs: list[float] = xs
-        self.ys: list[float] = ys
-        self.z: float = z
-        self.material: Material = material
-
-    @property
-    def xys(self) -> list[tuple[float, float]]:
-        return list([(x,y) for x,y in zip(self.xs, self.ys)])
 
 @dataclass
 class Via:
@@ -106,7 +111,7 @@ class Via:
     segments: int
 
 class RouteElement:
-
+    _DEFNAME: str = 'RouteElement'
     def __init__(self):
         self.width: float = None
         self.x: float = None
@@ -138,7 +143,7 @@ class RouteElement:
         return approx(self.x, other.x) and approx(self.y, other.y) and (1-abs(np.sum(self.direction*other.direction)))<1e-8
     
 class StripLine(RouteElement):
-
+    _DEFNAME: str = 'StripLine'
     def __init__(self,
                  x: float,
                  y: float,
@@ -161,7 +166,7 @@ class StripLine(RouteElement):
         return [(self.x - self.width/2 * self.dirright[0], self.y - self.width/2 * self.dirright[1])]
       
 class StripTurn(RouteElement):
-
+    _DEFNAME: str = 'StripTurn'
     def __init__(self,
                  x: float,
                  y: float,
@@ -234,6 +239,7 @@ class StripTurn(RouteElement):
             return [(x1, y1), (x2, y2), (xend, yend)]
         else:
             raise RouteException(f'Trying to route a StripTurn with an unknown corner type: {self.corner_type}')
+    
     @property
     def left(self) -> list[tuple[float, float]]:
         if self.angle < 0:
@@ -330,17 +336,48 @@ class StripCurve(StripTurn):
         
         return points[::-1]
 
+class PCBPoly:
+    _DEFNAME: str = 'Poly'
     
+    def __init__(self, 
+                 xs: list[float],
+                 ys: list[float],
+                 z: float = 0,
+                 material: Material = PEC,
+                 name: str | None = None):
+        self.xs: list[float] = xs
+        self.ys: list[float] = ys
+        self.z: float = z
+        self.material: Material = material
+        self.name: str = _NAME_MANAGER(name, self._DEFNAME)
+        
+    @property
+    def xys(self) -> list[tuple[float, float]]:
+        return list([(x,y) for x,y in zip(self.xs, self.ys)])
+    
+    def segment(self, index: int) -> StripLine:
+        N = len(self.xs)
+        x1 = self.xs[index%N]
+        x2 = self.xs[(index+1)%N]
+        y1 = self.ys[index%N]
+        y2 = self.ys[(index+1)%N]
+        z = self.z
+        W = ((x2-x1)**2 + (y2-y1)**2)**(0.5)
+        wdir = ((y2-y1)/W, -(x2-x1)/W)
+        
+        return StripLine((x2+x1)/2, (y1+y2)/2, W, wdir)
 ############################################################
 #                    THE STRIP PATH CLASS                  #
 ############################################################
 
 class StripPath:
-
-    def __init__(self, pcb: PCB):
+    _DEFNAME: str = 'Path'
+    
+    def __init__(self, pcb: PCB, name: str | None = None):
         self.pcb: PCB = pcb
         self.path: list[RouteElement] = []
         self.z: float = 0
+        self.name: str = _NAME_MANAGER(name, self._DEFNAME)
 
     def _has(self, element: RouteElement) -> bool:
         if element in self.path:
@@ -896,11 +933,21 @@ class StripPath:
             self.path.append(RouteElement())
         return self.path[element_nr]
 
+class PCBLayer:
+    
+    def __init__(self, 
+                 thickness: float,
+                 material: Material):
+        self.th: float = thickness
+        self.mat: Material = material
+        
 ############################################################
 #                     PCB DESIGN CLASS                     #
 ############################################################
 
 class PCB:
+    _DEFNAME: str = 'PCB'
+    
     def __init__(self,
                  thickness: float,
                  unit: float = 0.001,
@@ -908,15 +955,31 @@ class PCB:
                  material: Material = AIR,
                  trace_material: Material = PEC,
                  layers: int = 2,
+                 _stack: list[PCBLayer] = None,
+                 name: str | None = None
                  ):
 
         self.thickness: float = thickness
-        self._zs: np.ndarray = np.linspace(-self.thickness, 0, layers)
+        self._stack: list[PCBLayer] = []
+        
+        if _stack is not None:
+            self._stack = _stack
+            ths = [ly.th for ly in _stack]
+            zbot = -sum(ths)
+            self._zs = np.concatenate([np.array([zbot,]), zbot + np.cumsum(np.array(ths))])
+            self.thickness = sum(ths)
+        else:
+            self._zs: np.ndarray = np.linspace(-self.thickness, 0, layers)
+            ths = np.diff(self._zs)
+            self._stack = [PCBLayer(th, material) for th in ths]
+            
+            
         self.material: Material = material
         self.trace_material: Material = trace_material
         self.width: float | None = None
         self.length: float | None = None
         self.origin: np.ndarray = np.array([0.,0.,0.])
+        
         self.paths: list[StripPath] = []
         self.polies: list[PCBPoly] = []
 
@@ -946,6 +1009,8 @@ class PCB:
 
         self.calc: PCBCalculator = PCBCalculator(self.thickness, self._zs, self.material, self.unit)
 
+        self.name: str = _NAME_MANAGER(name, self._DEFNAME)
+        
     @property
     def trace(self) -> GeoPolygon:
         tags = []
@@ -1029,6 +1094,9 @@ class PCB:
         if name in self.stored_striplines:
             return self.stored_striplines[name]
         else:
+            for poly in self.polies:
+                if poly.name==name:
+                    return poly
             raise ValueError(f'There is no stripline or coordinate under the name of {name}')
     
     def __call__(self, path_nr: int) -> StripPath:
@@ -1085,7 +1153,8 @@ class PCB:
               width: float | None = None,
               height: float | None = None,
               origin: tuple[float, float] | None = None,
-              alignment: Literal['corner','center'] = 'corner') -> GeoSurface:
+              alignment: Alignment = Alignment.CORNER,
+              name: str | None = None) -> GeoSurface:
         """Generates a generic rectangular plate in the XY grid.
         If no size is provided, it defaults to the entire PCB size assuming that the bounds are determined.
 
@@ -1108,19 +1177,18 @@ class PCB:
         
         origin: tuple[float, ...] = origin + (z*self.unit, ) # type: ignore
 
-        if alignment == 'center':
+        if alignment is Alignment.CENTER:
             origin = (origin[0] - width*self.unit/2, 
                                                         origin[1] - height*self.unit/2, 
                                                         origin[2])
 
-        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0)) # type: ignore
+        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0), name=name) # type: ignore
         plane = change_coordinate_system(plane, self.cs) # type: ignore
         plane.set_material(self.trace_material)
         return plane # type: ignore
     
     def generate_pcb(self, 
                 split_z: bool = True,
-                layer_tolerance: float = 1e-6,
                 merge: bool = True) -> GeoVolume:
         """Generate the PCB Block object
 
@@ -1128,39 +1196,38 @@ class PCB:
             GeoVolume: The PCB Block
         """
         x0, y0, z0 = self.origin*self.unit
-
-        if split_z:
-            zvalues = sorted(list(set(self.zs + [-self.thickness, 0.0])))
-            zvalues_isolated = [zvalues[0],]
-            for z in zvalues[1:]:
-                if (z-zvalues_isolated[-1]) <= layer_tolerance:
-                    continue
-                zvalues_isolated.append(z)
+        
+        Nmats = len(set([layer.mat.name for layer in self._stack]))
+        
+        if split_z and self._zs.shape[0]>2 or Nmats > 1:
+            
             boxes: list[GeoVolume] = []
-            for z1, z2 in zip(zvalues_isolated[:-1],zvalues_isolated[1:]):
+            for i, (z1, z2, layer) in enumerate(zip(self._zs[:-1],self._zs[1:],self._stack)):
                 h = z2-z1
                 box = Box(self.width*self.unit,
                           self.length*self.unit,
                           h*self.unit,
-                          position=(x0, y0, z0+z1*self.unit))
-                box.material = self.material
+                          position=(x0, y0, z0+z1*self.unit),
+                          name=f'{self.name}_layer{i}')
+                box.material = layer.mat
                 box = change_coordinate_system(box, self.cs)
                 box.prio_set(self.dielectric_priority)
                 boxes.append(box)
-            if merge:
+            if merge and Nmats == 1:
                 return GeoVolume.merged(boxes).prio_set(self.dielectric_priority) # type: ignore
             return boxes # type: ignore
         
         box = Box(self.width*self.unit, 
                   self.length*self.unit, 
                   self.thickness*self.unit, 
-                  position=(x0,y0,z0-self.thickness*self.unit))
-        box.material = self.material
+                  position=(x0,y0,z0-self.thickness*self.unit),
+                  name=f'{self.name}_diel')
+        box.material = self._stack[0].mat
         box.prio_set(self.dielectric_priority)
         box = change_coordinate_system(box, self.cs)
         return box # type: ignore
 
-    def generate_air(self, height: float) -> GeoVolume:
+    def generate_air(self, height: float, name: str = 'PCBAirbox') -> GeoVolume:
         """Generate the Air Block object
 
         This requires that the width, depth and origin are deterimed. This 
@@ -1173,7 +1240,8 @@ class PCB:
         box = Box(self.width*self.unit, 
                   self.length*self.unit, 
                   height*self.unit, 
-                  position=(x0,y0,z0))
+                  position=(x0,y0,z0),
+                  name=name)
         box = change_coordinate_system(box, self.cs)
         return box # type: ignore
 
@@ -1182,7 +1250,8 @@ class PCB:
             y: float, 
             width: float, 
             direction: tuple[float, float],
-            z: float = 0) -> StripPath:
+            z: float = 0,
+            name: str | None = None) -> StripPath:
         """Start a new trace
 
         The trace is started at the provided x,y, coordinates with a width "width".
@@ -1201,12 +1270,12 @@ class PCB:
         >>> PCB.new(...).straight(...).turn(...).straight(...) etc.
 
         """
-        path = StripPath(self)
+        path = StripPath(self, name=name)
         path.init(x, y, width, direction, z=z)
         self.paths.append(path)  
         return path
     
-    def lumped_port(self, stripline: StripLine, z_ground: float | None = None) -> GeoPolygon:
+    def lumped_port(self, stripline: StripLine, z_ground: float | None = None, name: str | None = 'LumpedPort') -> GeoPolygon:
         """Generate a lumped-port object to be created.
 
         Args:
@@ -1238,7 +1307,7 @@ class PCB:
         
         tag_wire = gmsh.model.occ.addWire(ltags)
         planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-        poly = GeoPolygon([planetag,])
+        poly = GeoPolygon([planetag,], name='name')
         poly._aux_data['width'] = stripline.width*self.unit
         poly._aux_data['height'] = height*self.unit
         poly._aux_data['vdir'] = self.cs.zax
@@ -1246,19 +1315,18 @@ class PCB:
         
         return poly
 
-    def _lumped_element(self, poly: XYPolygon, function: Callable, width: float, length: float) -> None:
-
-        geopoly = poly._finalize(self.cs)
+    def _lumped_element(self, poly: XYPolygon, function: Callable, width: float, length: float, name: str | None = 'LumpedElement') -> None:
+        geopoly = poly._finalize(self.cs, name=name)
         geopoly._aux_data['func'] = function
         geopoly._aux_data['width'] = width
         geopoly._aux_data['height'] = length
         self.lumped_elements.append(geopoly)
 
-
     def modal_port(self,
                   point: StripLine,
                   height: float,
                   width_multiplier: float = 5.0,
+                  name: str | None = 'ModalPort'
                   ) -> GeoSurface:
         """Generate a wave-port as a GeoSurface.
 
@@ -1284,7 +1352,7 @@ class PCB:
         ax1 = np.array([ds[0], ds[1], 0])*self.unit*point.width*width_multiplier
         ax2 = np.array([0,0,1])*height*self.unit
 
-        plate = Plate(np.array([x0,y0,z0])*self.unit, ax1, ax2)
+        plate = Plate(np.array([x0,y0,z0])*self.unit, ax1, ax2, name=name)
         plate = change_coordinate_system(plate, self.cs)
         return plate # type: ignore
 
@@ -1323,7 +1391,8 @@ class PCB:
                  xs: list[float],
                  ys: list[float],
                  z: float = 0,
-                 material: Material = None) -> None:
+                 material: Material = None,
+                 name: str | None = None) -> None:
         """Add a custom polygon to the PCB
 
         Args:
@@ -1334,9 +1403,12 @@ class PCB:
         """
         if material is None:
             material = self.trace_material
-        self.polies.append(PCBPoly(xs, ys, z, material))
+        poly = PCBPoly(xs, ys, z, material,name=name)
+        
+        self.polies.append(poly)
+        
 
-    def _gen_poly(self, xys: list[tuple[float, float]], z: float) -> GeoPolygon:
+    def _gen_poly(self, xys: list[tuple[float, float]], z: float, name: str | None = None) -> GeoPolygon:
         """ Generates a GeoPoly out of a list of (x,y) coordinate tuples"""
         ptags = []
         for x,y in xys:
@@ -1350,7 +1422,7 @@ class PCB:
         
         tag_wire = gmsh.model.occ.addWire(ltags)
         planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-        poly = GeoPolygon([planetag,])
+        poly = GeoPolygon([planetag,], name=name)
         return poly
     
     @overload
@@ -1400,7 +1472,7 @@ class PCB:
 
         for pcbpoly in self.polies:
             self.zs.append(pcbpoly.z)
-            poly = self._gen_poly(pcbpoly.xys, pcbpoly.z)
+            poly = self._gen_poly(pcbpoly.xys, pcbpoly.z, name=pcbpoly.name)
             poly.material = pcbpoly.material
             polys.append(poly)
             xs, ys = zip(*pcbpoly.xys)

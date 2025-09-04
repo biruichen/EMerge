@@ -435,7 +435,7 @@ class PVDisplay(BaseDisplay):
             return None
 
     ## OBLIGATORY METHODS
-    def add_object(self, obj: GeoObject | Selection, mesh: bool = False, volume_mesh: bool = True, *args, **kwargs):
+    def add_object(self, obj: GeoObject | Selection, mesh: bool = False, volume_mesh: bool = True, label: bool = False, *args, **kwargs):
         
         show_edges = False
         opacity = obj.opacity
@@ -486,6 +486,14 @@ class PVDisplay(BaseDisplay):
         
         self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=2, show_edges=True)
 
+        if isinstance(obj, GeoObject) and label:
+            points = []
+            labels = []
+            for dt in obj.dimtags:
+                points.append(self._mesh.dimtag_to_center[dt])
+                labels.append(obj.name)
+            self._plot.add_point_labels(points, labels, shape_color='white')
+            
     def add_objects(self, *objects, **kwargs) -> None:
         """Add a series of objects provided as a list of arguments
         """
