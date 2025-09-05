@@ -25,11 +25,11 @@ waveguide_radius = 2.779/2 * cm     # feed waveguide radius
 waveguide_length = 2.872 * cm       # feed waveguide length
 
 airbox_length = 6*cm                # airbox length
-airbox_width = 20*cm                # airbox width
+airbox_width = 15*cm                # airbox width
 
 # --- Create simulation object -------------------------------------------
 model = em.Simulation('ConicalHornAntenna')
-model.check_version("0.6.9") # Checks version compatibility
+model.check_version("1.0.0") # Checks version compatibility
 
 # --- Feed geometry -------------------------------------------------------
 feed = em.geo.Cylinder(
@@ -37,6 +37,14 @@ feed = em.geo.Cylinder(
     waveguide_length, 
     cs=em.YZPLANE.cs()
 )
+# The fundamental mode of a circular waveguide has two version that are 90 degrees rotated due to the circular
+# Symmetry of the wavegudie. The two modes can have any arbitrary rotation. This usually depends on slight mesh
+# errors. It is  possible to "force" the fundamental mode to be aligned along the Z-axis.
+
+# Stretching the waveguide by 0.1% in the Y-direction pushes the two orthogonal modes slightly apart
+# causing one to be perfectly aligned in the Z-drection and the other at a slightly larger propagation constant
+# in the Y-direction.
+em.geo.stretch(feed, fy=1.001) 
 
 # --- Horn geometry (revolved polygon) -----------------------------------
 # Define polygon profile: (x = length, y = radius)
@@ -57,11 +65,10 @@ model.commit_geometry()
 # --- Solver setup -------------------------------------------------------
 model.mw.set_frequency(10e9)                  # 10GHz frequency
 model.mw.set_resolution(0.24)                  # mesh resolution fraction
-air.mesh_multiplier = 2                       # increase airbox mesh size 
 
 model.generate_mesh()
-model.view(selections=[feed.face('front'),], plot_mesh=False)
-model.view(selections=[horn_vol.boundary(),], plot_mesh=False)
+model.view(selections=[feed.face('front'),])
+model.view(selections=[horn_vol.boundary(),])
 model.view(selections=[air.boundary(exclude=('left',)),], plot_mesh=True)
 
 # --- Boundary conditions ------------------------------------------------
@@ -79,12 +86,13 @@ ff_data = data.field[0].farfield_2d(
 plot_ff(ff_data.ang * 180/np.pi, ff_data.normE/em.lib.EISO, dB=True, ylabel='Gain [dBi]')
 
 # --- Visualization ------------------------------------------------------
-model.display.add_object(horn_vol, opacity=0.5)
-model.display.add_object(feed, opacity=0.5)
+model.display.add_object(horn_vol, opacity=0.1)
+model.display.add_object(feed, opacity=0.1)
 model.display.add_surf(
     *data.field[0].farfield_3d(radiation_boundary).surfplot(
         'normE', 'abs', True, True, -10, 5*cm, (waveguide_length+aperture_length,0,0)
     ),
     cmap='jet', symmetrize=False
 )
+model.display.add_portmode(port1, k0=data.field[0].k0)
 model.display.show()

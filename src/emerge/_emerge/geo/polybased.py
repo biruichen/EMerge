@@ -206,6 +206,7 @@ def orthonormalize(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
     Zaxis = np.abs(Zaxis/np.linalg.norm(Zaxis))
     return Xaxis, Yaxis, Zaxis
 
+
 class GeoPrism(GeoVolume):
     """The GepPrism class generalizes the GeoVolume for extruded convex polygons.
     Besides having a volumetric definitions, the class offers a .front_face 
@@ -216,35 +217,66 @@ class GeoPrism(GeoVolume):
     """
     def __init__(self,
                  volume_tag: int,
-                 front_tag: int,
-                 side_tags: list[int],):
-        super().__init__(volume_tag)
-        self.front_tag: int = front_tag
-        self.back_tag: int = None
-
-        gmsh.model.occ.synchronize()
-        o1 = gmsh.model.occ.get_center_of_mass(2, self.front_tag)
-        n1 = gmsh.model.get_normal(self.front_tag, (0,0))
-        self._add_face_pointer('back', o1, n1)
-
-        tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
+                 front_tag: int | None = None,
+                 side_tags: list[int] | None = None,
+                 _axis: Axis | None = None,
+                 name: str | None = None):
+        super().__init__(volume_tag, name=name)
         
-        for dim, tag in tags:
-            if (dim,tag) in side_tags:
-                continue
-            o2 = gmsh.model.occ.get_center_of_mass(2, tag)
-            n2 = gmsh.model.get_normal(tag, (0,0))
-            self._add_face_pointer('front', o2, n2)
-            self.back_tag = tag
-            break
+        
+        
+        if front_tag is not None and side_tags is not None:
+            self.front_tag: int = front_tag
+            self.back_tag: int = None
 
-        self.side_tags: list[int] = [dt[1] for dt in tags if dt[1]!=self.front_tag and dt[1]!=self.back_tag]
+            gmsh.model.occ.synchronize()
+            self._add_face_pointer('back', tag=self.front_tag)
 
-        for tag in self.side_tags:
-            o2 = gmsh.model.occ.get_center_of_mass(2, tag)
-            n2 = gmsh.model.get_normal(tag, (0,0))
-            self._add_face_pointer(f'side{tag}', o2, n2)
-            self.back_tag = tag
+            tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
+            
+            for dim, tag in tags:
+                if (dim,tag) in side_tags:
+                    continue
+                self._add_face_pointer('front',tag=tag)
+                self.back_tag = tag
+                break
+
+            self.side_tags: list[int] = [dt[1] for dt in tags if dt[1]!=self.front_tag and dt[1]!=self.back_tag]
+
+            for tag in self.side_tags:
+    
+                self._add_face_pointer(f'side{tag}', tag=tag)
+                self.back_tag = tag
+                
+        elif _axis is not None:
+            _axis = _parse_axis(_axis)
+            gmsh.model.occ.synchronize()
+            tags = gmsh.model.get_boundary(self.dimtags, oriented=False)
+            faces = []
+            for dim, tag in tags:
+                o1 = np.array(gmsh.model.occ.get_center_of_mass(2, tag))
+                n1 = np.array(gmsh.model.get_normal(tag, (0,0)))
+                if abs(np.sum(n1*_axis.np)) > 0.99:
+                    dax = sum(o1 * _axis.np)
+                    faces.append((o1, n1, dax, tag))
+            
+            faces = sorted(faces, key=lambda x: x[2])
+            ftags = []
+            if len(faces) >= 2:
+                ftags.append(faces[0][3])
+                ftags.append(faces[-1][3])
+                self._add_face_pointer('front',faces[0][0], faces[0][1])
+                self._add_face_pointer('back', faces[-1][0], faces[-1][1])
+            elif len(faces)==1:
+                ftags.append(faces[0][3])
+                self._add_face_pointer('cap',faces[0][0], faces[0][1])
+            
+            ictr = 1
+            for dim, tag in tags:
+                if tag in ftags:
+                    continue
+                self._add_face_pointer(f'side{ictr}', tag=tag)
+                ictr += 1
 
     def outside(self, *exclude: Literal['front','back']) -> FaceSelection:
         """Select all outside faces except for the once specified by outside
@@ -389,7 +421,7 @@ class XYPolygon:
         wiretag = gmsh.model.occ.add_wire(lines)
         return ptags, lines, wiretag
         
-    def _finalize(self, cs: CoordinateSystem) -> GeoPolygon:
+    def _finalize(self, cs: CoordinateSystem, name: str | None = 'GeoPolygon') -> GeoPolygon:
         """Turns the XYPolygon object into a GeoPolygon that is embedded in 3D space.
 
         The polygon will be placed in the XY-plane of the provided coordinate center.
@@ -402,12 +434,12 @@ class XYPolygon:
         """
         ptags, lines, wiretag = self._make_wire(cs)
         surftag = gmsh.model.occ.add_plane_surface([wiretag,])
-        poly = GeoPolygon([surftag,])
+        poly = GeoPolygon([surftag,], name=name)
         poly.points = ptags
         poly.lines = lines
         return poly
     
-    def extrude(self, length: float, cs: CoordinateSystem | None = None) -> GeoPrism:
+    def extrude(self, length: float, cs: CoordinateSystem | None = None, name: str = 'Extrusion') -> GeoPrism:
         """Extrues the polygon along the Z-axis.
         The z-coordinates go from z1 to z2 (in meters). Then the extrusion
         is either provided by a maximum dz distance (in meters) or a number
@@ -427,9 +459,9 @@ class XYPolygon:
         volume = gmsh.model.occ.extrude(poly_fin.dimtags, zax[0], zax[1], zax[2])
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]
-        return GeoPrism(tags, surftags[0], surftags)
+        return GeoPrism(tags, surftags[0], surftags, name=name)
     
-    def geo(self, cs: CoordinateSystem | None = None) -> GeoPolygon:
+    def geo(self, cs: CoordinateSystem | None = None, name: str = 'GeoPolygon') -> GeoPolygon:
         """Returns a GeoPolygon object for the current polygon.
 
         Args:
@@ -444,7 +476,7 @@ class XYPolygon:
             cs = GCS
         return self._finalize(cs) 
     
-    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> GeoPrism:
+    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0, name: str = 'Revolution') -> GeoPrism:
         """Applies a revolution to the XYPolygon along the provided rotation ais
 
         Args:
@@ -462,9 +494,10 @@ class XYPolygon:
         ax, ay, az = axis
         
         volume = gmsh.model.occ.revolve(poly_fin.dimtags, x,y,z, ax, ay, az, angle*np.pi/180)
+        
         tags = [t for d,t in volume if d==3]
-        surftags = [t for d,t in volume if d==2]
-        return GeoPrism(tags, surftags[0], surftags)
+        poly_fin.remove()
+        return GeoPrism(tags, _axis=axis, name=name)
 
     @staticmethod
     def circle(radius: float, 
@@ -556,7 +589,7 @@ class XYPolygon:
         self.extend(xs, ys)
         return self
     
-    def connect(self, other: XYPolygon) -> GeoVolume:
+    def connect(self, other: XYPolygon, name: str = 'Connection') -> GeoVolume:
         """Connect two XYPolygons with a defined coordinate system
 
         The coordinate system must be defined before this function can be used. To add a coordinate systme without
@@ -578,17 +611,19 @@ class XYPolygon:
         o1 = np.array(self._cs.in_global_cs(*self.center, 0)).flatten()
         o2 = np.array(other._cs.in_global_cs(*other.center, 0)).flatten()
         dts = gmsh.model.occ.addThruSections([w1, w2], True, parametrization="IsoParametric")
-        vol = GeoVolume([t for d,t in dts if d==3])
+        vol = GeoVolume([t for d,t in dts if d==3], name=name)
         
         vol._add_face_pointer('front',o1, self._cs.zax.np)
         vol._add_face_pointer('back', o2, other._cs.zax.np)
         return vol
             
 class Disc(GeoSurface):
+    _default_name: str = 'Disc'
     
     def __init__(self, origin: tuple[float, float, float],
                  radius: float,
-                 axis: tuple[float, float, float] = (0,0,1.0)):
+                 axis: tuple[float, float, float] = (0,0,1.0),
+                 name: str | None = None):
         """Creates a circular Disc surface.
 
         Args:
@@ -597,10 +632,12 @@ class Disc(GeoSurface):
             axis (tuple[float, float, float], optional): The disc normal axis. Defaults to (0,0,1.0).
         """
         disc = gmsh.model.occ.addDisk(*origin, radius, radius, zAxis=axis)
-        super().__init__(disc)
+        super().__init__(disc, name=name)
     
     
 class Curve(GeoEdge):
+    _default_name: str = 'Curve'
+    
     def __init__(self, 
                  xpts: np.ndarray, 
                  ypts: np.ndarray, 
@@ -608,7 +645,8 @@ class Curve(GeoEdge):
                  degree: int = 3,
                  weights: list[float] | None = None,
                  knots: list[float] | None = None,
-                 ctype: Literal['Spline','BSpline','Bezier'] = 'Spline'):
+                 ctype: Literal['Spline','BSpline','Bezier'] = 'Spline',
+                 name: str | None = None):
         """Generate a Spline/Bspline or Bezier curve based on a series of points
 
         This calls the different curve features in OpenCASCADE.
@@ -646,7 +684,7 @@ class Curve(GeoEdge):
         
         tags = gmsh.model.occ.addWire([tags,])
         gmsh.model.occ.remove([(0,tag) for tag in points])
-        super().__init__(tags)
+        super().__init__(tags, name=name)
     
         gmsh.model.occ.synchronize()
         p1 = gmsh.model.getValue(self.dim, self.tags[0], [0,])

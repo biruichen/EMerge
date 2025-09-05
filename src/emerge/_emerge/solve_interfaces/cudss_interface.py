@@ -15,16 +15,22 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-import cupy as cp # ty: ignore
+import warnings
+from loguru import logger
+
+# Catch the Cuda warning and print it with Loguru.
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    import cupy as cp
+    for warn in w:
+        logger.debug(f"{warn.category.__name__}: {warn.message}")
+
 import nvmath.bindings.cudss as cudss # ty: ignore
 from nvmath import CudaDataType # ty: ignore
 
 from scipy.sparse import csr_matrix
 import numpy as np
 from typing import Literal
-
-from loguru import logger
-
 
 ############################################################
 #                         CONSTANTS                        #

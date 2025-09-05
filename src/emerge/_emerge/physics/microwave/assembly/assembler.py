@@ -22,6 +22,7 @@ from ....elements.nedleg2 import NedelecLegrange2
 from ....mth.optimized import gaus_quad_tri
 from ....mth.pairing import pair_coordinates
 from ....material import Material
+from ....settings import Settings
 from scipy.sparse import csr_matrix
 from loguru import logger
 from ..simjob import SimJob
@@ -102,13 +103,10 @@ class Assembler:
 
     It stores some cached properties to accellerate preformance.
     """
-    def __init__(self):
+    def __init__(self, settings: Settings):
         
         self.cached_matrices = None
-        self.conductivity_limit = 1e7
-        # Currently not used.
-        #self._Pmat_cache: dict[tuple[int,int], csr_matrix] = dict()
-        #self._remove_cache: list[int] = []
+        self.settings = settings
     
     def assemble_bma_matrices(self,
                               field: Nedelec2,
@@ -155,20 +153,22 @@ class Assembler:
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)
 
         # TODO: Simplified to all "conductors" loosely defined. Must change to implementing line robin boundary conditions.
-        pecs: list[BoundaryCondition] = bc_set.get_conductors()#[bc for bc in bcs if isinstance(bc,PEC)]
+        pecs: list[BoundaryCondition] = bc_set.get_conductors()
         if len(pecs) > 0:
-            logger.debug(f'.total of equiv. {len(pecs)} PEC BCs implemented')
+            logger.debug(f'.total of equiv. {len(pecs)} PEC BCs implemented for BMA')
 
         pec_ids = []
 
         # Process all concutors. Everything above the conductivity limit is considered pec.
         for it in range(boundary_surface.n_tris):
-            if sigmesh[it] > self.conductivity_limit:
+            if sigmesh[it] > self.settings.mw_3d_peclim:
                 pec_ids.extend(list(nedlegfield.tri_to_field[:,it]))
 
         # Process all PEC Boundary Conditions
         for pec in pecs:
             logger.trace(f'.implementing {pec}')
+            if len(pec.tags)==0:
+                continue
             face_tags = pec.tags
             tri_ids = mesh.get_triangles(face_tags)
             edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
@@ -235,7 +235,7 @@ class Assembler:
         
         er = er*(1-1j*tand) - 1j*cond/(W0*EPS0)
         
-        is_frequency_dependent = is_frequency_dependent or np.any((cond > 0) & (cond < self.conductivity_limit)) # type: ignore
+        is_frequency_dependent = is_frequency_dependent or np.any((cond > 0) & (cond < self.settings.mw_3d_peclim)) # type: ignore
 
         if cache_matrices and not is_frequency_dependent and self.cached_matrices is not None:
             # IF CACHED AND AVAILABLE PULL E AND B FROM CACHE
@@ -273,11 +273,11 @@ class Assembler:
         # Conductivity above al imit, consider it all PEC
         ipec = 0
         for itet in range(field.n_tets):
-            if cond[0,0,itet] > self.conductivity_limit:
+            if cond[0,0,itet] > self.settings.mw_3d_peclim:
                 ipec+=1
                 pec_ids.extend(field.tet_to_field[:,itet])
         if ipec>0:
-            logger.trace(f'Extended PEC with {ipec} tets with a conductivity > {self.conductivity_limit}.')
+            logger.trace(f'Extended PEC with {ipec} tets with a conductivity > {self.settings.mw_3d_peclim}.')
 
         for pec in pec_bcs:
             logger.trace(f'Implementing: {pec}')
@@ -466,7 +466,7 @@ class Assembler:
         
         # Conductivity above a limit, consider it all PEC
         for itet in range(field.n_tets):
-            if cond[0,0,itet] > self.conductivity_limit:
+            if cond[0,0,itet] > self.settings.mw_3d_peclim:
                 pec_ids.extend(field.tet_to_field[:,itet])
         
         # PEC Boundary conditions

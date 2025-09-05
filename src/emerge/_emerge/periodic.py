@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from .cs import Axis, _parse_axis, GCS, _parse_vector
-from .selection import SELECTOR_OBJ, Selection
+from .selection import SELECTOR_OBJ, Selection, FaceSelection
 from .geo import GeoPrism, XYPolygon, Alignment, XYPlate
 from .bc import BoundaryCondition
 from typing import Generator
@@ -50,8 +50,8 @@ def _pair_selection(f1: Selection,
     for t1, c1 in zip(f1.tags, c1s):
         for t2, c2 in zip(f2.tags, c2s):
             if np.linalg.norm((c1 + ds)-c2) < 1e-8:
-                f1s.append(Selection([t1,]))
-                f2s.append(Selection([t2,]))
+                f1s.append(FaceSelection([t1,]))
+                f2s.append(FaceSelection([t2,]))
     return f1s, f2s
 
 
@@ -69,7 +69,7 @@ class PeriodicCell:
 
         self.origins: list[tuple[float, float, float]] = [_parse_vector(origin) for origin in origins] # type: ignore
         self.vectors: list[Axis] = [_parse_axis(vec) for vec in vectors]
-        self.excluded_faces: Selection | None = None
+        self.included_faces: Selection | None = None
         self._bcs: list[Periodic] = []
         self._ports: list[BoundaryCondition] = []
 
@@ -105,9 +105,11 @@ class PeriodicCell:
         for f1, f2, a in self.cell_data():
             f1_new = f1
             f2_new = f2
-            if self.excluded_faces is not None:
-                f1_new = f1 - self.excluded_faces # type: ignore
-                f2_new = f2 - self.excluded_faces # type: ignore
+            if self.included_faces is not None:
+                f1_new = f1 & self.included_faces # type: ignore
+                f2_new = f2 & self.included_faces # type: ignore
+            if len(f1_new.tags)==0:
+                continue
             bcs.append(Periodic(f1_new, f2_new, tuple(a)))
         self._bcs = bcs
         return bcs
@@ -191,16 +193,16 @@ class RectCell(PeriodicCell):
         return XYPlate(self.width, self.height, position=(0,0,z), alignment=Alignment.CENTER)
         
     def cell_data(self):
-        f1s = SELECTOR_OBJ.inplane(*self.fleft[0], *self.fleft[1])
-        f2s = SELECTOR_OBJ.inplane(*self.fright[0], *self.fright[1])
+        f1s = SELECTOR_OBJ.inplane(*self.fleft[0], self.fleft[1])
+        f2s = SELECTOR_OBJ.inplane(*self.fright[0], self.fright[1])
         vec = (self.fright[0][0]-self.fleft[0][0], 
                self.fright[0][1]-self.fleft[0][1], 
                self.fright[0][2]-self.fleft[0][2])
         for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)):
             yield f1, f2, vec
 
-        f1s = SELECTOR_OBJ.inplane(*self.fbot[0], *self.fbot[1])
-        f2s = SELECTOR_OBJ.inplane(*self.ftop[0], *self.ftop[1])
+        f1s = SELECTOR_OBJ.inplane(*self.fbot[0], self.fbot[1])
+        f2s = SELECTOR_OBJ.inplane(*self.ftop[0], self.ftop[1])
         vec = (self.ftop[0][0]-self.fbot[0][0], 
                self.ftop[0][1]-self.fbot[0][1], 
                self.ftop[0][2]-self.fbot[0][2])
@@ -273,9 +275,9 @@ class HexCell(PeriodicCell):
         o = self.o1[:-1]
         n = self.f11[1][:-1]
         w = nrm(self.p2-self.p1)/2
-        f1s = SELECTOR_OBJ.inplane(*self.f11[0], *self.f11[1])\
+        f1s = SELECTOR_OBJ.inplane(*self.f11[0], self.f11[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2s = SELECTOR_OBJ.inplane(*self.f12[0], *self.f12[1])\
+        f2s = SELECTOR_OBJ.inplane(*self.f12[0], self.f12[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p1 + self.p2)
 
@@ -285,9 +287,9 @@ class HexCell(PeriodicCell):
         o = self.o2[:-1]
         n = self.f21[1][:-1]
         w = nrm(self.p3-self.p2)/2
-        f1s = SELECTOR_OBJ.inplane(*self.f21[0], *self.f21[1])\
+        f1s = SELECTOR_OBJ.inplane(*self.f21[0], self.f21[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2s = SELECTOR_OBJ.inplane(*self.f22[0], *self.f22[1])\
+        f2s = SELECTOR_OBJ.inplane(*self.f22[0], self.f22[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p2 + self.p3)
         for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)): # type: ignore
@@ -296,9 +298,9 @@ class HexCell(PeriodicCell):
         o = self.o3[:-1]
         n = self.f31[1][:-1]
         w = nrm(-self.p1-self.p3)/2
-        f1s = SELECTOR_OBJ.inplane(*self.f31[0], *self.f31[1])\
+        f1s = SELECTOR_OBJ.inplane(*self.f31[0], self.f31[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])-o)>w) or (abs((np.array([x,y])-o) @ n ) > 1e-6))
-        f2s = SELECTOR_OBJ.inplane(*self.f32[0], *self.f32[1])\
+        f2s = SELECTOR_OBJ.inplane(*self.f32[0], self.f32[1])\
             .exclude(lambda x, y, z: (nrm(np.array([x,y])+o)>w) or (abs((np.array([x,y])+o) @ n ) > 1e-6))
         vec = - (self.p3 - self.p1)
         for f1, f2 in zip(*_pair_selection(f1s, f2s, vec)): # type: ignore

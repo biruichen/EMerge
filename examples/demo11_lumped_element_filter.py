@@ -98,10 +98,6 @@ p2 = m.mw.bc.ModalPort(mp2, 2, TEM=True)
 # Add lumped element BCs for each element
 for le in LEs:
     m.mw.bc.LumpedElement(le)
-    
-# Perfect conductor on copper traces and vias
-m.mw.bc.PEC(traces)
-m.mw.bc.PEC(vias.boundary())
 
 # --- Run frequency-domain simulation ------------------------------------
 data = m.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)
@@ -118,5 +114,5 @@ m.display.add_object(traces, opacity=0.1)
 # Cut-plane of Ez field through substrate center
 cut = data.field.find(freq=2.25e9)\
     .cutplane(0.1 * mm, z=-th/2 * mm)
-m.display.add_surf(*cut.scalar('Ez', 'real'))
+m.display.add_surf(*cut.scalar('Ez', 'real'), symmetrize=True, cmap='coolwarm')
 m.display.show()
