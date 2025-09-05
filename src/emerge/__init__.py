@@ -18,7 +18,7 @@ along with this program; if not, see
 """
 import os
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 ############################################################
 #               HANDLE ENVIRONMENT VARIABLES              #
