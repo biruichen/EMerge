@@ -33,10 +33,11 @@ os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS
 os.environ["VECLIB_MAXIMUM_THREADS"] = NTHREADS
 os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS
 
+
 ############################################################
 #                      IMPORT MODULES                     #
 ############################################################
-
+from ._emerge import _cache_check
 from ._emerge.logsettings import LOG_CONTROLLER
 from loguru import logger
 
@@ -53,7 +54,8 @@ from ._emerge.coord import Line
 from ._emerge import geo
 from ._emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
 from ._emerge.geometry import select
-#from ._emerge.mth.common_functions import norm, coax_rout, coax_rin
+from ._emerge.mth.common_functions import norm, coax_rout, coax_rin
+from ._emerge.physics.microwave.sc import stratton_chu
 from ._emerge.periodic import RectCell, HexCell
 from ._emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
@@ -63,11 +65,10 @@ howto = _HowtoClass()
 
 logger.debug('Importing complete!')
 
+
 ############################################################
 #                         CONSTANTS                        #
 ############################################################
 
 CENTER = geo.Alignment.CENTER
 CORNER = geo.Alignment.CORNER
-EISO = lib.EISO
-EOMNI = lib.EOMNI
