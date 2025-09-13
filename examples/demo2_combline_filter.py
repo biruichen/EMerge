@@ -42,8 +42,8 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-model = em.Simulation('Combline_DEMO')
-model.check_version("1.0.3") # Checks version compatibility.
+model = em.Simulation('ComblineFilter')
+model.check_version("1.0.4") # Checks version compatibility.
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.
 # First we create the airbox

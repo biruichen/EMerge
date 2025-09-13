@@ -18,7 +18,7 @@ along with this program; if not, see
 """
 import os
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 ############################################################
 #               HANDLE ENVIRONMENT VARIABLES              #
@@ -57,7 +57,7 @@ from ._emerge.coord import Line
 from ._emerge import geo
 from ._emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
 from ._emerge.geometry import select
-#from ._emerge.mth.common_functions import norm, coax_rout, coax_rin
+from ._emerge.mth.common_functions import norm, coax_rout, coax_rin
 from ._emerge.periodic import RectCell, HexCell
 from ._emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
