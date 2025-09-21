@@ -343,7 +343,7 @@ class Solver:
         return None
 
     def duplicate(self) -> Solver:
-        return self.__class__()
+        return self.__class__(self.pre)
 
     def set_options(self, pivoting_threshold: float | None = None) -> None:
         """Write generic simulation options to the solver object. 

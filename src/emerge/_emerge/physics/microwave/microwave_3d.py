@@ -19,7 +19,7 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
-from ...geometry import GeoSurface
+from ...geometry import GeoSurface, _GEOMANAGER
 from ...elements.femdata import FEMBasis
 from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
@@ -140,11 +140,13 @@ class Microwave3D:
     def reset_data(self):
         self.data = MWData()
 
-    def reset(self):
-        self.bc.reset()
+    def reset(self, _reset_bc: bool = True):
+        if _reset_bc:
+            self.bc.reset()
+            self.bc = MWBoundaryConditionSet(None)
         self.basis: FEMBasis = None
-        self.bc = MWBoundaryConditionSet(None)
         self.solveroutine.reset()
+        self.assembler.cached_matrices = None
 
     def set_order(self, order: int) -> None:
         """Sets the order of the basis functions used. Currently only supports second order.
@@ -401,8 +403,10 @@ class Microwave3D:
             raise ValueError('The field basis is not yet defined.')
 
         logger.debug(' - Finding PEC TEM conductors')
-        pecs: list[PEC] = self.bc.get_conductors() # type: ignore
         mesh = self.mesh
+        
+        # Find all BC conductors
+        pecs: list[PEC] = self.bc.get_conductors() # type: ignore
 
         # Process all PEC Boundary Conditions
         pec_edges = []
@@ -418,19 +422,37 @@ class Microwave3D:
                 edge_ids = list(mesh.tri_to_edge[:,itri].flatten())
                 pec_edges.extend(edge_ids)
 
+        # All PEC edges
         pec_edges = list(set(pec_edges))
         
+        # Port mesh data
         tri_ids = mesh.get_triangles(port.tags)
         edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
         
-        pec_port = np.array([i for i in pec_edges if i in set(edge_ids)])
+        port_pec_edges = np.array([i for i in pec_edges if i in set(edge_ids)])
         
-        pec_islands = mesh.find_edge_groups(pec_port)
+        pec_islands = mesh.find_edge_groups(port_pec_edges)
 
+        
         logger.debug(f' - Found {len(pec_islands)} PEC islands.')
 
         if len(pec_islands) != 2:
-            raise ValueError(f' - Found {len(pec_islands)} PEC islands. Expected 2.')
+            pec_island_tags = {i: self.mesh._get_dimtags(edges=pec_edge_group) for i,pec_edge_group in enumerate(pec_islands)}
+            plus_term = None
+            min_term = None
+            
+            for i, dimtags in pec_island_tags.items():
+                if not set(dimtags).isdisjoint(port.plus_terminal):
+                    plus_term = i
+                
+                if not set(dimtags).isdisjoint(port.minus_terminal):
+                    min_term = i
+            
+            if plus_term is None or min_term is None:
+                raise ValueError(f' - Found {len(pec_islands)} PEC islands without a terminal definition. Please use .set_terminals() to define which conductors are which polarity.')    
+            logger.debug(f'Positive island = {pec_island_tags[plus_term]}')
+            logger.debug(f'Negative island = {pec_island_tags[min_term]}')
+            pec_islands = [pec_islands[plus_term], pec_islands[min_term]]
         
         groups = []
         for island in pec_islands:
@@ -603,6 +625,7 @@ class Microwave3D:
             elif TEM:
                 G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
+                logger.debug(f'Integrating portmode from {cs[:,0]} to {cs[:,-1]}')
                 mode.modetype = 'TEM'
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
@@ -835,6 +858,100 @@ class Microwave3D:
         self._post_process(results, matset)
         return self.data
     
+    def _run_adaptive_mesh(self,
+                iteration: int, 
+                frequency: float,
+                automatic_modal_analysis: bool = True) -> MWData:
+        """Executes a frequency domain study
+
+        The study is distributed over "n_workers" workers.
+        As optional parameter you may set a harddisc_threshold as integer. This determines the maximum
+        number of degrees of freedom before which the jobs will be cahced to the harddisk. The
+        path that will be used to cache the sparse matrices can be specified.
+        Additionally the term frequency_groups may be specified. This number will define in how
+        many groups the matrices will be pre-computed before they are send to workers. This can minimize
+        the total amound of RAM memory used. For example with 11 frequencies in gruops of 4, the following
+        frequency indices will be precomputed and then solved: [[1,2,3,4],[5,6,7,8],[9,10,11]]
+
+        Args:
+            iteration (int): The iteration number
+            frequency (float): The simulation frequency
+
+        Raises:
+            SimulationError: An error associated witha a problem during the simulation.
+
+        Returns:
+            MWSimData: The dataset.
+        """
+        
+        self._simstart = time.time()
+        if self.bc._initialized is False:
+            raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
+        self._initialize_field()
+        self._initialize_bc_data()
+        self._check_physics()
+        
+        if self.basis is None:
+            raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
+
+        materials = self.mesh._get_material_assignment(self.mesher.volumes)
+
+        ### Does this move
+        logger.debug('Initializing single frequency settings.')
+        
+        #### Port settings
+        all_ports = self.bc.oftype(PortBC)
+
+        ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
+        ### COMPUTE WHICH TETS ARE CONNECTED TO PORT INDICES
+
+        for port in all_ports:
+            port.active=False
+    
+    
+        def run_job_single(job: SimJob):
+            for A, b, ids, reuse, aux in job.iter_Ab():
+                solution, report = self.solveroutine.solve(A, b, ids, reuse, id=job.id)
+                report.add(**aux)
+                job.submit_solution(solution, report)
+            return job
+        
+        
+        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []     
+
+        self._compute_modes(frequency)
+
+        logger.debug(f'Simulation frequency = {frequency/1e9:.3f} GHz') 
+        
+        if automatic_modal_analysis:
+            self._compute_modes(frequency)
+            
+        job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
+                                                self.bc.boundary_conditions, 
+                                                frequency, 
+                                                cache_matrices=self.cache_matrices)
+
+        job.id = 0
+
+        logger.info('Starting solve')
+        job = run_job_single(job)
+
+    
+        logger.info('Solving complete')
+
+        self.data.setreport(job.reports, freq=frequency, **self._params)
+
+        for variables, data in self.data.sim.iterate():
+            logger.trace(f'Sim variable: {variables}')
+            for item in data['report']:
+                item.logprint(logger.trace)
+
+        self.solveroutine.reset()
+        ### Compute S-parameters and return
+        self._post_process([job,], [mats,])
+        return self.data
+    
     def eigenmode(self, search_frequency: float,
                         nmodes: int = 6,
                         k0_limit: float = 1,
@@ -868,10 +985,6 @@ class Microwave3D:
 
         materials = self.mesh._get_material_assignment(self.mesher.volumes)
         
-        # er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        # ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        # cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
-
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
             

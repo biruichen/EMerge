@@ -196,7 +196,6 @@ class Mesh3D(Mesh):
             raise ValueError(f'There is no tetrahedron with indices {i1}, {i2}, {i3}, {i4}')
         return output
         
-
     def get_tetrahedra(self, vol_tags: Union[int, list[int]]) -> np.ndarray:
         if isinstance(vol_tags, int):
             vol_tags = [vol_tags,]
@@ -270,6 +269,37 @@ class Mesh3D(Mesh):
             nodes.update(self.get_nodes(tags))
         return np.array([i for i, tet in enumerate(self.tets.T) if not set(tet).isdisjoint(nodes)])
 
+    def _get_dimtags(self, nodes: list[int] | None = None, edges: list[int] | None = None) -> list[tuple[int, int]]:
+        """Returns the geometry dimtags associated with a set of nodes and edges"""
+        if nodes is None:
+            nodes = []
+        if edges is None:
+            edges = []
+        nodes = set(nodes)
+        edges = set(edges)
+        dimtags = []
+        
+        # Test faces
+        for tag, f_nodes in self.ftag_to_node.items():
+            if set(f_nodes).isdisjoint(nodes):
+                continue
+            dimtags.append((2,tag))
+        
+        for tag, f_edges in self.ftag_to_edge.items():
+            if set(f_edges).isdisjoint(edges):
+                continue
+            dimtags.append((2,tag))
+        
+        # test volumes
+        for tag, f_tets in self.vtag_to_tet.items():
+            v_nodes = set(self.tets[:,f_tets].flatten())
+            if not v_nodes.isdisjoint(nodes):
+                dimtags.append((3,tag))
+            v_edges = set(self.tet_to_edge[:,f_tets].flatten())
+            if not v_edges.isdisjoint(edges):
+                dimtags.append((3,tag))
+        return sorted(dimtags)
+    
     def get_nodes(self, face_tags: Union[int, list[int]]) -> np.ndarray:
         '''Returns a numpyarray of all the nodes that belong to the given face tags'''
         if isinstance(face_tags, int):
@@ -572,7 +602,7 @@ class Mesh3D(Mesh):
                 materials.append(vol.material)
                 vol.material._hash_key = i
                 i += 1
-        
+            
         xs = self.centers[0,:]
         ys = self.centers[1,:]
         zs = self.centers[2,:]
@@ -597,7 +627,7 @@ class Mesh3D(Mesh):
     def plot_gmsh(self) -> None:
         gmsh.fltk.run()
 
-    def find_edge_groups(self, edge_ids: np.ndarray) -> list[tuple[Any,...]]:
+    def find_edge_groups(self, edge_ids: np.ndarray) -> list[tuple[int,...]]:
         """
         Find the groups of edges in the mesh.
 

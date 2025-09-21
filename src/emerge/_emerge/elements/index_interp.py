@@ -61,3 +61,48 @@ def index_interp(coords: np.ndarray,
         prop[inside] = itet
 
     return prop
+
+@njit(f8[:](f8[:,:], i8[:,:], f8[:,:], i8[:], f8[:]), cache=True, nogil=True)
+def constant_interp(coords: np.ndarray,
+                tets: np.ndarray, 
+                nodes: np.ndarray,
+                tetids: np.ndarray,
+                value: np.ndarray):
+    ''' Nedelec 2 tetrahedral interpolation of the analytic curl'''
+    # Solution has shape (nEdges, nsols)
+    nNodes = coords.shape[1]
+    
+    prop = np.full((nNodes, ), 0, dtype=np.float64)
+    
+    for i_iter in range(tetids.shape[0]):
+        itet = tetids[i_iter]
+        
+        iv1, iv2, iv3, iv4 = tets[:, itet]
+
+        v1 = nodes[:,iv1]
+        v2 = nodes[:,iv2]
+        v3 = nodes[:,iv3]
+        v4 = nodes[:,iv4]
+
+        bv1 = v2 - v1
+        bv2 = v3 - v1
+        bv3 = v4 - v1
+
+        blocal = np.zeros((3,3))
+        blocal[:,0] = bv1
+        blocal[:,1] = bv2
+        blocal[:,2] = bv3
+        basis = np.linalg.pinv(blocal)
+
+        coords_offset = coords - v1[:,np.newaxis]
+        coords_local = (basis @ (coords_offset))
+
+
+        inside = ((coords_local[0,:] + coords_local[1,:] + coords_local[2,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6) & (coords_local[2,:] >= -1e-6)
+
+        if inside.sum() == 0:
+            continue
+        
+        prop[inside] = value[itet]
+
+    return prop

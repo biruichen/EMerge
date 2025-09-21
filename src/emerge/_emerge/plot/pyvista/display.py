@@ -539,7 +539,7 @@ class PVDisplay(BaseDisplay):
                      XYZ=None,
                      field: Literal['E','H'] = 'E', 
                      k0: float | None = None,
-                     mode_number: int = 0) -> None:
+                     mode_number: int | None = None) -> None:
         
         if XYZ:
             X,Y,Z = XYZ
@@ -584,7 +584,10 @@ class PVDisplay(BaseDisplay):
                 k0 = port.get_mode(0).k0
             else:
                 k0 = 1
-        port.selected_mode = mode_number
+        
+        if isinstance(mode_number, int):
+            port.selected_mode = mode_number
+        
         F = port.port_mode_3d_global(xf,yf,zf,k0, which=field)
 
         Fx = F[0,:].reshape(X.shape).T

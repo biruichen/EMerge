@@ -547,7 +547,7 @@ class Simulation:
         self._set_mesh(dataset['mesh'])
         return self
         
-    def generate_mesh(self) -> None:
+    def generate_mesh(self, regenerate: bool = False) -> None:
         """Generate the mesh. 
         This can only be done after commit_geometry(...) is called and if frequencies are defined.
 
@@ -557,26 +557,27 @@ class Simulation:
         Raises:
             ValueError: ValueError if no frequencies are defined.
         """
-        logger.trace('Starting mesh generation phase.')
-        if not self._defined_geometries:
-            self.commit_geometry()
-        
-        logger.trace(' (1) Installing periodic boundaries in mesher.')
-        # Set the cell periodicity in GMSH
-        if self._cell is not None:
-            self.mesher.set_periodic_cell(self._cell)
-        
-        self.mw._initialize_bcs(_GEOMANAGER.get_surfaces())
+        if not regenerate:
+            logger.trace('Starting mesh generation phase.')
+            if not self._defined_geometries:
+                self.commit_geometry()
+            
+            logger.trace(' (1) Installing periodic boundaries in mesher.')
+            # Set the cell periodicity in GMSH
+            if self._cell is not None:
+                self.mesher.set_periodic_cell(self._cell)
+            
+            self.mw._initialize_bcs(_GEOMANAGER.get_surfaces())
 
-        # Check if frequencies are defined: TODO: Replace with a more generic check
-        if self.mw.frequencies is None:
-            raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
+            # Check if frequencies are defined: TODO: Replace with a more generic check
+            if self.mw.frequencies is None:
+                raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
 
         gmsh.model.occ.synchronize()
 
         # Set the mesh size
         self.mesher._configure_mesh_size(self.mw.get_discretizer(), self.mw.resolution)
-        
+            
         logger.trace(' (2) Calling GMSH mesher')
         try:
             gmsh.logger.start()
@@ -589,6 +590,7 @@ class Simulation:
             logger.error('GMSH Mesh error detected.')
             print(_GMSH_ERROR_TEXT)
             raise
+        
         logger.info('GMSH Meshing complete!')
         self.mesh._pre_update(self.mesher._get_periodic_bcs())
         self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
@@ -596,6 +598,14 @@ class Simulation:
         self._set_mesh(self.mesh)
         logger.trace(' (3) Mesh routine complete')
 
+    def _reset_mesh(self):
+        #gmsh.clear()
+        gmsh.model.mesh.clear()
+        mesh = Mesh3D(self.mesher)
+        
+        self.mw.reset(False)
+        self._set_mesh(mesh)
+        
     def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float,...], None, None]:
         """Executes a parameteric sweep iteration.
 
@@ -654,6 +664,67 @@ class Simulation:
         
         self.mw.cache_matrices = True
     
+    
+    def _beta_adaptive_mesh_refinement(self, 
+                                 max_steps: int = 6,
+                                 convergence: float = 0.02,
+                                 refinement_percentage: float = 0.1,
+                                 refinement_ratio: float = 0.3,
+                                 growth_rate: float = 3) -> None:
+        """Beta implementation of Adaptive Mesh Refinement
+
+        Args:
+            max_steps (int, optional): _description_. Defaults to 6.
+            convergence (float, optional): _description_. Defaults to 0.02.
+            refinement_percentage (float, optional): _description_. Defaults to 0.1.
+            refinement_ratio (float, optional): _description_. Defaults to 0.3.
+            growth_rate (float, optional): _description_. Defaults to 3.
+        """
+        from .physics.microwave.adaptive_mesh import select_refinement_indices, reduce_point_set, compute_convergence
+   
+        max_freq = np.max(self.mw.frequencies)
+        
+        regenerate = False
+        
+        Smats = []
+
+        for step in range(max_steps):
+            amr_params = dict(iter_step=step)
+            self.mw._params = amr_params
+            self.data.sim.new(**amr_params)
+            
+            
+            data = self.mw._run_adaptive_mesh(step, max_freq)
+            
+            field = data.field[-1]
+            
+            Smat_new = data.scalar[-1].Sp
+            Smats.append(Smat_new)
+            if step > 0:
+                S0 = Smats[-2]
+                S1 = Smats[-1]
+                conv = compute_convergence(S0, S1)
+                logger.info(f'Convergence = {conv}')
+                if conv < convergence:
+                    logger.info('Mesh refinement passed!')
+                    break
+            error, lengths = field._solution_quality()
+                
+            idx = select_refinement_indices(error, refinement_percentage)
+            
+            idx = idx[reduce_point_set(self.mw.mesh.centers[:,idx], growth_rate, lengths[idx], refinement_ratio)]
+            centers = self.mw.mesh.centers
+            
+            self.mesher._reset_amr_points()
+            self._reset_mesh()
+            logger.debug(f'Adding {len(idx)} refinement points.')
+            for i in idx:
+                coord = centers[:,i]
+                size = lengths[i]
+                self.mesher.add_refinement_point(coord, refinement_ratio, size, growth_rate)
+            
+            self.generate_mesh(True)            
+            self.view(plot_mesh=True)
     def export(self, filename: str):
         """Exports the model or mesh depending on the extension. 
         
