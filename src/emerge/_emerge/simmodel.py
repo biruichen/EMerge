@@ -448,7 +448,7 @@ class Simulation:
         """
         logger.trace(f'Setting loglevel to {loglevel}')
         LOG_CONTROLLER.set_std_loglevel(loglevel)
-        if loglevel not in ('TRACE','DEBUG'):
+        if loglevel not in ('TRACE'):
             gmsh.option.setNumber("General.Terminal", 0)
 
     def set_write_log(self) -> None:
@@ -712,9 +712,9 @@ class SimulationBeta(Simulation):
                                  convergence: float = 0.02,
                                  magnitude_convergence: float = 2.0,
                                  phase_convergence: float = 180,
-                                 refinement_ratio: float = 0.75,
-                                 growth_rate: float = 3.0,
-                                 minimum_refinement_percentage: float = 15.0, 
+                                 refinement_ratio: float = 0.9,
+                                 growth_rate: float = 3,
+                                 minimum_refinement_percentage: float = 20.0, 
                                  error_field_inclusion_percentage: float = 5.0,
                                  frequency: float = None,
                                  show_mesh: bool = False) -> SimulationDataset:
@@ -793,15 +793,17 @@ class SimulationBeta(Simulation):
             
             self.mesher.add_refinement_points(self.mw.mesh.centers[:,idx], lengths[idx])
             
+            logger.debug(f'Pass {step}: Adding {len(idx)} new refinement points.')
+                
+            new_ids = reduce_point_set(self.mesher._amr_coords, growth_rate, self.mesher._amr_sizes, refinement_ratio, 0.20)
+            
+            logger.debug(f'Pass {step}: Removing {self.mesher._amr_coords.shape[1] - len(new_ids)} points from {self.mesher._amr_coords.shape[1]} to {len(new_ids)}')
+            
+            self.mesher._amr_coords = self.mesher._amr_coords[:,new_ids]
+            self.mesher._amr_sizes = self.mesher._amr_sizes[new_ids]
+            
+            
             while True:
-                logger.debug(f'Pass {step}: Adding {len(idx)} new refinement points.')
-                
-                
-                new_ids = reduce_point_set(self.mesher._amr_coords, growth_rate, self.mesher._amr_sizes, refinement_ratio, 0.20)
-                logger.debug(f'Pass {step}: Removing {self.mesher._amr_coords.shape[1] - len(new_ids)} points from {self.mesher._amr_coords.shape[1]} to {len(new_ids)}')
-                
-                self.mesher._amr_coords = self.mesher._amr_coords[:,new_ids]
-                self.mesher._amr_sizes = self.mesher._amr_sizes[new_ids]
                 
                 self._reset_mesh()
                 
@@ -817,15 +819,19 @@ class SimulationBeta(Simulation):
                 if percentage < minimum_refinement_percentage:
                     logger.debug('Not enough mesh refinement, decreasing mesh size constraint.')
                     refinement_ratio = refinement_ratio * 0.9
+                    logger.debug(f'New refinement ratio: {refinement_ratio}')
                     continue
                 
-                if percentage > 2*minimum_refinement_percentage:
-                    refinement_ratio = refinement_ratio ** 0.8
-                
+                if percentage > 2*minimum_refinement_percentage and refinement_ratio < 0.99:
+                    logger.debug('Too much mesh refinement, decreasing mesh size constraint.')
+                    refinement_ratio = refinement_ratio ** (1-np.log(percentage/minimum_refinement_percentage)/4)
+                    logger.debug(f'New refinement ratio: {refinement_ratio}')
+                    
+
                 last_n_tets = self.mesh.n_tets
                 break
             if show_mesh:
-                self.view(plot_mesh=True, volume_mesh=True)
+                self.view(plot_mesh=True, volume_mesh=False)
         
         if passed < min_refined_passes:
             logger.warning('Adaptive mesh refinement did not converge!')

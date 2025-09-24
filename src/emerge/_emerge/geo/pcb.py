@@ -1209,7 +1209,7 @@ class PCB:
     
     def generate_pcb(self, 
                 split_z: bool = True,
-                merge: bool = True) -> GeoVolume:
+                merge: bool = True) -> list[GeoVolume] | GeoVolume:
         """Generate the PCB Block object
 
         Returns:
