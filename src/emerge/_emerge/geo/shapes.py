@@ -160,11 +160,14 @@ class Sphere(GeoVolume):
         x,y,z = position
         self.tags: list[int] = [gmsh.model.occ.addSphere(x,y,z,radius),]
 
+        gmsh.model.occ.synchronize()
+        self._add_face_pointer('outside', tag=self.boundary().tags[0])
+        
     @property
     def outside(self) -> FaceSelection:
         """The outside boundary of the sphere.
         """
-        return self.boundary()
+        return self.face('outside')
 
 class XYPlate(GeoSurface):
     """Generates and XY-plane oriented plate
@@ -471,15 +474,16 @@ class HalfSphere(GeoVolume):
         self._add_face_pointer('bottom',np.array(position), np.array(direction))
         self._add_face_pointer('face',np.array(position), np.array(direction))
         self._add_face_pointer('disc',np.array(position), np.array(direction))
-
+        
+        gmsh.model.occ.synchronize()
+        self._add_face_pointer('outside', tag=self.boundary(exclude='disc').tags[0])
+        
     @property
     def outside(self) -> FaceSelection:
-        """The outside of the sphere excluding the flat disc face
-
-        Returns:
-            FaceSelection: _description_
+        """The outside boundary of the half sphere.
         """
-        return self.boundary(exclude=('disc',))
+        return self.face('outside')
+
     
     @property
     def disc(self) -> FaceSelection:

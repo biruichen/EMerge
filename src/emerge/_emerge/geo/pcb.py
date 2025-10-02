@@ -934,12 +934,14 @@ class StripPath:
         return self.path[element_nr]
 
 class PCBLayer:
-    
+    _DEFNAME: str = 'PCBLayer'
     def __init__(self, 
                  thickness: float,
-                 material: Material):
+                 material: Material,
+                 name: str | None = None):
         self.th: float = thickness
         self.mat: Material = material
+        self.name: str = _NAME_MANAGER(name, self._DEFNAME)
         
 ############################################################
 #                     PCB DESIGN CLASS                     #
@@ -1305,9 +1307,9 @@ class PCB:
         """
         x0, y0, z0 = self.origin*self.unit
         
-        Nmats = len(set([layer.mat.name for layer in self._stack]))
+        n_materials = len(set([layer.mat.name for layer in self._stack]))
         
-        if split_z and self._zs.shape[0]>2 or Nmats > 1:
+        if split_z and self._zs.shape[0]>2 or n_materials > 1:
             
             boxes: list[GeoVolume] = []
             for i, (z1, z2, layer) in enumerate(zip(self._zs[:-1],self._zs[1:],self._stack)):
@@ -1316,12 +1318,12 @@ class PCB:
                           self.length*self.unit,
                           h*self.unit,
                           position=(x0, y0, z0+z1*self.unit),
-                          name=f'{self.name}_layer{i}')
+                          name=layer.name)
                 box.material = layer.mat
                 box = change_coordinate_system(box, self.cs)
                 box.prio_set(self.dielectric_priority)
                 boxes.append(box)
-            if merge and Nmats == 1:
+            if merge and n_materials == 1:
                 return GeoVolume.merged(boxes).prio_set(self.dielectric_priority) # type: ignore
             return boxes # type: ignore
         

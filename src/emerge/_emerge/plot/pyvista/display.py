@@ -29,6 +29,7 @@ import numpy as np
 import pyvista as pv
 from typing import Iterable, Literal, Callable, Any
 from itertools import cycle
+from loguru import logger
 ### Color scale
 
 # Define the colors we want to use
@@ -305,8 +306,7 @@ class PVDisplay(BaseDisplay):
         self._ruler.min_length = max(1e-3, min(self._mesh.edge_lengths))
         self._update_camera()
         self._add_aux_items()
-        # self._plot.renderer.enable_depth_peeling(20, 0.8)
-        # self._plot.enable_anti_aliasing(self.set.anti_aliassing)
+        self._add_background()
         if self._do_animate:
             self._wire_close_events()
             self.add_text('Press Q to close!',color='red', position='upper_left')
@@ -316,6 +316,17 @@ class PVDisplay(BaseDisplay):
             self._plot.show()
         
         self._reset()
+
+    def _add_background(self):
+        from pyvista import examples
+        from requests.exceptions import ConnectionError
+        
+        try:
+            cubemap = examples.download_sky_box_cube_map()
+            self._plot.set_environment_texture(cubemap)
+        except ConnectionError:
+            logger.warning(f'No internet, no background texture will be used.')
+        
 
     def _reset(self):
         """ Resets key display parameters."""

@@ -1174,7 +1174,8 @@ class Microwave3D:
 
         if not_conserved:
             DEBUG_COLLECTOR.add_report('S-parameters with an amplitude greater than 1.0 detected. This could be due to a ModalPort with the wrong mode type.\n' +
-                                       'Specify the type of mode (TE/TM/TEM) in the constructor using ModalPort(..., modetype=\'TE\') for example.')
+                                       'Specify the type of mode (TE/TM/TEM) in the constructor using ModalPort(..., modetype=\'TE\') for example.\n' +
+                                       f'Values slightly greater than 1 are possible due to numerical accuracy. Automatic normalization = {single_corr or col_corr}')
         logger.info('Simulation Complete!')
         self._simend = time.time()    
         logger.info(f'Elapsed time = {(self._simend-self._simstart):.2f} seconds.')
