@@ -420,7 +420,7 @@ class Mesh3D(Mesh):
         self.tet_to_edge_sign = np.zeros((6, self.tets.shape[1]), dtype=int) + _MISSING_ID
         self.tet_to_tri = np.zeros((4, self.tets.shape[1]), dtype=int) + _MISSING_ID
         self.tet_to_tri_sign = np.zeros((4, self.tets.shape[1]), dtype=int) + _MISSING_ID
-
+        
         tri_to_tet = defaultdict(list)
         for itet in range(self.tets.shape[1]):
             edge_ids = [self.get_edge(self.tets[i-1,itet],self.tets[j-1,itet]) for i,j in zip([1, 1, 1, 2, 4, 3], [2, 3, 4, 3, 2, 4])]
@@ -503,7 +503,6 @@ class Mesh3D(Mesh):
                 continue
             self.etag_to_edge[t] = [int(self.edge_t2i.get(tag,None)) for tag in edge_tags[0] if tag in self.edge_t2i]
         
-        
         ## Tag bindings
         logger.trace('Constructing geometry to mesh mappings.')
         face_dimtags = gmsh.model.get_entities(2)
@@ -512,7 +511,6 @@ class Mesh3D(Mesh):
             node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
             self.ftag_to_node[t] = node_tags
             node_tags = np.squeeze(np.array(node_tags)).reshape(-1,3).T
-            
             self.ftag_to_tri[t] = [self.get_tri(node_tags[0,i], node_tags[1,i], node_tags[2,i]) for i in range(node_tags.shape[1])]
             self.ftag_to_edge[t] = sorted(list(np.unique(self.tri_to_edge[:,self.ftag_to_tri[t]].flatten())))
         

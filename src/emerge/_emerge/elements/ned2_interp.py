@@ -14,9 +14,35 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
-from numba import njit, f8, c16, i8, types # type: ignore
+from numba import njit, f8, c16, i8, types, prange # type: ignore
 import numpy as np
-from ..mth.optimized import compute_distances
+from ..mth.optimized import compute_distances, matmul
+
+
+@njit(f8[:,:](f8[:,:]), cache=True, nogil=True)
+def matinv(M: np.ndarray) -> np.ndarray:
+    """Optimized matrix inverse of 3x3 matrix
+
+    Args:
+        M (np.ndarray): Input matrix M of shape (3,3)
+
+    Returns:
+        np.ndarray: The matrix inverse inv(M)
+    """
+    out = np.zeros((3,3), dtype=np.float64)
+   
+    det = M[0,0]*M[1,1]*M[2,2] - M[0,0]*M[1,2]*M[2,1] - M[0,1]*M[1,0]*M[2,2] + M[0,1]*M[1,2]*M[2,0] + M[0,2]*M[1,0]*M[2,1] - M[0,2]*M[1,1]*M[2,0]
+    out[0,0] = M[1,1]*M[2,2] - M[1,2]*M[2,1]
+    out[0,1] = -M[0,1]*M[2,2] + M[0,2]*M[2,1]
+    out[0,2] = M[0,1]*M[1,2] - M[0,2]*M[1,1]
+    out[1,0] = -M[1,0]*M[2,2] + M[1,2]*M[2,0]
+    out[1,1] = M[0,0]*M[2,2] - M[0,2]*M[2,0]
+    out[1,2] = -M[0,0]*M[1,2] + M[0,2]*M[1,0]
+    out[2,0] = M[1,0]*M[2,1] - M[1,1]*M[2,0]
+    out[2,1] = -M[0,0]*M[2,1] + M[0,1]*M[2,0]
+    out[2,2] = M[0,0]*M[1,1] - M[0,1]*M[1,0]
+    out = out/det
+    return out
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
 def tet_coefficients(xs, ys, zs):
@@ -112,7 +138,7 @@ def local_mapping(vertex_ids, triangle_ids):
 
     return out
 
-@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], i8[:,:], i8[:,:], f8[:,:], i8[:,:], i8[:]), cache=True, nogil=True)
+@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], i8[:,:], i8[:,:], f8[:,:], i8[:,:], i8[:]), cache=True, nogil=True, parallel=False)
 def ned2_tet_interp(coords: np.ndarray,
                          solutions: np.ndarray, 
                          tets: np.ndarray, 
@@ -130,21 +156,19 @@ def ned2_tet_interp(coords: np.ndarray,
     ys = coords[1,:]
     zs = coords[2,:]
 
-    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
-    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
-    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    # Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    # Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    # Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ex = np.zeros((nNodes, ), dtype=np.complex128)
+    Ey = np.zeros((nNodes, ), dtype=np.complex128)
+    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    setnan = np.zeros((nNodes, ), dtype=np.complex128)
+    assigned = np.zeros((nNodes,), dtype=np.int64)-1
     
     for i_iter in range(tetids.shape[0]):
         itet = tetids[i_iter]
 
         iv1, iv2, iv3, iv4 = tets[:, itet]
-
-        g_node_ids = tets[:, itet]
-        g_edge_ids = edges[:, tet_to_field[:6, itet]]
-        g_tri_ids = tris[:, tet_to_field[6:10, itet]-nEdges]
-
-        l_edge_ids = local_mapping(g_node_ids, g_edge_ids)
-        l_tri_ids = local_mapping(g_node_ids, g_tri_ids)
 
         v1 = nodes[:,iv1]
         v2 = nodes[:,iv2]
@@ -159,19 +183,30 @@ def ned2_tet_interp(coords: np.ndarray,
         blocal[:,0] = bv1
         blocal[:,1] = bv2
         blocal[:,2] = bv3
-        basis = np.linalg.pinv(blocal)
+        basis = matinv(blocal)
 
-        coords_offset = coords - v1[:,np.newaxis]
-        coords_local = (basis @ (coords_offset))
-
-        field_ids = tet_to_field[:, itet]
-        Etet = solutions[field_ids]
+        v1x, v1y, v1z = v1[0], v1[1], v1[2]
+        
+        coords_offset = coords*1.0
+        coords_offset[0,:] = coords_offset[0,:] - v1x
+        coords_offset[1,:] = coords_offset[1,:] - v1y
+        coords_offset[2,:] = coords_offset[2,:] - v1z
+        
+        coords_local = matmul(basis, coords_offset)#(basis @ (coords_offset))
 
         inside = ((coords_local[0,:] + coords_local[1,:] + coords_local[2,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6) & (coords_local[2,:] >= -1e-6)
 
         if inside.sum() == 0:
             continue
         
+        assigned[inside] = itet
+    
+    for i_iter in range(tetids.shape[0]):
+        itet = tetids[i_iter]
+        
+        inside = assigned==itet
+        if inside.sum() == 0:
+            continue
         ######### INSIDE THE TETRAHEDRON #########
         
         x = xs[inside==1]
@@ -184,6 +219,16 @@ def ned2_tet_interp(coords: np.ndarray,
 
         a_s, b_s, c_s, d_s, V = tet_coefficients(xvs, yvs, zvs)
         
+        g_node_ids = tets[:, itet]
+        g_edge_ids = edges[:, tet_to_field[:6, itet]]
+        g_tri_ids = tris[:, tet_to_field[6:10, itet]-nEdges]
+
+        l_edge_ids = local_mapping(g_node_ids, g_edge_ids)
+        l_tri_ids = local_mapping(g_node_ids, g_tri_ids)
+        
+        field_ids = tet_to_field[:, itet]
+        Etet = solutions[field_ids]
+        
         Em1s = Etet[0:6]
         Ef1s = Etet[6:10]
         Em2s = Etet[10:16]
@@ -192,6 +237,7 @@ def ned2_tet_interp(coords: np.ndarray,
         Exl = np.zeros(x.shape, dtype=np.complex128)
         Eyl = np.zeros(x.shape, dtype=np.complex128)
         Ezl = np.zeros(x.shape, dtype=np.complex128)
+        
         V1 = (216*V**3)
         for ie in range(6):
             Em1, Em2 = Em1s[ie], Em2s[ie]
@@ -243,12 +289,17 @@ def ned2_tet_interp(coords: np.ndarray,
             Eyl += ey
             Ezl += ez
 
-        Ex[inside] = Exl
-        Ey[inside] = Eyl
-        Ez[inside] = Ezl
+        Ex[inside] += Exl
+        Ey[inside] += Eyl
+        Ez[inside] += Ezl
+        setnan[inside] += 1
+    
+    Ex[setnan==0] = np.nan
+    Ey[setnan==0] = np.nan
+    Ez[setnan==0] = np.nan
     return Ex, Ey, Ez
 
-@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], i8[:,:], i8[:,:], f8[:,:], i8[:,:], c16[:], i8[:]), cache=True, nogil=True)
+@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], i8[:,:], i8[:,:], f8[:,:], i8[:,:], c16[:], i8[:]), cache=True, nogil=True, parallel=False)
 def ned2_tet_interp_curl(coords: np.ndarray,
                          solutions: np.ndarray, 
                          tets: np.ndarray, 
@@ -266,22 +317,21 @@ def ned2_tet_interp_curl(coords: np.ndarray,
     xs = coords[0,:]
     ys = coords[1,:]
     zs = coords[2,:]
-
-    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
-    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
-    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    
+    # Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    # Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    # Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ex = np.zeros((nNodes, ), dtype=np.complex128)
+    Ey = np.zeros((nNodes, ), dtype=np.complex128)
+    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    setnan = np.zeros((nNodes, ), dtype=np.complex128)
+    assigned = np.zeros((nNodes,), dtype=np.int64)-1
 
     for i_iter in range(tetids.shape[0]):
         itet = tetids[i_iter]
         
         iv1, iv2, iv3, iv4 = tets[:, itet]
 
-        g_node_ids = tets[:, itet]
-        g_edge_ids = edges[:, tet_to_field[:6, itet]]
-        g_tri_ids = tris[:, tet_to_field[6:10, itet]-nEdges]
-
-        l_edge_ids = local_mapping(g_node_ids, g_edge_ids)
-        l_tri_ids = local_mapping(g_node_ids, g_tri_ids)
 
         v1 = nodes[:,iv1]
         v2 = nodes[:,iv2]
@@ -296,18 +346,42 @@ def ned2_tet_interp_curl(coords: np.ndarray,
         blocal[:,0] = bv1
         blocal[:,1] = bv2
         blocal[:,2] = bv3
-        basis = np.linalg.pinv(blocal)
+        basis = matinv(blocal)
 
-        coords_offset = coords - v1[:,np.newaxis]
-        coords_local = (basis @ (coords_offset))
-
-        field_ids = tet_to_field[:, itet]
-        Etet = solutions[field_ids]
+        v1x, v1y, v1z = v1[0], v1[1], v1[2]
+        
+        coords_offset = coords*1.0
+        coords_offset[0,:] = coords_offset[0,:] - v1x
+        coords_offset[1,:] = coords_offset[1,:] - v1y
+        coords_offset[2,:] = coords_offset[2,:] - v1z
+        
+        #coords_local = (basis @ (coords_offset))
+        coords_local = matmul(basis, coords_offset)
 
         inside = ((coords_local[0,:] + coords_local[1,:] + coords_local[2,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6) & (coords_local[2,:] >= -1e-6)
 
         if inside.sum() == 0:
             continue
+        
+        assigned[inside] = itet
+
+
+    for i_iter in range(tetids.shape[0]):
+        itet = tetids[i_iter] 
+        
+        inside = (assigned==itet)
+        if inside.sum() == 0:
+            continue
+        
+        g_node_ids = tets[:, itet]
+        g_edge_ids = edges[:, tet_to_field[:6, itet]]
+        g_tri_ids = tris[:, tet_to_field[6:10, itet]-nEdges]
+
+        l_edge_ids = local_mapping(g_node_ids, g_edge_ids)
+        l_tri_ids = local_mapping(g_node_ids, g_tri_ids)
+        
+        field_ids = tet_to_field[:, itet]
+        Etet = solutions[field_ids]
         
         const = c[itet]
         ######### INSIDE THE TETRAHEDRON #########
@@ -420,9 +494,15 @@ def ned2_tet_interp_curl(coords: np.ndarray,
             Eyl += ey
             Ezl += ez
 
-        Ex[inside] = Exl*const
-        Ey[inside] = Eyl*const
-        Ez[inside] = Ezl*const
+        Ex[inside] += Exl*const
+        Ey[inside] += Eyl*const
+        Ez[inside] += Ezl*const
+        setnan[inside] += 1
+    
+    Ex[setnan==0] = np.nan
+    Ey[setnan==0] = np.nan
+    Ez[setnan==0] = np.nan
+    
     return Ex, Ey, Ez
 
 @njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], f8[:,:], i8[:,:]), cache=True, nogil=True)

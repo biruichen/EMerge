@@ -244,6 +244,7 @@ class FreqCoordDependent(MatProperty):
         if scalar is not None:
             def _func(f, x, y, z) -> np.ndarray:
                 return np.eye(3)[:, :, None] * scalar(f,x,y,z)[None, None, :]
+        
         if vector is not None:
             def _func(f,x, y, z) -> np.ndarray:
                 N = x.shape[0]
@@ -251,6 +252,7 @@ class FreqCoordDependent(MatProperty):
                 idx = np.arange(3)
                 out[idx, idx, :] = vector(f,x,y,z)
                 return out
+        
         if matrix is not None:
             _func = matrix
 

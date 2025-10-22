@@ -138,7 +138,8 @@ plot_ff_polar(ff1.ang, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO], dB=True, 
 model.display.add_object(rpatch)
 model.display.add_object(dielectric)
 # Compute full 3D far-field and display surface colored by |E|
-ff3d = data.field.find(freq=1.575e9).farfield_3d(boundary_selection)
+field = data.field.find(freq=1.575e9)
+ff3d = field.farfield_3d(boundary_selection)
 surf = ff3d.surfplot('normE', rmax=60 * mm,
                       offset=(0, 0, 20 * mm))
 

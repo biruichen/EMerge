@@ -720,7 +720,9 @@ class MWField:
         xf = xs.flatten()
         yf = ys.flatten()
         zf = zs.flatten()
+        logger.debug(f'Interpolating {xf.shape[0]} field points')
         Ex, Ey, Ez = self.basis.interpolate(self._field, xf, yf, zf, usenan=usenan)
+        logger.debug('E Interpolation complete')
         self.Ex = Ex.reshape(shp)
         self.Ey = Ey.reshape(shp)
         self.Ez = Ez.reshape(shp)
@@ -728,6 +730,7 @@ class MWField:
         
         constants = 1/ (-1j*2*np.pi*self.freq*(self._dur*MU0) )
         Hx, Hy, Hz = self.basis.interpolate_curl(self._field, xf, yf, zf, constants, usenan=usenan)
+        logger.debug('H Interpolation complete')
         ids = self.basis.interpolate_index(xf, yf, zf)
         
         self.er = self._der[ids].reshape(shp)
