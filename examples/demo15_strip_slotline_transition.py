@@ -35,7 +35,7 @@ Rcirc = 8       # Readius of the open circuit circle.
 
 # We will invoke the SimulationBeta class because it houses some specific
 # implementation details required for adaptive mesh refinement.
-m = em.SimulationBeta('Transition')
+m = em.SimulationBeta('Transition', loglevel='INFO')
 m.check_version("1.1.0")
 # Next we create the PCB designer class instance.
 pcb = em.geo.PCB(th, mm, material=em.lib.DIEL_RO4003C)
@@ -96,6 +96,7 @@ m.mw.set_frequency_range(4e9, 7e9, 21)
 # We don't use any manual refinement steps to illustrate the power of
 # Adaptive Mesh refinement.
 # We generate the mesh and view it
+m.mw.set_resolution(0.2)
 m.generate_mesh()
 
 # Notice the course initial mesh
@@ -130,10 +131,10 @@ m.mw.bc.AbsorbingBoundary(em.select(air_top.top, air_bottom.bottom))
 # We set show_mesh to True so we can see the progress of refinement for the purspose of this example.
 # This halts the simulation so we have to click away the window to proceed.
 # You can see that more nodes are added around the signal traces because the E-field error is highest
-m.adaptive_mesh_refinement(frequency=5.5e9, show_mesh=False, growth_rate=5)
+m.adaptive_mesh_refinement(frequency=5.5e9, show_mesh=False)
 
 # We can view the improvement in the refined mesh.
-m.view(plot_mesh=True)
+m.view(plot_mesh=True, volume_mesh=False)
 
 # Finally we start our solve with 4 parallel workers
 data = m.mw.run_sweep(True, n_workers=4)

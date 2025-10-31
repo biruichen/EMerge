@@ -32,7 +32,7 @@ f1 = 1.55e9             # start frequency
 f2 = 1.60e9             # stop frequency
 
 # --- Create simulation object -------------------------------------------
-model = em.Simulation('PatchAntenna', loglevel='DEBUG')
+model = em.Simulation('PatchAntenna')
 
 model.check_version("1.1.0") # Checks version compatibility.
 
@@ -88,14 +88,13 @@ model.commit_geometry()
 
 # --- Mesh refinement settings --------------------------------------------
 # Finer boundary mesh on patch edges for accuracy
-model.mesher.set_boundary_size(rpatch, 2 * mm)
+model.mesher.set_boundary_size(rpatch, 3 * mm)
 # Refined mesh on port face for excitation accuracy
 model.mesher.set_face_size(port, 0.5 * mm)
 
 # --- Generate mesh and preview ------------------------------------------
-model.mesher.set_algorithm(em.Algorithm3D.HXT)
-model.generate_mesh()                      # build the finite-element mesh
-model.view(selections=[port], plot_mesh=True)              # show the mesh around the port
+model.generate_mesh()                             # build the finite-element mesh
+model.view(selections=[port], plot_mesh=True)     # show the mesh around the port
 
 # --- Boundary conditions ------------------------------------------------
 # Define lumped port with specified orientation and impedance
@@ -114,6 +113,7 @@ pec_selection = em.select(rpatch,ground)
 # Assigning the boundary conditions
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
 # --- Run frequency-domain solver ----------------------------------------
+model.view(plot_mesh=True, volume_mesh=False)
 data = model.mw.run_sweep()
 
 # --- Post-process S-parameters ------------------------------------------
@@ -138,7 +138,7 @@ plot_ff_polar(ff1.ang, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO], dB=True, 
 model.display.add_object(rpatch)
 model.display.add_object(dielectric)
 # Compute full 3D far-field and display surface colored by |E|
-field = data.field.find(freq=1.575e9)
+field = data.field.find(freq=1.59e9)
 ff3d = field.farfield_3d(boundary_selection)
 surf = ff3d.surfplot('normE', rmax=60 * mm,
                       offset=(0, 0, 20 * mm))

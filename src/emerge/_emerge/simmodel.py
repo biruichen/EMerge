@@ -458,7 +458,8 @@ class Simulation:
              plot_mesh: bool = False,
              volume_mesh: bool = True,
              opacity: float | None = None,
-             labels: bool = False) -> None:
+             labels: bool = False,
+             face_labels: bool = False) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
 
@@ -476,8 +477,13 @@ class Simulation:
             return
         for geo in self.state.current_geo_state:
             self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh, label=labels)
+            
+            if face_labels and geo.dim==3:
+                for face_name in geo._face_pointers.keys():
+                    self.display.add_object(geo.face(face_name), color='yellow', opacity=0.1, label=face_name)
         if selections:
-            [self.display.add_object(sel, color='red', opacity=0.6, label=labels) for sel in selections]
+            [self.display.add_object(sel, color='red', opacity=0.6, label=sel.name) for sel in selections]
+        
         self.display.show()
 
         return None
@@ -688,9 +694,9 @@ class SimulationBeta(Simulation):
     
     
     def __post_init__(self):
-        
-        self.mesher.set_algorithm(Algorithm3D.HXT)
-        logger.debug('Setting mesh algorithm to HXT')
+        pass
+        #self.mesher.set_algorithm(Algorithm3D.HXT)
+        #logger.debug('Setting mesh algorithm to HXT')
         
         
     def _reset_mesh(self):
@@ -706,10 +712,10 @@ class SimulationBeta(Simulation):
                                  convergence: float = 0.02,
                                  magnitude_convergence: float = 2.0,
                                  phase_convergence: float = 180,
-                                 refinement_ratio: float = 0.9,
-                                 growth_rate: float = 3,
+                                 refinement_ratio: float = 0.6,
+                                 growth_rate: float = 2,
                                  minimum_refinement_percentage: float = 20.0, 
-                                 error_field_inclusion_percentage: float = 5.0,
+                                 error_field_inclusion_percentage: float = 60.0,
                                  frequency: float = None,
                                  show_mesh: bool = False) -> SimulationDataset:
         """ A beta-version of adaptive mesh refinement.
@@ -736,7 +742,7 @@ class SimulationBeta(Simulation):
             SimulationDataset: _description_
         """
         from .physics.microwave.adaptive_mesh import select_refinement_indices, reduce_point_set, compute_convergence
-        
+        from collections import defaultdict
         
         max_freq = np.max(self.mw.frequencies)
         
@@ -752,11 +758,18 @@ class SimulationBeta(Simulation):
         
         self.state.stash()
         
+        a0 = 0.26
+        c0 = 0.75
+        x0 = 12
+        q0 = (1-a0)*2/np.pi
+        b0 = np.tan((c0-a0)/q0)/x0
+        q0 = (0.8-a0)*2/np.pi
+        
         for step in range(1,max_steps+1):
             
             self.data.sim.new(iter_step=step)
             
-            data = self.mw._run_adaptive_mesh(step, max_freq)
+            data, solve_ids = self.mw._run_adaptive_mesh(step, max_freq)
             
             field = data.field[-1]
             
@@ -775,51 +788,89 @@ class SimulationBeta(Simulation):
                     passed = 0
             
             if passed >= min_refined_passes:
-                logger.info('Adaptive mesh refinement successfull')
+                logger.info(f'Adaptive mesh refinement successfull with {self.mesh.n_tets} tetrahedra.')
                 break
             
-            error, lengths = field._solution_quality()
+            error, lengths = field._solution_quality(solve_ids)
                 
             idx = select_refinement_indices(error, error_field_inclusion_percentage/100)
             idx = idx[::-1]
             
-            self.mesher.add_refinement_points(self.mw.mesh.centers[:,idx], lengths[idx])
+            npts = idx.shape[0]
+            np_percentage = npts/self.mesh.n_tets * 100
+            
+            refinement_ratio = (a0 + np.arctan(b0*np_percentage)*q0)
+            #calc_refinement_ratio(refinement_throttle, point_percentage)
+            logger.info(f'Adding {npts} refinement points with a ratio: {refinement_ratio}')
+            
+            # tet_nodes = defaultdict(lambda: 1000.)
+            # for itet in idx:
+            #     for inode in self.mesh.tets[:,itet]:
+            #         tet_nodes[inode] = min(tet_nodes[inode], lengths[itet])
+            
+            # N = len(tet_nodes)
+            # coords = np.zeros((3,N), dtype=np.float64)
+            # sizes = np.zeros((N,), dtype=np.float64)
+            # for i, (index, size) in enumerate(tet_nodes.items()):
+            #     coords[:,i] = self.mesh.nodes[:,index]
+            #     sizes[i] = size
+            
+            # self.mesher.add_refinement_points(coords, sizes, refinement_ratio*np.ones((N,)))
+            
+            self.mesher.add_refinement_points(self.mw.mesh.centers[:,idx], lengths[idx], refinement_ratio*np.ones_like(lengths[idx]))
             
             logger.debug(f'Pass {step}: Adding {len(idx)} new refinement points.')
                 
             new_ids = reduce_point_set(self.mesher._amr_coords, growth_rate, self.mesher._amr_sizes, refinement_ratio, 0.20)
             
-            logger.debug(f'Pass {step}: Removing {self.mesher._amr_coords.shape[1] - len(new_ids)} points from {self.mesher._amr_coords.shape[1]} to {len(new_ids)}')
+            nremoved = self.mesher._amr_coords.shape[1] - len(new_ids)
+            if nremoved > 0:
+                logger.info(f'Cleanup of step {step}: Removing {nremoved} points.')
             
             self.mesher._amr_coords = self.mesher._amr_coords[:,new_ids]
             self.mesher._amr_sizes = self.mesher._amr_sizes[new_ids]
+            self.mesher._amr_ratios = self.mesher._amr_ratios[new_ids]
+            self.mesher._amr_new = self.mesher._amr_new[new_ids]
             
+            def clip(value: float):
+                return max(1.3, value)
+            
+            logger.debug(f'Initial refinement ratio: {refinement_ratio}')
+            
+            over = False
+            under = False
+            throttle = 1.0
             
             while True:
                 
+                if over and under:
+                    throttle *= 2
+                
                 self._reset_mesh()
-                
-                logger.debug(f'Pass {step}: Adding {len(idx)} refinement points.')
-                
-                self.mesher.set_refinement_function(refinement_ratio, growth_rate, 1.0)
-                
+                logger.debug(f'Pass {step}')
+                self.mesher.set_refinement_function(growth_rate, 2.0)
                 self.generate_mesh(True)
-                
                 percentage = (self.mesh.n_tets/last_n_tets - 1) * 100
                 logger.info(f'Pass {step}: New mesh has {self.mesh.n_tets} (+{percentage:.1f}%) tetrahedra.')  
                 
                 if percentage < minimum_refinement_percentage:
+                    F = (2*minimum_refinement_percentage-percentage)/(throttle*minimum_refinement_percentage)
                     logger.debug('Not enough mesh refinement, decreasing mesh size constraint.')
-                    refinement_ratio = refinement_ratio * 0.9
+                    refinement_ratio = self.mesher.refine_finer(F)
                     logger.debug(f'New refinement ratio: {refinement_ratio}')
+                    under=True
                     continue
-                
-                if percentage > 2*minimum_refinement_percentage and refinement_ratio < 0.99:
+                if percentage > (minimum_refinement_percentage*2):
+                    F = (percentage - minimum_refinement_percentage)/(throttle*minimum_refinement_percentage)
                     logger.debug('Too much mesh refinement, decreasing mesh size constraint.')
-                    refinement_ratio = refinement_ratio ** (1-np.log(percentage/minimum_refinement_percentage)/4)
+                    refinement_ratio = self.mesher.refine_coarser(F)
                     logger.debug(f'New refinement ratio: {refinement_ratio}')
+                    over=True
+                    continue
                     
-
+                over = False
+                under = False
+                throttle = 1.0
                 last_n_tets = self.mesh.n_tets
                 break
             

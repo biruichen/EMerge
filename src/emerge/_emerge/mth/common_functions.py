@@ -17,7 +17,7 @@
 
 import numpy as np
 
-def  norm(Field: np.ndarray) -> np.ndarray:
+def norm(Field: np.ndarray) -> np.ndarray:
     """ Computes the complex norm of a field (3,N)
 
     Args:

@@ -111,7 +111,6 @@ port1 = model.mw.bc.ModalPort(p1, 1, modetype='TEM')
 port2 = model.mw.bc.ModalPort(p2, 2, modetype='TEM')
 
 # --- Run frequency-domain solver ----------------------------------------
-
 data = model.mw.run_sweep(parallel=True, n_workers=4, frequency_groups=8)
 
 # --- Extract and plot S-parameters ---------------------------------------

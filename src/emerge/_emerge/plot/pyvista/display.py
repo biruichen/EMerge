@@ -242,6 +242,7 @@ class PVDisplay(BaseDisplay):
         self._stop: bool = False
         self._objs: list[_AnimObject] = []
         self._do_animate: bool = False
+        self._animate_next: bool = False
         self._closed_via_x: bool = False
         self._Nsteps: int  = 0
         self._fps: int = 25
@@ -334,6 +335,7 @@ class PVDisplay(BaseDisplay):
         self._plot = pv.Plotter()
         self._stop = False
         self._objs = []
+        self._animate_next = False
         C_CYCLE = _gen_c_cycle()
 
     def _close_callback(self, arg):
@@ -403,6 +405,7 @@ class PVDisplay(BaseDisplay):
         print('If you closed the animation without using (Q) press Ctrl+C to kill the process.')
         self._Nsteps = Nsteps
         self._fps = fps
+        self._animate_next = True
         self._do_animate = True
         return self
     
@@ -518,7 +521,7 @@ class PVDisplay(BaseDisplay):
         
         self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=2, show_edges=True)
         
-        if isinstance(obj, GeoObject) and label:
+        if label:
             points = []
             labels = []
             for dt in obj.dimtags:
@@ -691,14 +694,14 @@ class PVDisplay(BaseDisplay):
         actor = self._plot.add_mesh(grid_no_nan, scalars=name, scalar_bar_args=self._cbar_args, **kwargs)
 
 
-        if self._do_animate:
+        if self._animate_next:
             def on_update(obj: _AnimObject, phi: complex):
                 field_anim = obj.T(np.real(obj.field * phi))
                 obj.grid[name] = field_anim
                 obj.fgrid[name] = obj.grid.threshold(scalars=name)[name]
                 #obj.fgrid replace with thresholded scalar data.
             self._objs.append(_AnimObject(field_flat, T, grid, grid_no_nan, actor, on_update))
-        
+            self._animate_next = False
         self._reset_cbar()
     
     def add_boundary_field(self, 
@@ -773,13 +776,13 @@ class PVDisplay(BaseDisplay):
         kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False, multi_colors=True)
         actor = self._plot.add_mesh(grid, scalars=name, scalar_bar_args=self._cbar_args, **kwargs)
 
-        if self._do_animate:
+        if self._animate_next:
             def on_update(obj: _AnimObject, phi: complex):
                 field_anim = obj.T(np.real(obj.field * phi))
                 obj.grid[name] = field_anim
                 #obj.fgrid replace with thresholded scalar data.
             self._objs.append(_AnimObject(field_flat, T, grid, grid, actor, on_update))
-        
+            self._animate_next = False
         self._reset_cbar()
         
     def add_title(self, title: str) -> None:
@@ -921,7 +924,7 @@ class PVDisplay(BaseDisplay):
         
         actor = self._plot.add_mesh(contour, opacity=opacity, cmap=cmap, clim=clim, pickable=False, scalar_bar_args=self._cbar_args)
         
-        if self._do_animate:
+        if self._animate_next:
             def on_update(obj: _AnimObject, phi: complex):
                 new_vals = obj.T(np.real(obj.field * phi))
                 obj.grid['anim'] = new_vals
@@ -929,7 +932,7 @@ class PVDisplay(BaseDisplay):
                 obj.actor.GetMapper().SetInputData(new_contour) # type: ignore
                 
             self._objs.append(_AnimObject(field, T, grid, None, actor, on_update)) # type: ignore
-            
+            self._animate_next = False
         self._reset_cbar()
         
     def _add_aux_items(self) -> None:

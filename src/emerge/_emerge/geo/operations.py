@@ -282,6 +282,24 @@ def stretch(main: GeoObject, fx: float = 1, fy: float = 1, fz: float = 1, origin
     
     return main
 
+def extrude(main: GeoSurface, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> GeoObject:
+    """Extrudes a surface entity by a displacement
+
+    Args:
+        main (GeoSurface): _description_
+        dx (float): _description_
+        dy (float): _description_
+        dz (float): _description_
+
+    Returns:
+        GeoObject: _description_
+    """
+    dtout = gmsh.model.occ.extrude(main.dimtags, dx, dy, dz)
+    out = [dt[1] for dt in dtout if dt[0]==3]
+    obj_out = GeoVolume(out, name=f'Extrusion[{main.name}]')
+    gmsh.model.occ.synchronize()
+    return obj_out
+    
 
 @overload
 def unite(*objects: GeoVolume) -> GeoVolume: ...
@@ -313,7 +331,9 @@ def unite(*objects: GeoObject) -> GeoObject:
         other._exists = False
     new_dimtags, mapping = gmsh.model.occ.fuse(dts, main.dimtags)
     
+    newname = 'Union[' + ','.join([obj.name for obj in objects]) + ']'
     new_obj = GeoObject.from_dimtags(new_dimtags)._take_tools(*objects)
+    new_obj.name = newname
     new_obj.set_material(main.material)
     new_obj.prio_set(main._priority)
     

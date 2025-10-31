@@ -773,6 +773,7 @@ class RectangularWaveguide(PortBC):
             logger.info(' - Constructing coordinate system from normal port')
             self.cs = Axis(self.selection.normal).construct_cs()
             logger.debug(f' - Port CS: {self.cs}')
+    
     def get_basis(self) -> np.ndarray:
         return self.cs._basis
         
