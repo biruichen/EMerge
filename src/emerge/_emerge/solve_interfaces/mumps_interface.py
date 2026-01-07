@@ -1,4 +1,4 @@
-from mumps_emerge import ZMumpsContext
+from mumps import ZMumpsContext
 from scipy import sparse
 import numpy as np
 
