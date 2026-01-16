@@ -17,7 +17,7 @@ For ARM MacOS users it is reccommended to install UMFPACK and run this using mul
 """
 
 m = em.Simulation('Vivaldi')
-m.check_version("2.1.0")
+m.check_version("2.0.3")
 
 mm = 0.001          # Millimeter
 g = 0.3*mm          # Narrow exponential taper slot gap size
@@ -152,8 +152,6 @@ abc = airbox.outside()
 # the port geometry object when you create it with the .lumped_port() function so you don't have to pass them!
 m.mw.bc.LumpedPort(port, 1, Z0=50)
 m.mw.bc.AbsorbingBoundary(abc)
-m.mesher.set_pec_face(polies)
-m.mesher.set_pec_face(ground)
 
 m.generate_mesh()
 
