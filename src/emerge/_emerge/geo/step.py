@@ -41,7 +41,7 @@ class StepVolume(GeoVolume):
         _type_: _description_
     """
     
-       
+        
     @property
     def _face_numbers(self) -> list[int]:
         return sorted([int(name[4:]) for name in self._face_pointers.keys()])
@@ -78,11 +78,10 @@ class STEPItems:
         self.name: str = name
 
         stl_path = Path(filename)
-        
         gmsh.option.setNumber("Geometry.OCCScaling", unit)
         gmsh.option.setNumber("Geometry.OCCImportLabels", 1) 
 
-        if not stl_path.exists():
+        if not stl_path.exists:
             raise FileNotFoundError(f'File with name {stl_path} does not exist.')
         
         dimtags = gmsh.model.occ.import_shapes(filename, format='step')
@@ -105,9 +104,7 @@ class STEPItems:
             elif dim == 2:
                 self.surfaces.append(GeoSurface(tag, name=f'{self.name}_{name}'))
             elif dim == 3:
-                vol = StepVolume(tag, name=f'{self.name}_{name}')
-                vol._set_bb_anchors()
-                self.volumes.append(vol)
+                self.volumes.append(StepVolume(tag, name=f'{self.name}_{name}'))
         
         gmsh.model.occ.synchronize()
         
@@ -135,9 +132,7 @@ class STEPItems:
         """
         if len(self.volumes)==1:
             return self.volumes[0]
-        vol = unite(*self.volumes)._auto_face_tag()
-        vol._set_bb_anchors()
-        return vol
+        return unite(*self.volumes)._auto_face_tag()
     
     def as_surface(self) -> GeoSurface:
         """Returns the 2D surface part of the STEP file as a single geometry

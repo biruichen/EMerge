@@ -23,7 +23,6 @@ from collections import defaultdict
 from loguru import logger
 from .bc import Periodic
 from .logsettings import DEBUG_COLLECTOR
-from emsutil import Saveable
 
 _MISSING_ID: int = -1234
 
@@ -69,7 +68,7 @@ def tri_ordering(i1: int, i2: int, i3: int) -> int:
 class Mesh:
     pass
 
-class Mesh3D(Mesh, Saveable):
+class Mesh3D(Mesh):
     """A Mesh managing all 3D mesh related properties.
 
     Relevant mesh data such as mappings between nodes(vertices), edges, triangles and tetrahedra
@@ -79,8 +78,6 @@ class Mesh3D(Mesh, Saveable):
     """
     def __init__(self):
 
-        
-        
         # All spatial objects
         self.nodes: np.ndarray = np.array([])
         self.n_i2t: dict = dict()
@@ -128,7 +125,6 @@ class Mesh3D(Mesh, Saveable):
 
         ## States
         self.defined: bool = False
-        self._quick_mesh: bool = False
 
         ## Memory
         self.ftag_to_tri: dict[int, list[int]] = dict()
@@ -146,8 +142,7 @@ class Mesh3D(Mesh, Saveable):
         self.ftag_to_point: dict[int, np.ndarray] = dict()
         
         self.exterior_face_tags: list[int] = []
-
-        
+    
     @property
     def n_edges(self) -> int:
         '''Return the number of edges'''

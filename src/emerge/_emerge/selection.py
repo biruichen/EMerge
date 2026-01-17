@@ -20,7 +20,7 @@ import gmsh # type: ignore
 import numpy as np
 from .cs import Axis, CoordinateSystem, _parse_vector, Plane
 from typing import Callable, TypeVar, Iterable, Any
-from emsutil import Saveable
+
 # EXCEPTIONS
 
 class SelectionError(Exception):
@@ -59,9 +59,6 @@ class _CalculationInterface:
     def __init__(self):
         self._ifobj = None
 
-    def clear(self) -> None:
-        self._ifobj = None
-        
     def getCenterOfMass(self, dim: int, tag: int) -> np.ndarray:
         return self._ifobj.getCenterOfMass(dim, tag)
     
@@ -226,7 +223,7 @@ def decode_data(encoded: str) -> tuple[float,...]:
     return tuple(np.array(arr, dtype=np.float64))
 
 
-class Selection(Saveable):
+class Selection:
     """A generalized class representing a slection of tags.
 
     """
@@ -319,10 +316,10 @@ class Selection(Saveable):
         """Removes a set of tags from the selection
 
         Args:
-            tags (list[int]): The tags to remove
+            tags (list[int]): _description_
 
         Returns:
-            Selection: The same selection object
+            Selection: _description_
         """
         self._tags = self._tags.difference(set(tags))
         return self
@@ -402,7 +399,7 @@ class Selection(Saveable):
         self.__operable__(other)
         return Selection.from_dim_tags(self.dim, self._tags.difference(other.tags))
 
-class PointSelection(Selection, Saveable):
+class PointSelection(Selection):
     """A Class representing a selection of points.
 
     """
@@ -410,7 +407,7 @@ class PointSelection(Selection, Saveable):
     def __init__(self, tags: list[int] | set [int] | None = None):
         super().__init__(tags)
 
-class EdgeSelection(Selection, Saveable):
+class EdgeSelection(Selection):
     """A Class representing a selection of edges.
 
     """
@@ -418,7 +415,7 @@ class EdgeSelection(Selection, Saveable):
     def __init__(self, tags: list[int] | set [int] | None = None):
         super().__init__(tags)
 
-class FaceSelection(Selection, Saveable):
+class FaceSelection(Selection):
     """A Class representing a selection of Faces.
 
     """
@@ -436,6 +433,9 @@ class FaceSelection(Selection, Saveable):
     @property
     def area(self) -> float:
         """Returns the area of the selected surface
+
+        Returns:
+            float: _description_
         """
         return sum([_CALC_INTERFACE.getArea(tag) for tag in self.tags])
     
@@ -518,7 +518,7 @@ class FaceSelection(Selection, Saveable):
             return X[0], Y[0], Z[0]
         return np.array(X), np.array(Y), np.array(Z)
     
-class DomainSelection(Selection, Saveable):
+class DomainSelection(Selection):
     """A Class representing a selection of domains.
 
     """
@@ -548,9 +548,6 @@ class Selector:
     def __init__(self):
         self._current_dim: int = -1
     
-    def clear(self) -> None:
-        self._current_dim = -1
-        
     ## DIMENSION CHAIN
     @property
     def node(self) -> Selector:

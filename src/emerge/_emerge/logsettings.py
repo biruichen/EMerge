@@ -89,13 +89,6 @@ class LogController:
         self.level: str = 'INFO'
         self.file_level: str = 'INFO'
     
-    def clear(self):
-        logger.remove()
-        self.std_handlers: list[int] = []
-        self.file_handlers: list[int] = []
-        self.level: str = 'INFO'
-        self.file_level: str = 'INFO'
-        
     def set_default(self):
         value = os.getenv("EMERGE_STD_LOGLEVEL", default="INFO")
         self.set_std_loglevel(value)
@@ -115,9 +108,6 @@ class LogController:
         _LOG_BUFFER.clear()
         
     def _sys_info(self) -> None:
-        logger.trace(" (!) System Information:")
-        logger.trace(" (!) -------------------")
-        logger.trace(" (!) EMerge Version: {}".format(__import__('emerge').__version__))
         for pkg in packages:
             logger.trace(f" (!) {pkg} version: {get_version(pkg)}")
 
@@ -152,9 +142,6 @@ class DebugCollector:
     def __init__(self):
         self.reports: list[str] = []
     
-    def clear(self):
-        self.reports = []
-        
     @property
     def any_warnings(self) -> bool:
         return len(self.reports)>0

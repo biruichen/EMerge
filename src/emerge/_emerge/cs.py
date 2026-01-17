@@ -21,10 +21,10 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Literal
-from emsutil import Saveable
+
  
 @dataclass
-class Axis(Saveable):
+class Axis:
     """A representation of an axis.
     An Axis object always has length 1 and points in some 3D direction.
     By default XAX, YAX, and ZAX are constructed and defined in the global namespace of the
@@ -36,7 +36,7 @@ class Axis(Saveable):
         return f"Axis({self.vector})"
     
     def __post_init__(self):
-        self.vector = np.array(self.vector)
+
         self.vector = self.vector/np.linalg.norm(self.vector)
         self.np: np.ndarray = self.vector
         self.x: float = self.vector[0]
@@ -100,7 +100,7 @@ class Axis(Saveable):
         """The multiply binary operator
 
         Args:
-            other (Axis): The multiplied Axis object
+            other (Axis): _description_
 
         Returns:
             Plane: The output plane
@@ -193,7 +193,7 @@ def argparse_xyz(x: float | np.ndarray | tuple[float, float, float] | list[float
 ############################################################
 
 @dataclass
-class Plane(Saveable):
+class Plane:
     """A generalization of any plane of inifinite size spanned by two Axis objects.
 
     """
@@ -321,7 +321,7 @@ ZYPLANE = Plane(ZAX, YAX)
 
 
 @dataclass
-class CoordinateSystem(Saveable):
+class CoordinateSystem:
     """A class representing CoordinateSystem information.
 
     This class is widely used throughout the FEM solver to embed objects in space properly.
@@ -631,13 +631,23 @@ def cs(axes: str = 'xyz', origin: tuple[float, float, float] = (0.,0.,0.,)) -> C
 
 
 @dataclass
-class Frame(Saveable):
+class Frame:
     """A Frame is a generalization of a coordinate plus a local 3D axis system
     
     Frames behave like coordinates when passed as arguments to functions
     that require coordinates. Additionally, they can be used in the .stick()
     method to move anchors of objects aligned with other ancors.
     
+
+    Raises:
+        AttributeError: _description_
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+
+    Yields:
+        _type_: _description_
     """
     c0: np.ndarray
     _x: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
@@ -677,8 +687,6 @@ class Frame(Saveable):
         """
         return Frame(self.c0 + other.c0, self._x, self._y, self._z)
     
-    def __str__(self) -> str:
-        return f"Frame(c0={self.c0}, x={self._x}, y={self._y}, z={self._z})"
     @property
     def tx(self) -> Frame:
         """ Same frame rotated around its positive X-axis 180 degrees"""
@@ -791,9 +799,9 @@ class Frame(Saveable):
         """_summary_
 
         Args:
-            dx (float): The translation x - displacement
-            dy (float): The translation y - displacement
-            dz (float): The translation z - displacement
+            dx (_type_): _description_
+            dy (_type_): _description_
+            dz (_type_): _description_
         """
         self.c0 = self.c0 + np.array([dx, dy, dz])
     
@@ -826,7 +834,7 @@ class Frame(Saveable):
         dist_z = np.dot(self._z, k)
         self._x = (self._x - 2 * dist_x * k)
         self._y = (self._y - 2 * dist_y * k)
-        self._z = (self._z - 2 * dist_z * k)
+        self._z = (self.Z - 2 * dist_z * k)
 
     def affine_transform(self, M: np.ndarray):
         """

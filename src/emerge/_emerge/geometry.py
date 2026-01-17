@@ -26,7 +26,6 @@ from loguru import logger
 from typing import Literal, Any, Iterable, Callable
 import numpy as np
 from .cs import Frame
-from .file import Saveable
 
 FaceNames = Literal['back','front','left','right','top','bottom']
 
@@ -77,9 +76,6 @@ class _KEY_GENERATOR:
     def __init__(self):
         self.start = -1
     
-    def reset(self) -> None:
-        self.start = -1
-        
     def new(self) -> int:
         self.start += 1
         return self.start
@@ -134,18 +130,13 @@ class _GeometryManager:
     def reset(self, modelname: str) -> None:
         self.sign_in(modelname)
     
-    def clear(self) -> None:
-        self.geometry_list = dict()
-        self.geometry_names = dict()
-        self.active = ''
-        
     def lowest_priority(self) -> int:
         return min([geo._base_priority for geo in self.all_geometries()])
     
     def highest_priority(self) -> int:
         return max([geo._base_priority for geo in self.all_geometries()])
     
-class _FacePointer(Saveable):
+class _FacePointer:
     """The FacePointer class defines a face to be selectable as a
     face normal vector plus an origin. All faces of an object
     can be selected based on the projected distance to the defined
@@ -282,7 +273,7 @@ class _FacePointer(Saveable):
 _GENERATOR = _KEY_GENERATOR()
 _GEOMANAGER = _GeometryManager()
 
-class AnchorSet(Saveable):
+class AnchorSet:
     """ The AnchorSet class is a cartesian bounding box
     class with a set of Frames as points plus orientations on the 
     faces, edges and vertices of the bounding box including the center.
@@ -533,7 +524,7 @@ class AnchorSet(Saveable):
         self.initialized: bool = False
         return self
     
-class GeoObject(Saveable):
+class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
     dim: int = -1
@@ -570,7 +561,7 @@ class GeoObject(Saveable):
         """The Priority of the geometry material
 
         Returns:
-            float: The Priority of the geometry material
+            float: _description_
         """
         return self._base_priority + self._sub_priority / 2
                     
@@ -696,8 +687,8 @@ class GeoObject(Saveable):
         """Will be used to replace face pointers so only one unique one exists.
 
         Args:
-            name (str): The name of the pointer
-            face_pointer (_FacePointer): THe new face pointer objet
+            name (str): _description_
+            face_pointer (_FacePointer): _description_
         """
         for key, fp in self._face_pointers.items():
             if fp == face_pointer:
@@ -717,7 +708,9 @@ class GeoObject(Saveable):
             origin (np.ndarray | None, optional): A point on the object. Defaults to None.
             normal (np.ndarray | None, optional): The normal of the face. Defaults to None.
             tag (int | None, optional): The tace tag used to extract the origin and normal. Defaults to None.
-            
+
+        Raises:
+            ValueError: _description_
         """
         if tag is not None:
             origin = gmsh.model.occ.get_center_of_mass(2, tag)
@@ -855,6 +848,8 @@ class GeoObject(Saveable):
     def _prio_half_up(self) -> GeoObject:
         """Adds one half to the priority
 
+        Returns:
+            GeoObject: _description_
         """
         
         self._sub_priority = 1
@@ -886,28 +881,35 @@ class GeoObject(Saveable):
     def prio_up(self) -> GeoObject:
         """Increases the material selection priority by 1
 
-
+        Returns:
+            GeoObject: _description_
         """
         self._base_priority += 1
         return self
     
     def prio_down(self) -> GeoObject:
         """Decreases the material selection priority by 1
-        
+
+        Returns:
+            GeoObject: _description_
         """
         self._base_priority -= 1
         return self
 
     def background(self) -> GeoObject:
         """Set the material selection priority to be on the background.
-        
+
+        Returns:
+            GeoObject: _description_
         """
         self._base_priority = _GEOMANAGER.lowest_priority()-10
         return self
 
     def foreground(self) -> GeoObject:
         """Set the material selection priority to be on top.
-        
+
+        Returns:
+            GeoObject: _description_
         """
         self._base_priority = _GEOMANAGER.highest_priority()+10
         return self
@@ -998,14 +1000,18 @@ class GeoObject(Saveable):
     
     def hide(self) -> GeoObject:
         """Hides the object from views
-        
+
+        Returns:
+            GeoObject: _description_
         """
         self._hidden = True
         return self
     
     def unhide(self) -> GeoObject:
         """Unhides the object from views
-        
+
+        Returns:
+            GeoObject: _description_
         """
         self._hidden = False
         return self
@@ -1050,7 +1056,7 @@ class GeoObject(Saveable):
             tags (list[int]): A list of GMSH tags
 
         Returns:
-            GeoObject: The resultant geometry object.
+            GeoObject: _description_
         """
         if isinstance(tags, int):
             tags = [tags,]
@@ -1094,38 +1100,6 @@ class GeoVolume(GeoObject):
                     ctr += 1
         return self
     
-    def _set_bb_anchors(self) -> None:
-        """Sets the bounding box anchor points for the volume
-        """
-        xmins = []
-        xmaxs = []
-        ymins = []
-        ymaxs = []
-        zmins = []
-        zmaxs = []
-        for tag in self.tags:
-            x_min, y_min, z_min, x_max, y_max, z_max = gmsh.model.occ.getBoundingBox(3, tag)
-            xmins.append(x_min)
-            xmaxs.append(x_max)
-            ymins.append(y_min)
-            ymaxs.append(y_max)
-            zmins.append(z_min)
-            zmaxs.append(z_max)
-        
-        x_min = min(xmins)
-        x_max = max(xmaxs)
-        y_min = min(ymins)
-        y_max = max(ymaxs)
-        z_min = min(zmins)
-        z_max = max(zmaxs)
-        
-        print('Bounding Box:', x_min, x_max, y_min, y_max, z_min, z_max)
-        dx = np.array([1.0, 0.0, 0.0])*(x_max - x_min)/2
-        dy = np.array([0.0, 1.0, 0.0])*(y_max - y_min)/2
-        dz = np.array([0.0, 0.0, 1.0])*(z_max - z_min)/2
-        p0 = np.array([(x_max+x_min)/2, (y_max+y_min)/2, (z_max+z_min)/2])
-        self.anch.init(p0, dx, dy, dz)
-        
     def exterior_faces(self, base_object: GeoObject) -> FaceSelection:
         """Select the exterior faces of an object based on the face
         pointers of an original base object. For example

@@ -27,7 +27,7 @@ from ...coord import Line
 from ...geometry import GeoSurface, GeoObject
 from ...bc import BoundaryCondition, BoundaryConditionSet, Periodic
 from ...periodic import PeriodicCell, HexCell, RectCell
-from emsutil import Material, AIR, Saveable
+from emsutil import Material
 from ...const import Z0, C0, EPS0, MU0
 from ...logsettings import DEBUG_COLLECTOR
 
@@ -113,11 +113,10 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
 ############################################################
 
 
-class PEC(BoundaryCondition, Saveable):
+class PEC(BoundaryCondition):
     _color: str = "#f70a80"
     _name: str = "PEC"
     _texture: str = "tex1.png"
-    dim: int = 2
     def __init__(self,
                  face: FaceSelection | GeoSurface):
         """The general perfect electric conductor boundary condition.
@@ -129,14 +128,13 @@ class PEC(BoundaryCondition, Saveable):
         """
         super().__init__(face)
 
-class PMC(BoundaryCondition, Saveable):
+class PMC(BoundaryCondition):
     _color: str = "#0084ff"
     _name: str = "PMC"
     _texture: str = "tex4.png"
-    dim: int = 2
     pass
 
-class RobinBC(BoundaryCondition, Saveable):
+class RobinBC(BoundaryCondition):
     _color: str = "#e7c736"
     _name: str = "RobinBC"
     _texture: str = "tex5.png"
@@ -144,7 +142,6 @@ class RobinBC(BoundaryCondition, Saveable):
     _include_mass: bool = False
     _include_force: bool = False
     _isabc: bool = False
-    dim: int = 2
 
     def __init__(self, selection: GeoSurface | Selection):
         """A Generalization of any boundary condition of the third kind (Robin).
@@ -175,12 +172,11 @@ class RobinBC(BoundaryCondition, Saveable):
     def get_Uinc(self, x_local: np.ndarray, y_local: np.ndarray, k0: float) -> np.ndarray:
         raise NotImplementedError('get_Uinc not implemented for Port class')
 
-class PortBC(RobinBC, Saveable):
+class PortBC(RobinBC):
     Zvac: float = Z0
     _color: str = "#e1bd1c"
     _texture: str = "tex5.png"
     _name: str = "PortBC"
-    dim: int = 2
     def __init__(self, face: FaceSelection | GeoSurface):
         """(DO NOT USE) A generalization of the Port boundary condition.
         
@@ -196,7 +192,6 @@ class PortBC(RobinBC, Saveable):
         self.selected_mode: int = 0
         self.Z0: complex | float | None = None
         self.active: bool | None = False
-        self.driven: bool = True
         self.power: float = 1.0
 
     @property
@@ -284,7 +279,7 @@ class PortBC(RobinBC, Saveable):
             Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
             return np.array([Exg, Eyg, Ezg])
 
-class AbsorbingBoundary(RobinBC, Saveable):
+class AbsorbingBoundary(RobinBC):
 
     _include_stiff: bool = True
     _include_mass: bool = True
@@ -293,7 +288,6 @@ class AbsorbingBoundary(RobinBC, Saveable):
     _color: str = "#1ce13d"
     _name: str = "AbsorbingBC"
     _texture: str = "tex3.png"
-    dim: int = 2
     def __init__(self,
                  face: FaceSelection | GeoSurface,
                  order: int = 2,
@@ -316,7 +310,7 @@ class AbsorbingBoundary(RobinBC, Saveable):
         self.order: int = order
         self.origin: tuple = origin
         self.cs: CoordinateSystem = GCS
-        self.material: Material = AIR
+        
         self.abctype: Literal['A','B','C','D','E']  = abctype
         self.o2coeffs: tuple[float, float] = {'A': (1.0, -0.5),
                                               'B': (1.00023, -0.51555),
@@ -344,14 +338,14 @@ class AbsorbingBoundary(RobinBC, Saveable):
         Returns:
             complex: The γ-constant
         """
-        f = k0*C0/(2*np.pi)
         if self.order==1:
-            return 1j*k0*self.material.neff(f)
+            return 1j*k0
         
-        return 1j*k0*self.o2coeffs[self.abctype][0]*self.material.neff(f)
-      
+        return 1j*k0*self.o2coeffs[self.abctype][0]
+    
+   
 @dataclass
-class PortMode(Saveable):
+class PortMode:
     modefield: np.ndarray
     E_function: Callable
     H_function: Callable
@@ -377,14 +371,13 @@ class PortMode(Saveable):
         self.norm_factor = np.sqrt(1/np.abs(power))
         logger.info(f'Setting port mode amplitude to: {self.norm_factor:.2f} ')
 
-class FloquetPort(PortBC, Saveable):
+class FloquetPort(PortBC):
     _include_stiff: bool = True
     _include_mass: bool = False
     _include_force: bool = True
     _color: str = "#e1bd1c"
     _texture: str = "tex5.png"
     _name: str = "FloquetPort"
-    dim: int = 2
     
     def __init__(self,
                  face: FaceSelection | GeoSurface,
@@ -473,7 +466,7 @@ class FloquetPort(PortBC, Saveable):
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
         
-class ModalPort(PortBC, Saveable):
+class ModalPort(PortBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
@@ -481,7 +474,6 @@ class ModalPort(PortBC, Saveable):
     _color: str = "#e1bd1c"
     _texture: str = "tex5.png"
     _name: str = "ModalPort"
-    dim: int = 2
     
     def __init__(self,
                  face: FaceSelection | GeoSurface,
@@ -760,7 +752,7 @@ class ModalPort(PortBC, Saveable):
         Exyz = np.array([Ex, Ey, Ez])
         return Exyz
 
-class RectangularWaveguide(PortBC, Saveable):
+class RectangularWaveguide(PortBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
@@ -906,7 +898,7 @@ def _f_zero(k0,x,y,z):
     "Zero field function"
     return np.zeros_like(x, dtype=np.complex128)
 
-class UserDefinedPort(PortBC, Saveable):
+class UserDefinedPort(PortBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
@@ -914,9 +906,6 @@ class UserDefinedPort(PortBC, Saveable):
     _color: str = "#be9f11"
     _name: str = "UserDefined"
     _texture: str = "tex5.png"
-    skip_fields = ('_fex','_fey','_fez','_fkz')
-    dim: int = 2
-    
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  port_number: int, 
@@ -949,7 +938,7 @@ class UserDefinedPort(PortBC, Saveable):
             cs = GCS
 
         self.cs = cs
-        self.port_number: int = port_number
+        self.port_number: int= port_number
         self.active: bool = False
         self.power: float = power
         self.type: str = 'TE'
@@ -1026,7 +1015,7 @@ class UserDefinedPort(PortBC, Saveable):
         Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
         return np.array([Exg, Eyg, Ezg])
     
-class LumpedPort(PortBC, Saveable):
+class LumpedPort(PortBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
@@ -1034,7 +1023,6 @@ class LumpedPort(PortBC, Saveable):
     _color: str = "#e1851c"
     _name: str = "LumpedPort"
     _texture: str = "tex5.png"
-    dim: int = 2
     
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
@@ -1174,14 +1162,14 @@ class LumpedPort(PortBC, Saveable):
         Ex, Ey, Ez = self.Vdirection.np
         return np.array([Ex*ON, Ey*ON, Ez*ON])
 
-class LumpedElement(RobinBC, Saveable):
+
+class LumpedElement(RobinBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
     _include_force: bool = False
     _color: str = "#e11c1c"
     _name: str = "LumpedElement"
-    dim: int = 2
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  impedance_function: Callable | None = None,
@@ -1252,16 +1240,13 @@ class LumpedElement(RobinBC, Saveable):
         """
         return 1j*k0*Z0/self.surfZ(k0)
     
-class SurfaceImpedance(RobinBC, Saveable):
+class SurfaceImpedance(RobinBC):
     
     _include_stiff: bool = True
     _include_mass: bool = False
     _include_force: bool = False
     _color: str = "#49e8ed"
     _name: str = "SurfaceImpedance"
-    skip_fields = ('_Zf',)
-    dim: int = 2
-    
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  material: Material | None = None,

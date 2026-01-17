@@ -20,9 +20,8 @@
 from typing import TypeVar, Generic, Any
 from .physics.microwave.microwave_data import MWData
 from .simulation_data import DataContainer
-from .file import Saveable
 
-class SimulationDataset(Saveable):
+class SimulationDataset:
     """This simple class contains the different kinds of data sets in the Simulation Model. It includes
 
     Attributes:
@@ -34,9 +33,4 @@ class SimulationDataset(Saveable):
         self.mw: MWData = MWData()
         self.globals: dict[str, Any] = dict()
         self.sim: DataContainer = DataContainer()
-      
-    def clean(self) -> None:
-      del self.mw
-      del self.globals
-      del self.sim
-      
+        

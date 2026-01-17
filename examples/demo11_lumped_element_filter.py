@@ -29,7 +29,7 @@ def Cf(C):
 pack = '0603'         # package footprint for lumped components
 # Create simulation and PCB layouter with substrate thickness and material
 m = em.Simulation('LumpedFilter')
-m.check_version("2.1.1") # Checks version compatibility.
+m.check_version("2.1.0") # Checks version compatibility.
 
 th = 0.5         # substrate thickness (meters)
 Hair = 2.0
@@ -52,10 +52,10 @@ pcb.new(0, 0, w0, (1, 0)).store('p1').straight(3)\
     .lumped_element(Lf(Lseries), pack).straight(l0)\
     .split((0, -1)).straight(l0)\
     .lumped_element(Cf(Cshunt), pack).straight(l0 / 2, w0)\
-    .via(pcb.z(0), w0 / 6, False).merge()\
+    .via(pcb.z(1), w0 / 6, False).merge()\
     .split((0, 1)).straight(l0)\
     .lumped_element(Lf(Lshunt), pack).straight(l0 / 2, w0)\
-    .via(pcb.z(0), w0 / 6, False).merge()\
+    .via(pcb.z(1), w0 / 6, False).merge()\
     .straight(l0).lumped_element(Cf(Cseries), pack).straight(l0)\
     .lumped_element(Lf(Lseries), pack).straight(l0)\
     .straight(3).store('p2')           
