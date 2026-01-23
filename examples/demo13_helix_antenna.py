@@ -24,8 +24,8 @@ L = 4*rad0                      # helix axial length
 porth = 2*mm                    # vertical height of the feed extrusion
 
 # --- Simulation object -------------------------------------------------------
-model = em.Simulation('HelixAntennas')
-model.check_version("2.1.0") # Checks version compatibility.
+model = em.Simulation('HelixAntennas', loglevel='INFO')
+model.check_version("2.1.1") # Checks version compatibility.
 
 dfeed = 3*mm                    # straight feed length before the helix starts
 
