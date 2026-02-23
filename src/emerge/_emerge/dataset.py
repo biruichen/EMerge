@@ -30,16 +30,28 @@ class SimulationDataset(Saveable):
       self.globals: dict[str, Any] - Any globally defined data of choice in the Simulation
       self.sim: DataContainer      - Generic simulation data associated with different instantiation of your at parameter level.
     """
+    
     def __init__(self):
         self.mw: MWData = MWData()
         self.globals: dict[str, Any] = dict()
         self.sim: DataContainer = DataContainer()
     
+    def remove_empty_datasets(self) -> None:
+      """Cleans up datasets in .sim that are never written to.
+      This primarily is applied to the default dataset that is initialized when starting a simulation
+      if afterwards a Parameter sweep is called thus never causing a simulation to ever store something in the default one.
+      """
+      self.sim.remove_empty_datasets()
+    
+    def initialize(self, **params) -> None:
+      self.sim.new(**params)
+
     def reset(self):
       self.mw: MWData = MWData()
       self.globals: dict[str, Any] = dict()
-      self.sim: DataContainer = DataContainer()
-      
+      self.sim: DataContainer = DataContainer() 
+      self.initialize()
+    
     def clean(self) -> None:
       del self.mw
       del self.globals

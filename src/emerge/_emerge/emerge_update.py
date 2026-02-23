@@ -7,8 +7,11 @@ try:
 except ImportError:
     # Fallback if loguru isn't installed
     class _Logger:
+        # ALLOWED PRINT
         def info(self, msg): print(f"[INFO] {msg}")
+        # ALLOWED PRINT
         def warning(self, msg): print(f"[WARN] {msg}")
+        # ALLOWED PRINT
         def error(self, msg): print(f"[ERROR] {msg}")
     logger = _Logger()
 

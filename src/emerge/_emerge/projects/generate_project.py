@@ -36,5 +36,6 @@ def generate_project(projectname: str, filename: str):
 
     # Create the data directory
     data_dir.mkdir(exist_ok=True)
-
+    
+    # ALLOWED PRINT
     print(f"Project '{projectname}' created with files: {sim_file.name}, {post_file.name} and directory: {data_dir.name}")

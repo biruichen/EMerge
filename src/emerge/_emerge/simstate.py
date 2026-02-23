@@ -61,7 +61,12 @@ class SimState:
         self.params: dict[str, float] = dict()
         self._stashed: SimulationDataset | None = None
         self.manager: _GeometryManager = _GEOMANAGER
+        self.has_been_modified: bool = False
         self.sign_on()
+    
+    def set_modified(self) -> None:
+        logger.trace('Detected a change in simulation data. Setting modified flag to True')
+        self.has_been_modified = True
     
     def sign_on(self):
         _GLOBAL_SIMSTATES.sign_on(self)
@@ -101,7 +106,7 @@ class SimState:
         self.mesh = Mesh3D()
         self.geos = []
         self.reset_geostate()
-        self.init_data()
+        self.data.initialize(**self.params)
         self.sign_on()
         
     def stash(self) -> None:
@@ -118,11 +123,7 @@ class SimState:
             parameters (dict[str, float]): The parameter sweep slice.
         """
         self.params = parameters
-        
-    def init_data(self) -> None:
-        """Initializes a the dataset with the current parameters
-        """
-        self.data.sim.new(**self.params)
+        self.data.initialize(**parameters)
         
     def reload(self) -> SimulationDataset:
         """Reload stashed data into the simstate memory
@@ -172,6 +173,7 @@ class SimState:
         Returns:
             dict[str, Any]: _description_
         """
+        self.data.remove_empty_datasets()
         return dict(simdata=self.data, mesh=self.mesh)
     
     def load_dataset(self, dataset: dict[str, Any]):
@@ -194,9 +196,8 @@ class SimState:
         logger.info(f'Activated entry with variables: {variables}')
         self.set_mesh(dataset['mesh'])
         self.set_geos(dataset['geos'])
-        
         return self
-    
+
 
     ############################################################
     #                       GMSH LIKE METHODS                  #

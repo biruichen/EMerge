@@ -96,7 +96,6 @@ class _GeometryManager:
         return [geo for geo in self.all_geometries() if geo.dim==2]
     
     def self_destruct(self):
-        print(self.geometry_list[self.active].values())
         for geo in self.geometry_list[self.active].values():
             geo._do_self_destruct()
         gmsh.model.occ.synchronize()
@@ -170,7 +169,7 @@ class _FacePointer(Saveable):
         tags = []
         for (d,t), o, n in zip(dimtags, origins, normals):
             normdist = np.abs((o-self.o) @ self.n)
-            dotnorm = np.abs(n@self.n)
+            dotnorm = np.abs(n @ self.n)
             if normdist < 1e-5 and dotnorm > 0.999:
                 tags.append(t)
         return tags
@@ -1172,7 +1171,6 @@ class GeoVolume(GeoObject):
         z_min = min(zmins)
         z_max = max(zmaxs)
         
-        print('Bounding Box:', x_min, x_max, y_min, y_max, z_min, z_max)
         dx = np.array([1.0, 0.0, 0.0])*(x_max - x_min)/2
         dy = np.array([0.0, 1.0, 0.0])*(y_max - y_min)/2
         dz = np.array([0.0, 0.0, 1.0])*(z_max - z_min)/2

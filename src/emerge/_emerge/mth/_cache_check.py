@@ -35,6 +35,7 @@ class Notify(event.Listener):
         sig = ev.data['args']
         if f is _donothing:          # limit to the function you care about
             sig = ev.data['args']
+            # ALLOWED PRINT
             print(_COMPILE_MESSAGE)
 
     def on_end(self, ev):        # unused here

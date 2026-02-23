@@ -79,6 +79,7 @@ def _merge(lst: Iterable[GeoObject | Selection]) -> Selection:
 
 
 def _print_coords(x1, y1, x2, y2, z):
+    # ALLOWED PRINT
     print(f'lp = pcb.lumped_port_pts(({x1:.6f},{y1:.6f}),({x2:.6f},{y2:.6f}),{z:.6f})')
     
 class PVDisplay(EMergeDisplay):

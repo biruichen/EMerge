@@ -24,7 +24,7 @@ from typing import Literal, Callable
 from loguru import logger
 from .adaptive_freq import SparamModel
 from ...cs import Axis, _parse_axis
-from ...selection import FaceSelection
+from ...selection import FaceSelection, DomainSelection
 from ...geometry import GeoSurface
 from ...mesh3d import Mesh3D
 from ...const import MU0
@@ -517,6 +517,35 @@ class MWField(Saveable):
             
         return np.sum(output*A*W, axis=axis)
     
+    def int_vol(self, domain: DomainSelection, argument: Callable, gqo: int = 4) -> EHField:
+        """Performs a surface integral on the provided surface object. 
+
+        Args:
+            domain (DomainSelection): The surface to integrate
+            quantity (Callable): A function that takes an EH field as argument
+            gqo (int, optional): Gauss Quadrature order. Defaults to 4.
+
+        Returns:
+            EHField: _description_
+        """
+        from ...mth.optimized import gaus_quad_tet, generate_int_data_tet
+        #from ...mth.integrals import gaus_quad_tet
+        
+        DPTS = gaus_quad_tet(1)
+        tets = self.mesh.get_tetrahedra(domain.tags)
+        
+        X, Y, Z, W, A, shape = generate_int_data_tet(self.mesh.nodes, self.mesh.tets[:,tets], DPTS)
+        
+        ehfield = self.interpolate(X, Y, Z, False)
+        
+        output = argument(ehfield)
+        
+        if len(output.shape)==2:
+            axis = 1
+        else:
+            axis = 0
+            
+        return np.sum(output*A*W, axis=axis)
     
     def int_line(self, line: Line | list[tuple[float, float, float]], argument: Callable) -> EHField:
         """Performs a line integral on the provided line with the an integral argument.

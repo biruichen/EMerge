@@ -50,3 +50,4 @@ benchmarks/
 .idea/
 pytest.ini
 search_globals.py
+search_prints.py
