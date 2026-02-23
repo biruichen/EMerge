@@ -517,7 +517,7 @@ class MWField(Saveable):
             
         return np.sum(output*A*W, axis=axis)
     
-    def int_vol(self, domain: DomainSelection, argument: Callable, gqo: int = 4) -> EHField:
+    def int_vol(self, domain: DomainSelection, argument: Callable, gqo: int = 2) -> EHField:
         """Performs a surface integral on the provided surface object. 
 
         Args:
@@ -531,7 +531,7 @@ class MWField(Saveable):
         from ...mth.optimized import gaus_quad_tet, generate_int_data_tet
         #from ...mth.integrals import gaus_quad_tet
         
-        DPTS = gaus_quad_tet(1)
+        DPTS = gaus_quad_tet(gqo)
         tets = self.mesh.get_tetrahedra(domain.tags)
         
         X, Y, Z, W, A, shape = generate_int_data_tet(self.mesh.nodes, self.mesh.tets[:,tets], DPTS)
