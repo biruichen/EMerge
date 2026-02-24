@@ -64,7 +64,7 @@ class STEPItems:
     """STEPItems imports geometries form a STEP file and exposes them to the user.
     
     """
-    def __init__(self, name: str, filename: str, unit: float = 1.0):
+    def __init__(self, name: str, filename: str, unit: float = 1.0, string_parser: Callable = None):
         """Imports the provided STEP file.
         Specify the unit in case of scaling issues where mm units are not taken into consideration.
 
@@ -94,7 +94,9 @@ class STEPItems:
         
         i = 0
         for dim, tag in dimtags:
-            name = gmsh.model.getPhysicalName(dim, tag) #for now, this doesn't actually ever work.
+            name = gmsh.model.getEntityName(dim, tag) #for now, this doesn't actually ever work.
+            if string_parser is not None:
+                name = string_parser(name)
             if name == '':
                 name = f'Obj{i}'
                 i+=1
@@ -111,6 +113,16 @@ class STEPItems:
         
         gmsh.model.occ.synchronize()
         
+        
+    @property
+    def names(self) -> list[str]:
+        """A list of all object names
+
+        Returns:
+            list[str]: _description_
+        """
+        return [obj.name for obj in self.objects]
+    
     @property
     def dictionary(self) -> dict[str, GeoObject]:
         return {obj.name: obj for obj in self.objects}

@@ -15,144 +15,47 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 from typing import Literal
-
 class Settings:
     def __init__(self):
-        self._mw_2dbc: bool = True 
-        self._mw_2dbc_lim: float = 10.0
-        self._mw_2dbc_peclim: float = 1e8
-        self._mw_3d_peclim: float = 1e7
-        self._mw_cap_sp_single: bool = True
-        self._mw_cap_sp_col: bool = True
-        self._mw_recip_sp: bool = False
-        self._size_check: bool = True
-        self._auto_save: bool = False
-        self._save_after_sim: bool = True
-        self._save_method: Literal['joblib','msgpack'] = 'joblib'
+        self.mw_2dbc: bool = True
+        # Automatically assign 2D boundary conditions based on material properties.
 
-    ############################################################
-    #                            GETTERS                       #
-    ############################################################
+        self.mw_2dbc_lim: float = 10.0
+        # Bulk conductivity limit (S/m) beyond which a surface material is assigned
+        # a SurfaceImpedance boundary condition.
 
-    @property
-    def mw_2dbc(self) -> bool:
-        """ This variable determines is 2D boundary conditions will be automatically assigned based on material properties.
-        """
-        return self._mw_2dbc
-    
-    @property
-    def mw_2dbc_lim(self) -> float:
-        """This variable is the bulk conductivity limit in S/m beyond which a surface material will automatically be assigned as a SurfaceImpedance boundary condition."""
-        return self._mw_2dbc_lim
-    
-    @property
-    def mw_2dbc_peclim(self) -> float:
-        """This variable determines a bulk conductivity limit in S/m beyond which a conductor is assigned PEC instead of a SurfaceImpedance boundary condition."""
-        return self._mw_2dbc_peclim
-    
-    @property
-    def mw_3d_peclim(self) -> float:
-        """This variable determines if bulk conductors with a bulk conductivity beyond a limit (.mw_3d_peclim) are considered PEC.
+        self.mw_2dbc_peclim: float = 1e8
+        # Bulk conductivity limit (S/m) beyond which a conductor is assigned PEC
+        # instead of a SurfaceImpedance boundary condition.
 
-        """
-        return self._mw_3d_peclim
-    
-    @property
-    def size_check(self) -> bool:
-        """If a total volume check should be considered (100,000 tetrahedra) to hard crash the simulation assuming that the problem size will be too high to solver.
-        100.000 Tetrahedra would yield approximately 700k Degrees of Freedom
-        """
-        return self._size_check
-    
-    @property
-    def mw_cap_sp_single(self) -> bool:
-        """If Single S-parameters should be capped with their magnitude to at most 1.0"""
-        return self._mw_cap_sp_single
-    
-    @property
-    def mw_cap_sp_col(self) -> bool:
-        """If Single S-parameters columns should be power normalized to 1.0"""
-        return self._mw_cap_sp_col
-    
-    @property
-    def mw_recip_sp(self) -> bool:
-        """If reciprodicty should be explicitly enforced"""
-        return self._mw_recip_sp
-    
-    @property
-    def auto_save(self) -> bool:
-        """If the simulation should automatically be saved upon a detected abortion of the simulation.
-        """
-        return self._auto_save
-    
-    @property
-    def save_after_sim(self) -> bool:
-        """It the simulation should be saved only if a simulation is completed.
+        self.mw_3d_peclim: float = 1e7
+        # Bulk conductivity limit (S/m) beyond which 3D conductors are considered PEC.
 
-        """
-        return self._save_after_sim
-    ############################################################
-    #                            SETTERS                       #
-    ############################################################
+        self.mw_cap_sp_single: bool = True
+        # Cap single S-parameters to a maximum magnitude of 1.0.
 
-    @mw_2dbc.setter
-    def mw_2dbc(self, value: bool) -> None:
-        """ This variable determines is 2D boundary conditions will be automatically assigned based on material properties.
-        """
-        self._mw_2dbc = value
-        
-    @mw_2dbc_lim.setter
-    def mw_2dbc_lim(self, value: float):
-        """This variable is the bulk conductivity limit in S/m beyond which a surface material will automatically be assigned as a SurfaceImpedance boundary condition."""
-        self._mw_2dbc_lim = value
-    
-    @mw_2dbc_peclim.setter
-    def mw_2dbc_peclim(self, value: float):
-        """This variable determines a bulk conductivity limit in S/m beyond which a conductor is assigned PEC instead of a SurfaceImpedance boundary condition."""
-        
-        self._mw_2dbc_peclim = value
-    
-    @mw_3d_peclim.setter
-    def mw_3d_peclim(self, value: float):
-        """This variable determines if bulk conductors with a bulk conductivity beyond a limit (.mw_3d_peclim) are considered PEC.
+        self.mw_cap_sp_col: bool = True
+        # Power-normalize S-parameter columns to 1.0.
 
-        """
-        self._mw_3d_peclim = value
-        
-    @size_check.setter
-    def size_check(self, value: bool):
-        """If a total volume check should be considered (100,000 tetrahedra) to hard crash the simulation assuming that the problem size will be too high to solver.
-        100.000 Tetrahedra would yield approximately 700k Degrees of Freedom
-        """
-        self._size_check = value
-        
-    @mw_cap_sp_single.setter
-    def mw_cap_sp_single(self, value: bool) -> None:
-        """If Single S-parameters should be capped with their magnitude to at most 1.0"""
-        self._mw_cap_sp_single = value
-    
-    @mw_cap_sp_col.setter
-    def mw_cap_sp_col(self, value: bool) -> None:
-        """If Single S-parameters columns should be power normalized to 1.0"""
-        self._mw_cap_sp_col = value
-    
-    @mw_recip_sp.setter
-    def mw_recip_sp(self, value: bool) -> None:
-        """If reciprodicty should be explicitly enforced"""
-        self._mw_recip_sp = value
-        
-    @auto_save.setter
-    def auto_save(self, value: bool) -> None:
-        """If the simulation should automatically be saved upon a detected abortion of the simulation.
-      
-        """
-        self._auto_save = value
-        
-    @save_after_sim.setter
-    def save_after_sim(self, value: bool) -> None:
-        """It the simulation should be saved only if a simulation is completed.
+        self.mw_recip_sp: bool = False
+        # Explicitly enforce reciprocity on S-parameters.
 
-        """
-        self._save_after_sim = value
+        self.sim_symmetry_limit: float = 0.02
+        # Threshold for the symmetry handling of direct solvers. This ratio defines the maximum allowed
+        # ratio between the highest Sparse matrix entry and the difference between any two items ij and ji:
+        # max(abs(Mij - Mji))/max(abs(M)) < ratio
+
+        self.size_check: bool = True
+        # Perform total volume check (≈100,000 tetrahedra limit).
+        # ~100k tetrahedra ≈ 700k DOF. Prevents oversized simulations.
+
+        self.auto_save: bool = False
+        # Automatically save if simulation aborts unexpectedly.
+
+        self.save_after_sim: bool = True
+        # Save simulation only if it completes successfully.
+
+        self.save_method: Literal['joblib', 'msgpack'] = 'joblib'
+        # Serialization method used for saving simulations.
     
 DEFAULT_SETTINGS = Settings()

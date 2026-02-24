@@ -31,7 +31,18 @@ from enum import Enum
 from .file import Saveable
 import os
 
+
+
+############################################################
+#                   ENVIRONMENT VARIABLES                  #
+############################################################
+
 _FORCED_SOLVER = os.getenv("EMERGE_MP_SOLVER", default="")
+_SYMMETRY_LIMIT = os.getenv("EMERGE_SYM_LIMIT", default="0.02")
+
+############################################################
+#                    SOLVER AVAILABILITY                   #
+############################################################
 
 _PARDISO_AVAILABLE = False
 _UMFPACK_AVAILABLE = False
@@ -1123,6 +1134,7 @@ class SolveRoutine:
         self.forced_solver: list[Solver | EigSolver] = []
         self.disabled_solver: list[type[Solver]|type[EigSolver]] = []
 
+        self.symmetry_limit: float = float(_SYMMETRY_LIMIT)
         self.force_symmetric: bool = False
         self.use_sorter: bool = False
         self.use_preconditioner: bool = False
@@ -1134,6 +1146,10 @@ class SolveRoutine:
         
     def _set_name(self, thread_nr: int, proc_nr: int):
         self.pre = f'p{int(proc_nr):02d}/t{int(thread_nr):02d}'
+    
+    def _set_environ_variables(self) -> None:
+        os.environ["EMERGE_MP_SOLVER"] = '_'.join([solver.name for solver in self.forced_solver])
+        os.environ["EMERGE_SYM_LIMIT"] = str(self.symmetry_limit)
         
     def __str__(self) -> str:
         return 'SolveRoutine()'
@@ -1212,7 +1228,6 @@ class SolveRoutine:
                 self.forced_solver = [self.solvers[solver],] 
             else:
                 self.forced_solver = [solver,]
-        os.environ["EMERGE_MP_SOLVER"] = '_'.join([solver.name for solver in self.forced_solver])
     
     def disable(self, *solvers: EMSolver) -> None:
         """Disable a given Solver class instance as the main solver. 
@@ -1388,7 +1403,7 @@ class SolveRoutine:
         Returns:
             np.ndarray: The resultant solution.
         """
-        symmetry, is_symmetric = is_numerically_complex_symmetric(A)
+        symmetry, is_symmetric = is_numerically_complex_symmetric(A, self.symmetry_limit)
         logger.debug(f'Matrix complex symmetric = {is_symmetric} with tolerance = {symmetry:.5f}')
         solver: Solver = self._get_solver(A, b)
         
