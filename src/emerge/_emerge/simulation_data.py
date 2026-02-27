@@ -149,6 +149,7 @@ def drop_constant_variables(
         {k: d[k] for k in varying_keys}
         for d in listvars
     ]
+
 class DataEntry(Saveable):
     
     def __init__(self, variables: dict[str, float]):
@@ -199,6 +200,43 @@ class DataContainer(Saveable):
     def __init__(self):
         self.entries: list[DataEntry] = []
     
+    @staticmethod
+    def combine_sets(containers: list[DataContainer]) -> DataContainer:
+        """Generate one big container from a list of DataContainers
+
+        Args:
+            containers (list[DataContainer]): _description_
+
+        Returns:
+            DataContainer: _description_
+        """
+        return containers[0].merge_with(*containers[1:])
+    
+    def merge_with(self, *others: DataContainer) -> DataContainer:
+        """Combines this DataContainer with another container
+
+        Args:
+            other (DataContainer): The container to merge with
+
+        Returns:
+            DataContainer: _description_
+        """
+        # Copy Step
+        for container in others:
+            for other in container.entries:
+                merged = False
+                for entry in self.entries:
+                    if entry.vars == other.vars:
+                        entry.data.update(other.data)
+                        merged = True
+                        break
+                if merged:
+                    continue
+                self.entries.append(other)
+
+        return self
+    
+
     # ALLOWED PRINT
     def print(self) -> None:
         """ Print an overview of all data in the DataContainer"""
@@ -280,6 +318,25 @@ class BaseDataset(Generic[T,M], Saveable):
     @property
     def _copy(self) -> list[str]:
         return self._datatype._copy # type: ignore
+
+    def merge_with(self, *others: BaseDataset) -> BaseDataset[T,M]:
+        for other in others:
+            if self._datatype is not other._datatype:
+                raise TypeError(f'Dissimilar datatypes {self._datatype} and {other._datatype}. Aborting merge.')
+            if self._matrixtype is not other._matrixtype:
+                raise TypeError(f'Dissimilar matrix types {self._matrixtype} and {other._matrixtype}. Aborting merge.')
+            
+            self._variables.extend(other._variables)
+            self._data_entries.extend(other._data_entries)
+            self._data.update(other._data)
+
+        self._gritted: bool | None = None
+        self._axes: dict[str, np.ndarray]| None = None
+        self._ax_ids: dict[str, int]| None = None
+        self._ids: np.ndarray| None = None
+        self._gridobj: M | None = None
+
+        return self
     
     def store(self, key: str, value: Any) -> None:
         """Stores a variable with some value in the provided key. 
