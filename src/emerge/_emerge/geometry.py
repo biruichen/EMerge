@@ -162,8 +162,10 @@ class _FacePointer(Saveable):
                  normal: np.ndarray):
         self.o = np.array(origin)
         self.n = np.array(normal)
+        self.n = self.n/np.linalg.norm(self.n)
 
-    def find(self, dimtags: list[tuple[int,int]],
+    def find(self, 
+             dimtags: list[tuple[int,int]],
              origins: list[np.ndarray],
              normals: list[np.ndarray]) -> list[int]:
         tags = []
@@ -561,7 +563,7 @@ class GeoObject(Saveable):
         self._embeddings: list[GeoObject] = []
         self._face_pointers: dict[str, _FacePointer] = dict()
         self.anch: AnchorSet = AnchorSet()
-        self._tools: dict[int, AnchorSet] = dict()
+        self._tools: dict[int, dict[str, _FacePointer]] = dict()
         self._hidden: bool = False
         self._key = _GENERATOR.new()
         self._aux_data: dict[str, Any] = dict()
@@ -1128,7 +1130,7 @@ class GeoVolume(GeoObject):
         if not self._cached:
             return [gmsh.model.occ.get_center_of_mass(d, t) for d,t in self._get_boundary_cache]
         else:
-            return self._normals_cache
+            return self._origins_cache
         
     @property
     def selection(self) -> DomainSelection:

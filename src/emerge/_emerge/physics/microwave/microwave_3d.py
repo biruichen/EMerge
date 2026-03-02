@@ -50,6 +50,12 @@ import psutil
 class SimulationError(Exception):
     pass
 
+
+
+############################################################
+#                 MULTI PROCESSING FUNCTION                #
+############################################################
+
 def run_job_multi(job: SimJob) -> SimJob:
     """The job launcher for Multi-Processing environements
 
@@ -66,6 +72,11 @@ def run_job_multi(job: SimJob) -> SimJob:
         report.add(**aux)
         job.submit_solution(solution, report)
     return job
+
+
+############################################################
+#                     RAM MEMORY CHECK                    #
+############################################################
 
 def _check_ram(ntets: int, njobs: int, parallel: bool) -> None:
     """ Checks if sufficient RAM is available."""
@@ -99,6 +110,23 @@ def _dimstring(data: list[float] | np.ndarray) -> str:
     """
     return '(' + ', '.join([f'{x*1000:.1f}mm' for x in data]) + ')'
 
+def _format_freq(freq: float) -> str:
+    units = ['Hz', 'kHz', 'MHz', 'GHz', 'THz']
+    
+    # Handle zero to avoid math domain errors with log
+    if freq == 0:
+        return "0.00 Hz"
+    
+    # Calculate index using log base 1000: floor(log10(abs(freq)) / 3)
+    # This determines how many "groups of three zeros" are in the number
+    i = int(np.floor(np.log10(abs(freq)) / 3))
+    
+    # Clamp index between 0 (Hz) and the last available unit (THz)
+    i = max(0, min(i, len(units) - 1))
+    
+    scaled_freq = freq / (1000.0 ** i)
+    return f"{scaled_freq:.2f} {units[i]}"
+
 def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
     """
     Finds the pair of points (one from xyz1, one from xyz2) that are closest in Euclidean distance,
@@ -126,7 +154,12 @@ def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
     path = (1 - t) * p1[:, np.newaxis] + t * p2[:, np.newaxis]
 
     return path
-    
+
+
+############################################################
+#                      MICROWAVE CLASS                     #
+############################################################
+
 class Microwave3D:
     """The Electrodynamics time harmonic physics class.
 
@@ -158,7 +191,12 @@ class Microwave3D:
         self._simend: float = 0.0
         self._container: dict[str, Any] = dict()
         self._completed: bool = False
-        
+    
+
+    ############################################################
+    #                          PROPERTIES                     #
+    ############################################################
+
     @property
     def _params(self) -> dict[str, float]:
         return self._state.params
@@ -198,34 +236,11 @@ class Microwave3D:
             list[PortBC]: A list of all port boundary conditions
         """
         return sorted(self.bc.oftype(PortBC), key=lambda x: x.number) # type: ignore
-    
-    
-    def _initialize_bcs(self, surfaces: list[GeoSurface]) -> None:
-        """Initializes the boundary conditions to set PEC as all exterior boundaries.
-        """
-        logger.debug('Initializing boundary conditions.')
 
-        tags = self.mesher.domain_boundary_face_tags
-        
-        # Assigning surface impedance boundary condition
-        if self._settings.mw_2dbc:
-            for surf in surfaces:
-                if surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_peclim:
-                    logger.debug(f'Assinging PEC to {surf}')
-                    self.bc.PEC(surf)
-                elif surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_lim:
-                    self.bc.SurfaceImpedance(surf, surf.material)
-                
-        
-        tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
-        
-        self.bc.PEC(FaceSelection(tags))
-        
-        logger.info(f'Adding PEC boundary condition with tags {tags}.')
-        if self.mesher.periodic_cell is not None:
-            self.mesher.periodic_cell.generate_bcs()
-            for bc in self.mesher.periodic_cell.bcs:
-                self.bc.assign(bc)
+
+    ############################################################
+    #                            SETTERS                       #
+    ############################################################
 
     def set_frequency(self, frequency: float | list[float] | np.ndarray ) -> None:
         """Define the frequencies for the frequency sweep
@@ -263,21 +278,6 @@ class Microwave3D:
             Npoints (int): The number of points
         """
         self.set_frequency(np.linspace(fmin, fmax, Npoints))
-    
-    def fdense(self, Npoints: int) -> np.ndarray:
-        """Return a resampled version of the current frequency range
-
-        Args:
-            Npoints (int): The new number of points
-
-        Returns:
-            np.ndarray: The new frequency axis
-        """
-        if len(self.frequencies) == 1:
-            raise ValueError('Only 1 frequency point known. At least two need to be defined.')
-        fmin = min(self.frequencies)
-        fmax = max(self.frequencies)
-        return np.linspace(fmin, fmax, Npoints)
     
     def set_resolution(self, resolution: float) -> None:
         """Define the simulation resolution as the fraction of the wavelength.
@@ -338,20 +338,64 @@ class Microwave3D:
             from ...elements.nedelec2 import Nedelec2
             self.basis = Nedelec2(self.mesh)
 
+
+    ############################################################
+    #                        PRIVATE METHODS                   #
+    ############################################################
+
+    def _get_frequency_groups(self, n_groups: int) -> list[list[float]]:
+
+        freq_groups: list[list[float]] = []
+        
+        if n_groups == -1:
+            freq_groups = [self.frequencies,]
+        else:
+            n = n_groups
+            freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
+        
+        return freq_groups
+    
+    def _initialize_bcs(self, surfaces: list[GeoSurface]) -> None:
+        """Initializes the boundary conditions to set PEC as all exterior boundaries.
+        """
+        logger.debug('Initializing boundary conditions.')
+
+        tags = self.mesher.domain_boundary_face_tags
+        
+        # Assigning surface impedance boundary condition
+        if self._settings.mw_2dbc:
+            for surf in surfaces:
+                if surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_peclim:
+                    logger.debug(f'Assinging PEC to {surf}')
+                    self.bc.PEC(surf)
+                elif surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_lim:
+                    self.bc.SurfaceImpedance(surf, surf.material)
+                
+        
+        tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
+        
+        self.bc.PEC(FaceSelection(tags))
+        
+        logger.info(f'Adding PEC boundary condition with tags {tags}.')
+        if self.mesher.periodic_cell is not None:
+            self.mesher.periodic_cell.generate_bcs()
+            for bc in self.mesher.periodic_cell.bcs:
+                self.bc.assign(bc)
+
     def _initialize_bc_data(self):
         ''' Initializes auxilliary required boundary condition information before running simulations.
         '''
         logger.debug('Initializing boundary conditions')
         self.bc.cleanup()
         for port in self.bc.oftype(LumpedPort):
-            self.define_lumped_port_integration_points(port)
+            self._define_lumped_port_integration_points(port)
     
     def _check_physics(self) -> None:
         """ Executes a physics check before a simulation can be run."""
         self.bc._is_excited()
         self.bc._check_ports()
             
-    def define_lumped_port_integration_points(self, port: LumpedPort) -> None:
+    def _define_lumped_port_integration_points(self, port: LumpedPort) -> None:
         """Sets the integration points on Lumped Port objects for voltage integration
 
         Args:
@@ -493,7 +537,63 @@ class Microwave3D:
             self.modal_analysis(bc, 1, direct=False, freq=freq, TEM=TEM)
 
             bc._check_mode_betas()
+    
+    def _get_material_assignment(self, volumes: list[GeoVolume]) -> list[Material]:
+        '''Retrieve the material properties of the geometry'''
         
+        # Reset index assingments
+        for vol in volumes:
+            vol.material.reset()
+        
+        # collect all materials
+        materials = []
+        assignment_dict: dict[int, list[GeoVolume]] = defaultdict(list)
+        i = 0
+        for vol in volumes:
+            for tag in vol.tags:
+                assignment_dict[tag].append(vol)
+            if vol.material not in materials:
+                materials.append(vol.material)
+                vol.material._hash_key = i
+                i += 1
+        
+        # Check competing priorities!
+        for domaintag, volumelist in assignment_dict.items():
+            priolist = [vol._priority for vol in volumelist]
+            maxprio = max(priolist)
+            if priolist.count(maxprio) > 1:
+                vols = [vol for vol in volumelist if vol._priority==maxprio]
+                logger.warning(f'Domain with tag {domaintag} has multiple geometries imposing a material to them: {vols}. Consider setting priorities to decide which volume is more important.')
+                DEBUG_COLLECTOR.add_report(f'Domain with tag {domaintag} has multiple geometries imposing a material to them: {vols}. Consider setting priorities to decide which volume is more important.')
+            
+        xs = self.mesh.centers[0,:]
+        ys = self.mesh.centers[1,:]
+        zs = self.mesh.centers[2,:]
+        
+        matassign = -1*np.ones((self.mesh.n_tets,), dtype=np.int64)
+        
+        for volume in sorted(volumes, key=lambda x: x._priority):
+        
+            for dimtag in volume.dimtags:
+                
+                tet_ids = self.mesh.get_tetrahedra(dimtag[1])
+                
+                matassign[tet_ids] = volume.material._hash_key
+        
+        if np.any(matassign==-1):
+            raise SimulationError(f'Tetrahedra detected with unassigned materials: {np.argwhere(matassign==-1)}')
+        
+        for mat in materials:
+            ids = np.argwhere(matassign==mat._hash_key).flatten()
+            mat.initialize(xs[ids], ys[ids], zs[ids], ids)
+                    
+        
+        return materials
+    
+    ############################################################
+    #                   MAIN SIMULATION FUNCTIONS              #
+    ############################################################
+
     def modal_analysis(self, 
                        port: ModalPort, 
                        nmodes: int = 6, 
@@ -717,6 +817,8 @@ class Microwave3D:
             MWSimData: The dataset.
         """
         
+        logger.info(f'Starting frequency domain simulation (#tets = {self.mesh.n_tets:,})')
+        
         # --------------------------------------------------------------------
         # States
         # --------------------------------------------------------------------
@@ -730,8 +832,8 @@ class Microwave3D:
         # --------------------------------------------------------------------
         
         results: list[SimJob] = []
-        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-        job_id: int = 1
+        material_set: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        job_counter: int = 1
         
         # --------------------------------------------------------------------
         # Checks
@@ -749,12 +851,6 @@ class Microwave3D:
 
         if self._settings.check_ram:
             _check_ram(self.mesh.n_tets, n_workers, parallel)
-        
-        # --------------------------------------------------------------------
-        # Start Run
-        # --------------------------------------------------------------------
-        
-        logger.debug('Initializing frequency domain sweep.')
         
         # --------------------------------------------------------------------
         # Material Assignments
@@ -781,13 +877,13 @@ class Microwave3D:
             # Thread-local storage for per-thread resources
             thread_local = threading.local()
             
-        def get_routine():
+        def get_routine() -> SolveRoutine:
             if not hasattr(thread_local, "routine"):
                 worker_nr = int(threading.current_thread().name.split('_')[1])+1
                 thread_local.routine = self.solveroutine.duplicate()._configure_routine('MT', thread_nr=worker_nr)
             return thread_local.routine
 
-        def run_job(job: SimJob):
+        def run_job(job: SimJob) -> SimJob:
             routine = get_routine()
             for A, b, ids, reuse, aux in job.iter_Ab():
                 solution, report = routine.solve(A, b, ids, reuse, id=job.id)
@@ -795,7 +891,7 @@ class Microwave3D:
                 job.submit_solution(solution, report)
             return job
         
-        def run_job_single(job: SimJob):
+        def run_job_single(job: SimJob) -> SimJob:
             for A, b, ids, reuse, aux in job.iter_Ab():
                 solution, report = self.solveroutine.solve(A, b, ids, reuse, id=job.id)
                 report.add(**aux)
@@ -805,25 +901,14 @@ class Microwave3D:
         # --------------------------------------------------------------------
         # Grouping solve frequencies
         # --------------------------------------------------------------------
-        
-        freq_groups: list[list[float]] = []
-        
-        if frequency_groups == -1:
-            freq_groups = [self.frequencies,]
-        else:
-            n = frequency_groups
-            freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
-            
-        logger.trace(f'Frequency groups: {freq_groups}')
-
-        # --------------------------------------------------------------------
-        # Grouping solve frequencies
-        # --------------------------------------------------------------------
+        freq_groups = self._get_frequency_groups(frequency_groups) 
+        for i, group in enumerate(freq_groups):
+            group_GHz = [f'{f/1e9:.3f}GHz' for f in group]
+            logger.trace(f'Frequency group ({i}): {group_GHz}')
         
         # I am not sure if this is supposed to be there
         self._compute_modes(sum(self.frequencies)/len(self.frequencies))
 
-        logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
         
         # --------------------------------------------------------------------
         # Single Threaded Solve
@@ -835,7 +920,7 @@ class Microwave3D:
                 jobs = []
                 ## Assemble jobs
                 for ifreq, freq in enumerate(fgroup):
-                    logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+                    logger.debug(f'Simulation frequency = {_format_freq(freq)}') 
                     if automatic_modal_analysis:
                         self._compute_modes(freq)
                     job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
@@ -844,10 +929,10 @@ class Microwave3D:
                                                             cache_matrices=self.cache_matrices)
                     job.store_limit = harddisc_threshold
                     job.relative_path = harddisc_path
-                    job.id = job_id
-                    job_id += 1
+                    job.id = job_counter
+                    job_counter += 1
                     jobs.append(job)
-                    matset.append(mats)
+                    material_set.append(mats)
                 
                 logger.info(f'Starting single threaded solve of {len(jobs)} jobs.')
                 group_results = [run_job_single(job) for job in jobs]
@@ -865,7 +950,7 @@ class Microwave3D:
                     jobs = []
                     ## Assemble jobs
                     for freq in fgroup:
-                        logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+                        logger.debug(f'Simulation frequency = {_format_freq(freq)}') 
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
                         job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
@@ -874,10 +959,10 @@ class Microwave3D:
                                                                 cache_matrices=self.cache_matrices)
                         job.store_limit = harddisc_threshold
                         job.relative_path = harddisc_path
-                        job.id = job_id
-                        job_id += 1
+                        job.id = job_counter
+                        job_counter += 1
                         jobs.append(job)
-                        matset.append(mats)
+                        material_set.append(mats)
                     
                     logger.info(f'Starting distributed solve of {len(jobs)} jobs with {n_workers} threads.')
                     group_results = list(executor.map(run_job, jobs))
@@ -889,6 +974,7 @@ class Microwave3D:
         # --------------------------------------------------------------------
         
         else:
+            # Check for entry point protection
             if not called_from_main_function():
                 raise SimulationError(
                     "Multiprocess support must be launched from your "
@@ -901,7 +987,7 @@ class Microwave3D:
                     jobs = []
                     # Assemble jobs
                     for freq in fgroup:
-                        logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz')
+                        logger.debug(f'Simulation frequency = {_format_freq(freq)}') 
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
                         
@@ -914,10 +1000,10 @@ class Microwave3D:
 
                         job.store_limit = harddisc_threshold
                         job.relative_path = harddisc_path
-                        job.id = job_id
-                        job_id += 1
+                        job.id = job_counter
+                        job_counter += 1
                         jobs.append(job)
-                        matset.append(mats)
+                        material_set.append(mats)
 
                     logger.info(
                         f'Starting distributed solve of {len(jobs)} jobs '
@@ -953,61 +1039,11 @@ class Microwave3D:
         # Post Processing
         # --------------------------------------------------------------------
         
-        self._post_process(results, matset)
+        self._post_process(results, material_set)
         self._completed = True
         return self.data
     
-    def _get_material_assignment(self, volumes: list[GeoVolume]) -> list[Material]:
-        '''Retrieve the material properties of the geometry'''
-        
-        # Reset index assingments
-        for vol in volumes:
-            vol.material.reset()
-        
-        # collect all materials
-        materials = []
-        assignment_dict: dict[int, list[GeoVolume]] = defaultdict(list)
-        i = 0
-        for vol in volumes:
-            for tag in vol.tags:
-                assignment_dict[tag].append(vol)
-            if vol.material not in materials:
-                materials.append(vol.material)
-                vol.material._hash_key = i
-                i += 1
-        
-        # Check competing priorities!
-        for domaintag, volumelist in assignment_dict.items():
-            priolist = [vol._priority for vol in volumelist]
-            maxprio = max(priolist)
-            if priolist.count(maxprio) > 1:
-                vols = [vol for vol in volumelist if vol._priority==maxprio]
-                logger.warning(f'Domain with tag {domaintag} has multiple geometries imposing a material to them: {vols}. Consider setting priorities to decide which volume is more important.')
-                DEBUG_COLLECTOR.add_report(f'Domain with tag {domaintag} has multiple geometries imposing a material to them: {vols}. Consider setting priorities to decide which volume is more important.')
-            
-        xs = self.mesh.centers[0,:]
-        ys = self.mesh.centers[1,:]
-        zs = self.mesh.centers[2,:]
-        
-        matassign = -1*np.ones((self.mesh.n_tets,), dtype=np.int64)
-        
-        for volume in sorted(volumes, key=lambda x: x._priority):
-        
-            for dimtag in volume.dimtags:
-                
-                tet_ids = self.mesh.get_tetrahedra(dimtag[1])
-                
-                matassign[tet_ids] = volume.material._hash_key
-        
-        if np.any(matassign==-1):
-            raise SimulationError(f'Tetrahedra detected with unassigned materials: {np.argwhere(matassign==-1)}')
-        
-        for mat in materials:
-            ids = np.argwhere(matassign==mat._hash_key).flatten()
-            mat.initialize(xs[ids], ys[ids], zs[ids], ids)
-                    
-        
-        return materials
+    
     
     def _run_adaptive_mesh(self,
                 iteration: int, 
@@ -1199,14 +1235,12 @@ class Microwave3D:
             raise SimulationError('Cannot post-process. Simulation basis function is undefined.')
         
         mesh = self.mesh
-        #all_ports = self.bc.oftype(PortBC)
         matrix_indices = [smati for port, smati, modenr in self.bc.iter_port_modes()]
         
         logger.info('Computing S-parameters')
         
         not_conserved = False
         conserve_margin = 0.0
-        
         single_corr = self._settings.mw_cap_sp_single
         col_corr = self._settings.mw_cap_sp_col
         recip_corr = self._settings.mw_recip_sp
@@ -1250,7 +1284,6 @@ class Microwave3D:
                     continue
                 
                 port_tets = self.mesh.get_face_tets(active_port.tags)
-                
                 fielddata.add_port_properties(active_port.port_number,
                                          mode_number=mode_nr_j,
                                          smat_index=smat_index_j,
@@ -1299,7 +1332,7 @@ class Microwave3D:
                     
                     scalardata.write_S(smat_index_i, smat_index_j, Amp_pas/Amp_act)
                     if abs(Amp_pas/Amp_act) > 1.0:
-                        logger.warning(f'S-parameter ({smat_index_i},{smat_index_j}) > 1.0 detected: {np.abs(Amp_pas/Amp_act)}')
+                        logger.debug(f'S-parameter ({smat_index_i},{smat_index_j}) > 1.0 detected: {np.abs(Amp_pas/Amp_act)}')
                         not_conserved = True
                         conserve_margin = abs(Amp_pas/Amp_act) - 1.0
                 active_port.active=False
@@ -1328,9 +1361,9 @@ class Microwave3D:
         if not_conserved and conserve_margin > 0.001:
             DEBUG_COLLECTOR.add_report('S-parameters with an amplitude greater than 1.0 detected. This could be due to a ModalPort with the wrong mode type.\n' +
                                        'Specify the type of mode (TE/TM/TEM) in the constructor using ModalPort(..., modetype=\'TE\') for example.')
-        if not_conserved and conserve_margin < 0.001:
-            DEBUG_COLLECTOR.add_report(f'S-parameters with a total column power slightly greater than 1.0 detected ({20*np.log10(conserve_margin):.2f}dB error).\n' +
-                                       'This is compatible with the numerical accuracy of EMerge.')
+        # if not_conserved and conserve_margin < 0.001:
+        #     DEBUG_COLLECTOR.add_report(f'S-parameters with a total column power slightly greater than 1.0 detected ({20*np.log10(conserve_margin):.2f}dB error).\n' +
+        #                                'This is compatible with the numerical accuracy of EMerge.')
         logger.info('Simulation Complete!')
         self._simend = time.time()    
         logger.info(f'Elapsed time = {(self._simend-self._simstart):.2f} seconds.')

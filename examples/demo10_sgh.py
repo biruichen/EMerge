@@ -12,7 +12,7 @@ The dimensions come from this paper:
 https://pure.tue.nl/ws/portalfiles/portal/332971061/Uncertainties_in_the_Estimation_of_the_Gain_of_a_Standard_Gain_Horn_in_the_Frequency_Range_of_90_GHz_to_140_GHz.pdf
 
 Adviced solvers/hardware:
- - This model runs best on UMFPACK, PARDISO or CUDSS.
+ - This model runs best on UMFPACK, PARDISO, AASDS or MUMPS
  -
 """
 

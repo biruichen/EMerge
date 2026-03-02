@@ -274,7 +274,7 @@ class Mesh3D(Mesh, Saveable):
         nodes: set = set()
         for tags in taglist:
             nodes.update(self.get_nodes(tags))
-        return np.array([i for i, tet in enumerate(self.tets.T) if not set(tet).isdisjoint(nodes)])
+        return np.array([i for i, tet in enumerate(self.tets.T) if len(set(tet).intersection(nodes)) >= 3])
 
     def _get_dimtags(self, nodes: list[int] | None = None, edges: list[int] | None = None) -> list[tuple[int, int]]:
         """Returns the geometry dimtags associated with a set of nodes and edges"""

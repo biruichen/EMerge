@@ -4,6 +4,8 @@ import numpy as np
 
 """ CONICAL HORN ANTENNA
 
+Expected RAM requirement: 5.5GB
+
 This demo uses the revolve feature to build a conical horn antenna. The conical
 horn antenna is created by revolving a 2D XYPolygon profile. We compute and plot 
 the far-field radiation pattern at an operating frequency of 10GHz.
