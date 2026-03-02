@@ -45,6 +45,7 @@ import numpy as np
 import threading
 import time
 from collections import defaultdict
+import psutil
 
 class SimulationError(Exception):
     pass
@@ -66,6 +67,26 @@ def run_job_multi(job: SimJob) -> SimJob:
         job.submit_solution(solution, report)
     return job
 
+def _check_ram(ntets: int, njobs: int, parallel: bool) -> None:
+    """ Checks if sufficient RAM is available."""
+    available = psutil.virtual_memory().available / (1024**3)
+    
+    if not parallel:
+        njobs = 1
+        
+    req_low = float(ntets * 0.17 * njobs / 1024)
+    req_mid = float(ntets * 0.25 * njobs / 1024)
+    req_high = float(ntets * 0.40 * njobs / 1024)
+    
+    logger.debug(f'Available RAM: {available:.2f}GB')
+    logger.debug(f'Required RAM: (low: {req_low:.2f}GB, nom: {req_mid:.2f}GB, high: {req_high:.2f}GB)')
+    
+    if available < req_low:
+        raise RuntimeError(f'Not enough free RAM available ({available:.1f}GB), at least {req_low:.1f}GB Required.')
+    if available < req_low:
+        raise RuntimeError(f'Not enough free RAM available ({available:.1f}GB),  around {req_mid:.1f}GB Required.')
+    if available < req_low:
+        logger.warning(f'Low free RAM detected ({available:.1f}GB), up to {req_high:.1f}GB could be Required.')
 
 def _dimstring(data: list[float] | np.ndarray) -> str:
     """A String formatter for dimensions in millimeters
@@ -696,8 +717,26 @@ class Microwave3D:
             MWSimData: The dataset.
         """
         
+        # --------------------------------------------------------------------
+        # States
+        # --------------------------------------------------------------------
+        
         self._completed = False
         self._simstart = time.time()
+        self.solveroutine.symmetry_limit = self._settings.sim_symmetry_limit
+        
+        # --------------------------------------------------------------------
+        # Local Variables
+        # --------------------------------------------------------------------
+        
+        results: list[SimJob] = []
+        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        job_id: int = 1
+        
+        # --------------------------------------------------------------------
+        # Checks
+        # --------------------------------------------------------------------
+        
         if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         
@@ -708,33 +747,40 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
 
-        materials = self._get_material_assignment(self.mesher.volumes)
-
-        ### Does this move
+        if self._settings.check_ram:
+            _check_ram(self.mesh.n_tets, n_workers, parallel)
+        
+        # --------------------------------------------------------------------
+        # Start Run
+        # --------------------------------------------------------------------
+        
         logger.debug('Initializing frequency domain sweep.')
         
-        #### Port settings
+        # --------------------------------------------------------------------
+        # Material Assignments
+        # --------------------------------------------------------------------
+        
+        logger.debug('Resolving material assingments.')
+        materials = self._get_material_assignment(self.mesher.volumes)
+        
+        # --------------------------------------------------------------------
+        # Port BC prepratation
+        # --------------------------------------------------------------------
+        
         all_ports = self.bc.oftype(PortBC)
-
-        ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
-        ### COMPUTE WHICH TETS ARE CONNECTED TO PORT INDICES
-
         for port in all_ports:
             port.active=False
-            
-
-        logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
-
+        
+        # --------------------------------------------------------------------
+        # Initializing solve functions
+        # --------------------------------------------------------------------
+        
         thread_local = None
         
         if parallel:
             # Thread-local storage for per-thread resources
             thread_local = threading.local()
-
-        ## Solveroutine configuration
-        self.solveroutine.symmetry_limit = self._settings.sim_symmetry_limit
-        
-        ## DEFINE SOLVE FUNCTIONS
+            
         def get_routine():
             if not hasattr(thread_local, "routine"):
                 worker_nr = int(threading.current_thread().name.split('_')[1])+1
@@ -756,27 +802,34 @@ class Microwave3D:
                 job.submit_solution(solution, report)
             return job
         
-        ## GROUP FREQUENCIES
-        # Each frequency group will be pre-assembled before submitting them to the parallel pool
-        freq_groups = []
+        # --------------------------------------------------------------------
+        # Grouping solve frequencies
+        # --------------------------------------------------------------------
+        
+        freq_groups: list[list[float]] = []
+        
         if frequency_groups == -1:
-            freq_groups=[self.frequencies,]
+            freq_groups = [self.frequencies,]
         else:
             n = frequency_groups
             freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
-
-        results: list[SimJob] = []
-        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-        
+            
         logger.trace(f'Frequency groups: {freq_groups}')
-        ## Single threaded
-        job_id = 1
 
+        # --------------------------------------------------------------------
+        # Grouping solve frequencies
+        # --------------------------------------------------------------------
+        
+        # I am not sure if this is supposed to be there
         self._compute_modes(sum(self.frequencies)/len(self.frequencies))
 
+        logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
+        
+        # --------------------------------------------------------------------
+        # Single Threaded Solve
+        # --------------------------------------------------------------------
+        
         if not parallel:
-            # ITERATE OVER FREQUENCIES
-            freq_groups
             for i_group, fgroup in enumerate(freq_groups):
                 logger.info(f'Precomputing group {i_group}.')
                 jobs = []
@@ -799,8 +852,12 @@ class Microwave3D:
                 logger.info(f'Starting single threaded solve of {len(jobs)} jobs.')
                 group_results = [run_job_single(job) for job in jobs]
                 results.extend(group_results)
+        
+        # --------------------------------------------------------------------
+        # Multi-Threaded Solve
+        # --------------------------------------------------------------------
+        
         elif not multi_processing:
-             # MULTI THREADED
             with ThreadPoolExecutor(max_workers=n_workers, thread_name_prefix='WKR') as executor:
                 # ITERATE OVER FREQUENCIES
                 for i_group, fgroup in enumerate(freq_groups):
@@ -826,9 +883,12 @@ class Microwave3D:
                     group_results = list(executor.map(run_job, jobs))
                     results.extend(group_results)
                 executor.shutdown()
+        
+        # --------------------------------------------------------------------
+        # Multi-Processing Solve
+        # --------------------------------------------------------------------
+        
         else:
-            ### MULTI PROCESSING
-            # Check for if __name__=="__main__" Guard
             if not called_from_main_function():
                 raise SimulationError(
                     "Multiprocess support must be launched from your "
@@ -867,11 +927,20 @@ class Microwave3D:
                     group_results = pool.map(run_job_multi, jobs)
                     results.extend(group_results)
         
+        # --------------------------------------------------------------------
+        # Cleanup
+        # --------------------------------------------------------------------
+        
         if parallel:
             thread_local.__dict__.clear()
+        self.solveroutine.reset()
         
         logger.info('Solving complete')
 
+        # --------------------------------------------------------------------
+        # Writing solve reports
+        # --------------------------------------------------------------------
+        
         for freq, job in zip(self.frequencies, results):
             self.data.setreport(job.reports, freq=freq, **self._params)
 
@@ -880,8 +949,10 @@ class Microwave3D:
             for item in data['report']:
                 item.logprint(logger.trace)
 
-        self.solveroutine.reset()
-        ### Compute S-parameters and return
+        # --------------------------------------------------------------------
+        # Post Processing
+        # --------------------------------------------------------------------
+        
         self._post_process(results, matset)
         self._completed = True
         return self.data
@@ -975,9 +1046,10 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
 
+        if self._settings.check_ram:
+            _check_ram(self.mesh.n_tets, 1, False)
+            
         materials = self._get_material_assignment(self.mesher.volumes)
-
-        ### Does this move
         logger.debug('Initializing single frequency settings.')
         
         #### Port settings
@@ -998,15 +1070,14 @@ class Microwave3D:
             return job
         
         
-        #matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []     
-
+        # --------------------------------------------------------------------
+        # Compute the Modal port Modes
+        # --------------------------------------------------------------------
+        
         self._compute_modes(frequency)
 
         logger.debug(f'Simulation frequency = {frequency/1e9:.3f} GHz') 
         
-        #if automatic_modal_analysis:
-        #    self._compute_modes(frequency)
-            
         job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
                                                 self.bc.boundary_conditions, 
                                                 frequency, 

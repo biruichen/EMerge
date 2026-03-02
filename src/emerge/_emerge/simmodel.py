@@ -173,7 +173,7 @@ class Simulation:
         
     def _reset_data(self) -> None:
         self.state.data.reset()
-    
+        
     @property
     def data(self) -> SimulationDataset:
         return self.state.data
@@ -611,6 +611,7 @@ class Simulation:
              bw: bool = False,
              face_labels: bool = False,
              screenshot: str | None = None,
+             assigned_materials: bool = False,
              off_screen: bool = False) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
@@ -622,8 +623,12 @@ class Simulation:
             volume_mesh (bool, optional): If the internal mesh should be plot instead of only the surface boundary mesh. Defaults to True
             opacity (float | None, optional): The object/mesh opacity. Defaults to None.
             labels: (bool, optional): If geometry name labels should be shown. Defaults to False.
-            bc: (bool, optional): If you wish to show boundary condition selections in the view
-            bw: (bool, optional): If you want to view in black-white mode.
+            bc: (bool, optional): If you wish to show boundary condition selections in the view. Defaults to False
+            bw: (bool, optional): If you want to view in black-white mode. Defaults to False
+            face_labels: (bool, optional): Prints the labels of geometry faces. Defaults to False
+            screenshot: (bool, optional): Saves a screenshot and stores the file. Defaults to False
+            assigned_materials: (bool, optional): Shows the materials in geometries as assigned per unique domain. Defaults to False
+            off_screen: (bool, optional): Only shows off screen (useful for combinations with Screenshot). Defaults to False
         """
         if use_gmsh or self.display is None:
             gmsh.model.occ.synchronize()
@@ -636,8 +641,13 @@ class Simulation:
             
         if bw:
             self.display.drawing_bw()
+        
+        if assigned_materials:
+            geolist = self.state.simulation_geostate()
+        else:
+            geolist = self.state.current_geo_state
             
-        for geo in self.state.current_geo_state:
+        for geo in geolist:
             self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh, label=labels)
             
             if face_labels and geo.dim==3:

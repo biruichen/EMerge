@@ -57,5 +57,8 @@ class Settings:
 
         self.save_method: Literal['joblib', 'msgpack'] = 'joblib'
         # Serialization method used for saving simulations.
-    
+
+        self.check_ram: bool = True
+        # If a RAM memory check should be done and halt the solver.
+        
 DEFAULT_SETTINGS = Settings()

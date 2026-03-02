@@ -25,6 +25,7 @@ dependencies = [
     "emsutil>=0.5.0, <0.6.0",
     "msgpack>=1.1.2",
     "msgpack-numpy>=0.4.8",
+    "psutil>=7.2.2",
 ]
 
 [project.scripts]
@@ -68,6 +69,7 @@ dev = [
     "threadpoolctl>=3.6.0",
     "pygerber",
     "ezdxf>=1.4.3",
+    "psutil>=7.2.2",
 ]
 
 [tool.uv]

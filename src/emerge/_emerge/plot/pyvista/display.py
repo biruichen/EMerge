@@ -83,8 +83,6 @@ def _print_coords(x1, y1, x2, y2, z):
     print(f'lp = pcb.lumped_port_pts(({x1:.6f},{y1:.6f}),({x2:.6f},{y2:.6f}),{z:.6f})')
     
 class PVDisplay(EMergeDisplay):
-
-
     def __post_init__(self, state: SimState):
         self._state: SimState = state
         self._selector._set_encoder_function(encode_data)
