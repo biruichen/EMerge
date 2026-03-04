@@ -951,7 +951,7 @@ class Simulation:
         return ratio
     
     @staticmethod
-    def compute_ratio(new_point_percentage: float, ratios: np.ndarray, percentages: np.ndarray, P_target: float) -> float:
+    def compute_ratio(ratios: np.ndarray, percentages: np.ndarray, P_target: float) -> float:
         """
         Strategy:
         - n=0: use guess_R(P_target, throttle=1.0)
@@ -967,82 +967,48 @@ class Simulation:
         # Clean
         n = ratios.size
         
+        # --------------------------------------------------------------------------
+        # N=1 Case
+        # --------------------------------------------------------------------------
+        
         if n == 1:
-            last_R = float(ratios[-1])
-            last_P = float(percentages[-1])
+            last_ratio = float(ratios[-1])
+            last_percentage = float(percentages[-1])
             
-            if P_target <= last_P <= 2.0 * P_target:
+            if P_target <= last_percentage <= 2.0 * P_target:
                 # Already acceptable
-                return last_R * ((1.5*P_target)/last_P)**0.2
+                return last_ratio * ((1.5*P_target)/last_percentage)**0.2
             
-            if last_P > P_target*2.0:
-                return last_R / 0.8
+            if last_percentage > P_target*2.0:
+                return last_ratio / 0.8
             else:
-                return last_R * 0.8
+                return last_ratio * 0.8
 
+        # --------------------------------------------------------------------------
+        # N>1 Case
+        # --------------------------------------------------------------------------
+        
         P_target = P_target*1.5
-        x = 1.0 / ratios
-        y = percentages
-        dy = y - P_target
+        refine_multiplier = 1.0 / ratios
+        change_percentage = percentages
+        
 
-        # Indices by side of target
-        idx_lo = np.where(dy < 0)[0]  # below target
-        idx_hi = np.where(dy > 0)[0]  # above target
-        idx_eq = np.where(dy == 0)[0]
-
-        # Exact hit
-        if idx_eq.size > 0:
-            # Return corresponding R (already perfect)
-            R_exact = float(ratios[idx_eq[0]])
-            return float(np.clip(R_exact, 1e-6, 1.0))
-
-        def pick_two(indices, reverse=False):
-            # pick two closest to target among given indices
-            order = np.argsort(np.abs(dy[indices]))
-            if reverse:
-                # when all below, we want the two with largest y (closest from below)
-                order = np.argsort(-y[indices])
-            return indices[order[:2]]
-
-        # Choose two points
-        if idx_lo.size > 0 and idx_hi.size > 0:
-            # Bracket: closest below and closest above
-            i_lo = idx_lo[np.argmin(np.abs(dy[idx_lo]))]
-            i_hi = idx_hi[np.argmin(np.abs(dy[idx_hi]))]
-            i1, i2 = i_lo, i_hi
-        elif idx_lo.size == 0:
-            # All above: take two smallest-above (closest to target)
-            i12 = pick_two(idx_hi)  # by |dy|
-            if i12.size < 2 and idx_hi.size >= 2:
-                i12 = idx_hi[:2]
-            i1, i2 = i12[0], i12[1]
-        elif idx_hi.size == 0:
-            # All below: take two largest-below (closest from below)
-            i12 = pick_two(idx_lo, reverse=True)
-            if i12.size < 2 and idx_lo.size >= 2:
-                i12 = idx_lo[:2]
-            i1, i2 = i12[0], i12[1]
-        else:
-            # Fallback (should not trigger)
-            i1, i2 = 0, 1
-
-        x1, y1 = float(x[i1]), float(y[i1])
-        x2, y2 = float(x[i2]), float(y[i2])
-
-        # Linear solve in y(x): y = y1 + (y2-y1)/(x2-x1) * (x - x1)
-        # Target xt: xt = x1 + (P_target - y1) * (x2 - x1) / (y2 - y1)
-        if abs(y2 - y1) > 1e-16:
-            xt = x1 + (P_target - y1) * (x2 - x1) / (y2 - y1)
-        else:
-            # Degenerate: same y; choose midpoint in x
-            xt = 0.5 * (x1 + x2)
-
-        # Ensure positive xt
-        xt = float(max(xt, 1e-16))
-        R_new = 1.0 / xt
-
-        # Clamp to (0, 1]
-        return float(np.clip(R_new, 1e-6, 1.0))
+        line = np.polynomial.Polynomial.fit(refine_multiplier, change_percentage, deg=1)
+        b, a = line.convert().coef
+        
+        if a < 0:
+            logger.debug('Negative growth correlation, reverting to default behavior')
+            last_ratio = float(ratios[-1])
+            last_percentage = float(percentages[-1])
+            if last_percentage > P_target*2.0:
+                return last_ratio / 0.8
+            else:
+                return last_ratio * 0.8
+        
+        mult_target = (P_target - b)/a
+        Rnew = 1/mult_target
+        
+        return float(np.clip(Rnew, 1e-6, 1.0))
 
     def adaptive_mesh_refinement(self, 
                                  max_steps: int = 6,
@@ -1093,17 +1059,21 @@ class Simulation:
         else:
             sim_freqs = [max_freq,]
         
-        self.state.stash()
         
         S_matrices: list[list[np.ndarray]] = []
+
         last_n_tets: int = self.mesh.n_tets
-        passed = 0
-        n_frequencies = len(sim_freqs)
-        original_ratio = refinement_ratio
-        
         logger.info(f'Initial mesh has {last_n_tets} tetrahedra')  
-        logger.info('Stating adaptive mesh refinement process...')
         
+        passed = 0
+        
+        self.state.stash()
+        
+        NF = len(sim_freqs)
+        
+        original_ratio = refinement_ratio
+        logger.info('Stating adaptive mesh refinement process...')
+        self.mesher._amrobj.reset()
         for step in range(1,max_steps+1):
             
             self.data.sim.new(iter_step=step)
@@ -1129,7 +1099,7 @@ class Simulation:
                 max_mag = 0
                 max_phase = 0
                 
-                for i in range(n_frequencies):
+                for i in range(NF):
                     conv_complex, conv_mag, conv_phase = compute_convergence(S0s[i], S1s[i])
                     max_complx = max(max_complx, conv_complex)
                     max_mag = max(max_mag, conv_mag)    
@@ -1143,80 +1113,86 @@ class Simulation:
                 else:
                     passed = 0
             
-            # Check for convergence
             if passed >= min_refined_passes and step > minimum_steps:
                 logger.info(f'Adaptive mesh refinement successfull with {self.mesh.n_tets} tetrahedra.')
                 break
             
-            # If not converged, compute error estimates
-            errors = np.empty((self.mesh.n_tets, n_frequencies), dtype=np.float64)
+            # ------------------------------------------------------------------------------------------
+            # Error estimate computation
+            # ------------------------------------------------------------------------------------------
+            
+            errors = np.empty((self.mesh.n_tets, NF), dtype=np.float64)
             logger.debug(f'Computing error estimates for {self.mesh.n_tets} tetrahedra.')
-            for i in range(n_frequencies):
+            for i in range(NF):
                 error, lengths = fields[i]._solution_quality(solve_ids)
                 errors[:,i] = error
             error = np.max(errors, axis=1)
             
-            # Select required refinement indices
-            idx = select_refinement_indices(error, error_field_inclusion_percentage/100)
+            # ------------------------------------------------------------------------------------------
+            # Finding refinement coordinates
+            # ------------------------------------------------------------------------------------------
+
+            logger.debug('Selecting refinement indices.')
+            refine_tet_ids = select_refinement_indices(error, error_field_inclusion_percentage/100)
+            refine_tet_ids = refine_tet_ids[::-1]
+            refinement_ratio = 0.9*original_ratio + 0.1*refinement_ratio
             
-            idx = idx[::-1]
-            n_refinement_points = idx.shape[0]
-            refinement_percentage = n_refinement_points/self.mesh.n_tets * 100
-            original_ratio = 0.75*original_ratio + 0.25*refinement_ratio
-            refinement_ratio = original_ratio
             included = np.zeros((self.mesh.n_tets, ), dtype=np.bool_)
-            included[idx] = True
+            included[refine_tet_ids] = True
             
-            # Convert refinement points to refinement nodes
+            logger.debug(f'Number of refined tetrahedron ids = {refine_tet_ids.shape[0]}')
+            # Convert the refined tetrahedra to refined nodes
             coords, sizes = tet_to_node(self.mesh.nodes, self.mesh.tets, lengths, included)
-            self.mesher.add_refinement_points(coords, sizes, refinement_ratio*np.ones_like(sizes))
+            logger.debug(f'Number of refinement vertex ids = {coords.shape[1]}')
+            self.mesher._amrobj.add_refinement_points(coords, sizes, refinement_ratio*np.ones_like(sizes))
             
-            # Remove points that don't contribute to refinement
-            logger.debug('Reducing refinement point set.')
-            new_ids = reduce_point_set(self.mesher._amr_coords, growth_rate, self.mesher._amr_sizes, refinement_ratio, 0.20)
-            
-            nremoved = self.mesher._amr_coords.shape[1] - len(new_ids)
-            
-            logger.debug(f'    Pass {step}: Added {len(sizes) - nremoved} new refinement points with ratio {refinement_ratio}.')
-            
-            self.mesher._amr_coords = self.mesher._amr_coords[:,new_ids]
-            self.mesher._amr_sizes = self.mesher._amr_sizes[new_ids]
-            self.mesher._amr_ratios = self.mesher._amr_ratios[new_ids]
-            self.mesher._amr_new = self.mesher._amr_new[new_ids]
+            # Try to reduce the point set if there are more than 500 points.
+            if self.mesher._amrobj.npts >= 500:
+                new_ids = reduce_point_set(self.mesher._amrobj._amr_coords, growth_rate, self.mesher._amrobj._amr_sizes, refinement_ratio, 0.20)
+                nremoved = self.mesher._amrobj.npts - len(new_ids)    
+                logger.info(f'    Pass {step}: Added {len(sizes) - nremoved} new refinement points with ratio {refinement_ratio}.')
+                self.mesher._amrobj.reduce_set(new_ids)
             
             logger.debug(f'    Initial refinement ratio: {refinement_ratio}')
             
-            Ratios = []
-            Percentages = []
-            counter = 0
-            
             # Mesh refinement loop. Only escapes if the mesh refined a certain set percentage.
+            counter = 0
+            refinement_ratios = []
+            refinement_percentages = []
+            
             while True:
                 counter += 1
                 if counter == 10:
                     logger.warning('    More than 10 attempts at reaching the target refinement. Continuing with current.')
                     break
-                
+
+                counter += 1
+
+                # Regenerate the mesh
                 self._reset_mesh()
-                self.mesher._set_refinement_function(growth_rate, 2.0)
+                self.mesher._amrobj.set_refinement_function(growth_rate, 2.0)
                 self.generate_mesh(True)
+
+                # Growth percentage
                 percentage = (self.mesh.n_tets/last_n_tets - 1) * 100
                 logger.info(f'    Pass {step}: New mesh has {self.mesh.n_tets} (+{percentage:.1f}%) tetrahedra.')  
-                Ratios.append(refinement_ratio)
-                Percentages.append(percentage)
                 
-                if len(Percentages) >= 2:
-                    if abs(Percentages[-2]-Percentages[-1]) == 0.0:
+                # Update the lists
+                refinement_ratios.append(refinement_ratio)
+                refinement_percentages.append(percentage)
+                
+                if len(refinement_percentages) >= 2:
+                    if abs(refinement_percentages[-2]-refinement_percentages[-1]) == 0.0:
                         logger.warning('No refinement realized, decreasing refinment ratio.')
                         refinement_ratio = refinement_ratio * 0.5
-                        self.mesher._set_refinement_ratio(refinement_ratio)
+                        self.mesher._amrobj.set_ratio(refinement_ratio)
                         continue
                 
                 if percentage < minimum_refinement_percentage or percentage > (minimum_refinement_percentage*2):
                     
-                    refinement_ratio = self.compute_ratio(refinement_percentage, Ratios, Percentages, minimum_refinement_percentage)
+                    refinement_ratio = self.compute_ratio(refinement_ratios, refinement_percentages, minimum_refinement_percentage)
                     logger.info(f'    Refinement target not reached! New ratio = {refinement_ratio:.3f}')
-                    self.mesher._set_refinement_ratio(refinement_ratio)
+                    self.mesher._amrobj.set_ratio(refinement_ratio)
                     if refinement_ratio >= 1.0:
                         logger.warning('Refinement ratio pushed above 1.0... continuing with current percentage.')
                         break
@@ -1232,7 +1208,6 @@ class Simulation:
             if last_n_tets > max_tets:
                 logger.warning(f'Aborting refinement because the number of tets exceeds the maximum: {last_n_tets}>{max_tets}')
                 break
-            
         if passed < min_refined_passes:
             logger.warning('Adaptive mesh refinement did not converge!')
             
