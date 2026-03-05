@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from ...mesher import Mesher
 from emsutil import Material
 from ...mesh3d import Mesh3D
@@ -901,6 +902,7 @@ class Microwave3D:
         # --------------------------------------------------------------------
         # Grouping solve frequencies
         # --------------------------------------------------------------------
+        
         freq_groups = self._get_frequency_groups(frequency_groups) 
         for i, group in enumerate(freq_groups):
             group_GHz = [f'{f/1e9:.3f}GHz' for f in group]
@@ -908,7 +910,6 @@ class Microwave3D:
         
         # I am not sure if this is supposed to be there
         self._compute_modes(sum(self.frequencies)/len(self.frequencies))
-
         
         # --------------------------------------------------------------------
         # Single Threaded Solve
@@ -1231,6 +1232,7 @@ class Microwave3D:
             ur (np.ndarray): The domain μᵣ
             cond (np.ndarray): The domain conductivity
         """
+        
         if self.basis is None:
             raise SimulationError('Cannot post-process. Simulation basis function is undefined.')
         
@@ -1245,22 +1247,21 @@ class Microwave3D:
         col_corr = self._settings.mw_cap_sp_col
         recip_corr = self._settings.mw_recip_sp
         
+        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
+        
         for job, mats in zip(results, materials):
             freq = job.freq
             er, ur, cond = mats
-            ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-            urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-            condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
-
+            
             er_scal = (er[0,0,:] + er[1,1,:] + er[2,2,:])/3
             ur_scal = (ur[0,0,:] + ur[1,1,:] + ur[2,2,:])/3
             cond_scal = (cond[0,0,:] + cond[1,1,:] + cond[2,2,:])/3
             
-            for itri in range(self.mesh.n_tris):
-                itet = self.mesh.tri_to_tet[0,itri]
-                ertri[:,:,itri] = er[:,:,itet]
-                urtri[:,:,itri] = ur[:,:,itet]
-                condtri[itri] = cond[0,0,itet]
+            ertri[:,:,:] = er[:,:, self.mesh.tri_to_tet[0,:]]
+            urtri[:,:,:] = ur[:,:, self.mesh.tri_to_tet[0,:]]
+            condtri[:] = cond[0,0, self.mesh.tri_to_tet[0,:]]
                 
             k0 = 2*np.pi*freq/299792458
 
@@ -1279,7 +1280,6 @@ class Microwave3D:
 
             # Recording port information
             for active_port, smat_index_j, mode_nr_j in self.bc.iter_port_modes():
-                
                 if not active_port.driven:
                     continue
                 
@@ -1314,7 +1314,6 @@ class Microwave3D:
                 EdotF_act, EdotE_act = self._compute_s_data(active_port, mode_nr_j, True, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
                 logger.debug(f'[{smat_index_j}] Active port amplitude = {np.abs(EdotF_act):.3f} (Excitation = {np.abs(EdotE_act):.2f})')
                 Amp_act = np.sqrt(active_port.power)
-                
                 #Passive ports
                 for passive_port, smat_index_i, mode_nr_i in self.bc.iter_port_modes():
                     if smat_index_i==smat_index_j:
@@ -1337,7 +1336,6 @@ class Microwave3D:
                         conserve_margin = abs(Amp_pas/Amp_act) - 1.0
                 active_port.active=False
             
-            
             fielddata.set_field_vector()
             
             N = scalardata.Sp.shape[1]
@@ -1359,7 +1357,7 @@ class Microwave3D:
                     
 
         if not_conserved and conserve_margin > 0.001:
-            DEBUG_COLLECTOR.add_report('S-parameters with an amplitude greater than 1.0 detected. This could be due to a ModalPort with the wrong mode type.\n' +
+            DEBUG_COLLECTOR.add_report(f'S-parameters with an amplitude greater than 1.0 detected. ({20*np.log10(conserve_margin):.2f}dB error. This could be due to a ModalPort with the wrong mode type.\n' +
                                        'Specify the type of mode (TE/TM/TEM) in the constructor using ModalPort(..., modetype=\'TE\') for example.')
         # if not_conserved and conserve_margin < 0.001:
         #     DEBUG_COLLECTOR.add_report(f'S-parameters with a total column power slightly greater than 1.0 detected ({20*np.log10(conserve_margin):.2f}dB error).\n' +
@@ -1392,16 +1390,29 @@ class Microwave3D:
             tuple[complex, complex]: _description_
         """
         from .sparam import sparam_field_power, sparam_mode_power
-        
         if bc.v_integration:
             if bc.vintline is None:
                 raise SimulationError('Trying to compute characteristic impedance but no integration line is defined.')
             if bc.Z0 is None:
                 raise SimulationError('Trying to compute the impedance of a boundary condition with no characteristic impedance.')
             
-            Voltages = [line.line_integral(fieldfunction) for line in bc.vintline]
-            V = sum(Voltages)/len(Voltages)
+            # Compute all integration points
+            xs = np.concat([line.xs for line in bc.vintline])
+            ys = np.concat([line.ys for line in bc.vintline])
+            zs = np.concat([line.zs for line in bc.vintline])
             
+            # Evaluate the E-field
+            Ex, Ey, Ez = fieldfunction(xs, ys, zs)
+
+            ctr = 0
+            V = 0
+            Nlines = len(bc.vintline)
+            for line in bc.vintline:
+                npts = line.xs.shape[0]
+                slc = slice(ctr, ctr+npts)
+                ctr += npts
+                V += line.line_integral_precalc(Ex[slc], Ey[slc], Ez[slc])/Nlines
+
             if active:
                 if bc.voltage is None:
                     raise ValueError('Cannot compute port S-paramer with a None port voltage.')

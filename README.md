@@ -52,7 +52,7 @@ system and hardware you have, some might work better and/or are easier to instal
 On MacOS you can install it with the very fast UMFPACK through scikit-umfpack
 
 ```
-brew install cmake swig suite-sparse #MacOS
+brew install cmake swig suite-sparse pkg-config #MacOS
 sudo apt-get install libsuitesparse-dev #Linux
 ```
 Then on MacOS do:

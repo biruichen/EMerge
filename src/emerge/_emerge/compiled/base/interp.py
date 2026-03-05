@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
+# Last Cleanup: 2026-03-04
 from numba import njit, f8, c16, i8, types, prange # type: ignore
 from numba import get_thread_id as get_thread_id
 

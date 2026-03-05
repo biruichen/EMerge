@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 import numpy as np
 from typing import Callable
 from numba import njit, f8, i8, c16
@@ -81,9 +82,7 @@ def surface_integral(nodes: np.ndarray,
         
     DPTs = gaus_quad_tri(gq_order)
     xall_flat, yall_flat, zall_flat, shape = generate_int_points_tri(nodes, triangles, DPTs)
-
     fvals = function(xall_flat, yall_flat, zall_flat)
-
     fA = fvals.reshape(shape)
 
     if np.iscomplexobj(fA) or np.iscomplexobj(constants):

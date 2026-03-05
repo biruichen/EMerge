@@ -89,7 +89,7 @@ p2 = pcb.modal_port(pcb['p2'], width_multiplier=5, height=4 * th)
 
 # --- Solver settings -----------------------------------------------------
 model.mw.set_resolution(0.2)                    # mesh density: fraction of wavelength
-model.mw.set_frequency_range(5.2e9, 6.2e9, 31)  # 5.2–6.2 GHz, 31 points
+model.mw.set_frequency_range(5.2e9, 6.2e9, 30)  # 5.2–6.2 GHz, 31 points
 
 # --- Assemble geometry into simulation -----------------------------------
 model.commit_geometry()

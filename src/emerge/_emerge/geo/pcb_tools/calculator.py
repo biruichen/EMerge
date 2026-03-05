@@ -72,6 +72,7 @@
 #   a_for_z_te10, length_for_angle, te10
 # - PCBCalculator: __init__, z0, layer_index, z, layer_distance, effective_er
 #
+# Last Cleanup: 2026-03-04
 import numpy as np
 from scipy.special import jv, yv
 from emsutil import Material

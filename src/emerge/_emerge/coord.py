@@ -153,6 +153,12 @@ class Line(Saveable):
         EdotL = Ex*self.dx + Ey*self.dy + Ez*self.dz
         return gauss3_composite(self.l, EdotL)
     
+    def line_integral_precalc(self, Ex: np.ndarray, Ey: np.ndarray, Ez: np.ndarray) -> complex:
+        """Compute the line integral for a complex vector field function evalfunc."""
+
+        EdotL = Ex*self.dx + Ey*self.dy + Ez*self.dz
+        return gauss3_composite(self.l, EdotL)
+    
     def _integrate(self, quantity: np.ndarray) -> complex:
         """Integrates a quantity of values defined along the line.
 

@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from __future__ import annotations
 from scipy.sparse import csr_matrix # type: ignore
 from scipy.sparse.csgraph import reverse_cuthill_mckee # type: ignore

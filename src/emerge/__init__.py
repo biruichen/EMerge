@@ -1,3 +1,4 @@
+# Last Cleanup: 2026-03-04
 """A Python based FEM solver.
 Copyright (C) 2025 Robert Fennis
 

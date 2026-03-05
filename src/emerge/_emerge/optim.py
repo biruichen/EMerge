@@ -1,3 +1,22 @@
+# EMerge is an open source Python based FEM EM simulation module.
+# Copyright (C) 2025  Robert Fennis.
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see
+# <https://www.gnu.org/licenses/>.
+
+
+# Last Cleanup: 2026-03-04
 from scipy.optimize import minimize
 import numpy as np
 from typing import Generator, Callable
@@ -111,7 +130,6 @@ class Optimizer:
             
             success = True
             def f(x):
-                # SciPy calls this when it wants f(x)
                 if tuple(x) in self.value_cache:
                     return self.value_cache[tuple(x)]*Q
                 
