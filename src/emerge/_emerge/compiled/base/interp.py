@@ -862,49 +862,75 @@ def ned2_tri_interp_curl(coords: np.ndarray,
 
 
 
-@njit(i8[:](f8[:,:], i8[:,:], f8[:,:], i8[:]), cache=True, nogil=True)
+@njit(i8[:](f8[:,:], i8[:,:], f8[:,:], i8[:]), cache=True, nogil=True, parallel=True)
 def index_interp(coords: np.ndarray,
                 tets: np.ndarray, 
                 nodes: np.ndarray,
                 tetids: np.ndarray):
     ''' Nedelec 2 tetrahedral interpolation of the analytic curl'''
-    # Solution has shape (nEdges, nsols)
+    NThreads = 6
     nNodes = coords.shape[1]
-    
-    prop = np.full((nNodes, ), -1, dtype=np.int64)
-    
-    for i_iter in range(tetids.shape[0]):
+    nTetIds = tetids.shape[0]
+    assigned = np.full((nNodes,NThreads), -1, dtype=np.int64)
+
+    for i_iter in prange(nTetIds):
         itet = tetids[i_iter]
+
+        # 1. Direct access - avoid slicing where possible
+        iv1, iv2, iv3, iv4 = tets[0, itet], tets[1, itet], tets[2, itet], tets[3, itet]
         
-        iv1, iv2, iv3, iv4 = tets[:, itet]
-
-        v1 = nodes[:,iv1]
-        v2 = nodes[:,iv2]
-        v3 = nodes[:,iv3]
-        v4 = nodes[:,iv4]
-
-        bv1 = v2 - v1
-        bv2 = v3 - v1
-        bv3 = v4 - v1
-
-        blocal = np.zeros((3,3))
-        blocal[:,0] = bv1
-        blocal[:,1] = bv2
-        blocal[:,2] = bv3
-        basis = np.linalg.pinv(blocal)
-
-        coords_offset = coords - v1[:,np.newaxis]
-        coords_local = (basis @ (coords_offset))
-
-
-        inside = ((coords_local[0,:] + coords_local[1,:] + coords_local[2,:]) <= 1.00000001) & (coords_local[0,:] >= -1e-6) & (coords_local[1,:] >= -1e-6) & (coords_local[2,:] >= -1e-6)
-
-        if inside.sum() == 0:
-            continue
+        v1x, v1y, v1z = nodes[0, iv1], nodes[1, iv1], nodes[2, iv1]
         
-        prop[inside] = itet
+        # 2. Manual 3x3 Jacobian (b-local)
+        m00 = nodes[0, iv2] - v1x
+        m10 = nodes[1, iv2] - v1y
+        m20 = nodes[2, iv2] - v1z
+        
+        m01 = nodes[0, iv3] - v1x
+        m11 = nodes[1, iv3] - v1y
+        m21 = nodes[2, iv3] - v1z
+        
+        m02 = nodes[0, iv4] - v1x
+        m12 = nodes[1, iv4] - v1y
+        m22 = nodes[2, iv4] - v1z
 
-    return prop
+        # 3. Determinant for manual inversion
+        det = m00*(m11*m22 - m12*m21) - m01*(m10*m22 - m12*m20) + m02*(m10*m21 - m11*m20)
+        inv_det = 1.0 / det
+
+        # 4. Manual Inverse Basis (Cramer's Rule)
+        b00 = (m11*m22 - m12*m21) * inv_det
+        b01 = (m02*m21 - m01*m22) * inv_det
+        b02 = (m01*m12 - m02*m11) * inv_det
+        
+        b10 = (m12*m20 - m10*m22) * inv_det
+        b11 = (m00*m22 - m02*m20) * inv_det
+        b12 = (m10*m02 - m00*m12) * inv_det
+        
+        b20 = (m10*m21 - m11*m20) * inv_det
+        b21 = (m20*m01 - m00*m21) * inv_det
+        b22 = (m00*m11 - m10*m01) * inv_det
+
+        tid = get_thread_id()
+        # 5. Point-check loop (Avoids all temporary arrays!)
+        for j in range(nNodes):
+            # Translate point
+            dx = coords[0, j] - v1x
+            dy = coords[1, j] - v1y
+            dz = coords[2, j] - v1z
+            
+            # Matmul: basis @ dx
+            u = b00*dx + b01*dy + b02*dz
+            v = b10*dx + b11*dy + b12*dz
+            w = b20*dx + b21*dy + b22*dz
+            
+            # Barycentric coordinate check
+            if (u >= -EPS) and (v >= -EPS) and (w >= -EPS) and (u + v + w <= 1.0 + EPS):
+                assigned[j, tid] = itet
+
+    assigned = matmax(assigned)
+    return assigned
+
 
 @njit(f8[:](f8[:,:], i8[:,:], f8[:,:], i8[:], f8[:]), cache=True, nogil=True)
 def constant_interp(coords: np.ndarray,
