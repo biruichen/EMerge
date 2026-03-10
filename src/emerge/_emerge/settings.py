@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from typing import Literal
 class Settings:
     def __init__(self):
@@ -30,7 +30,7 @@ class Settings:
         # Bulk conductivity limit (S/m) beyond which a conductor is assigned PEC
         # instead of a SurfaceImpedance boundary condition.
 
-        self.mw_3d_peclim: float = 1e7
+        self.mw_3d_peclim: float = 1e8 
         # Bulk conductivity limit (S/m) beyond which 3D conductors are considered PEC.
 
         self.mw_cap_sp_single: bool = True

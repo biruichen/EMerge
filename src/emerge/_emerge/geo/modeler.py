@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from __future__ import annotations
 import numpy as np
 from typing import Callable, Iterable

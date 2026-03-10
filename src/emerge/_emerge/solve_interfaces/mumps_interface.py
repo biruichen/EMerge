@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from mumps_emerge import ZMumpsContext
 from scipy import sparse
 import numpy as np

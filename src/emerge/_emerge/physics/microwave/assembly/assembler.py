@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 import numpy as np
 from ..microwave_bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic, MWBoundaryConditionSet
 from ....elements.nedelec2 import Nedelec2
@@ -207,7 +207,9 @@ class Assembler:
         ermesh = er[:,:,tri_ids]
         urmesh = ur[:,:,tri_ids]
         sigmesh = sig[tri_ids]
-        ermesh = ermesh - 1j * sigmesh/(k0*C0*EPS0)
+        ermesh[0,0,:] = ermesh[0,0,:] - 1j * sigmesh/(k0*C0*EPS0)
+        ermesh[1,1,:] = ermesh[0,0,:] - 1j * sigmesh/(k0*C0*EPS0)
+        ermesh[2,2,:] = ermesh[0,0,:] - 1j * sigmesh/(k0*C0*EPS0)
 
         logger.trace(f'.assembling matrices for {nedlegfield} at k0={k0:.2f}')
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)

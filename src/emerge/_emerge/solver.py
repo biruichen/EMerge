@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from __future__ import annotations
 from scipy.sparse import csr_matrix # type: ignore
 from scipy.sparse.csgraph import reverse_cuthill_mckee # type: ignore
@@ -95,7 +95,9 @@ try:
 except ModuleNotFoundError as e:
     logger.debug(e)
     logger.debug('AASDS not found, defaulting to SuperLU')
-   
+except ImportError as e:
+    logger.debug(e)
+    logger.debug('Tried to import an installed AASDS solver on a non Darwin system.')
 ############################################################
 #                           CUDSS                          #
 ############################################################
@@ -277,15 +279,18 @@ def filter_unique_eigenpairs(eigen_values: list[complex],
         unique_values (np.ndarray): Filtered eigenvalues
         unique_vectors (np.ndarray): Corresponding orthogonal eigenvectors
     """
-    selected: list = []
-    indices: list = []
-    for i in range(len(eigen_vectors)):
+    if len(eigen_values) == 1:
+        return eigen_values, eigen_vectors
+    
+    selected: list = [eigen_vectors[0]/np.linalg.norm(eigen_vectors[0]),]
+    indices: list = [0,]
+    for i in range(1, len(eigen_vectors)):
         
         vec = eigen_vectors[i]
         vec = vec / np.linalg.norm(vec)  # Normalize
-
-        # Check orthogonality against selected vectors
-        if all(10*np.log10(abs(np.dot(vec, sel))) < tol for sel in selected):
+        
+        tols = [10*np.log10(abs(np.dot(vec, sel))) for sel in selected]
+        if all(t < tol for t in tols):
             selected.append(vec)
             indices.append(i)
 
@@ -946,8 +951,8 @@ class SolverARPACK(EigSolver):
             target_k0: float = 0,
             which: str = 'LM',
             sign: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
-        logger.info(f'{_pfx(self.pre)} Searching around β = {target_k0:.2f} rad/m with ARPACK')
-        sigma = sign*(target_k0**2)
+        logger.info(f'{_pfx(self.pre)} Searching for {nmodes} modes around β = {target_k0:.2f} rad/m mode={which} with ARPACK')
+        sigma = (sign*(target_k0**2)).real
         eigen_values, eigen_modes = eigs(A, k=nmodes, M=B, sigma=sigma, which=which)
         return eigen_values, eigen_modes
 
@@ -963,6 +968,28 @@ class SmartARPACK_BMA(EigSolver):
         self.symmetric_steps: int = 41
         self.search_range: float = 2.0
         self.energy_limit: float = 1e-4
+        self.ratio_limit: float = 1e-2
+
+        self.tot_eigen_values: list[complex] = []
+        self.tot_eigen_modes: list[np.ndarray] = []
+        self.tot_energies: list[float] = []
+
+    @property
+    def n_found_modes(self) -> int:
+        return len(self.tot_eigen_values)
+    
+    def add_mode(self, eigen_value: complex, eigen_vector: np.ndarray, energy: float) -> None:
+        logger.trace(f'  Considering new eigenmode with value {eigen_value} and energy {energy:.4f}')
+        if self.n_found_modes == 0:
+            self.tot_eigen_values.append(eigen_value)
+            self.tot_eigen_modes.append(eigen_vector)
+            self.tot_energies.append(energy)
+            return
+        reldif = max([abs(eigv - eigen_value) for eigv in self.tot_eigen_values])/abs(eigen_value)
+        if reldif > 0.01:
+            self.tot_eigen_values.append(eigen_value)
+            self.tot_eigen_modes.append(eigen_vector)
+            self.tot_energies.append(energy)
 
     def eig(self, 
             A: csr_matrix | csr_matrix, 
@@ -974,35 +1001,57 @@ class SmartARPACK_BMA(EigSolver):
 
         logger.info(f'{_pfx(self.pre)} Searching around β = {target_k0:.2f} rad/m with SmartARPACK (BMA)')
         qs = np.geomspace(1, self.search_range, self.symmetric_steps)
-        tot_eigen_values = []
-        tot_eigen_modes = []
-        energies = []
+        
+        self.tot_eigen_values = []
+        self.tot_eigen_modes = []
+        self.tot_energies = []
+
         for i, q in enumerate(qs):
-            # Above target k0
             sigma = sign*((q*target_k0)**2)
+            logger.trace(f' Searching around {q*target_k0:.2f} rad/m')
+            eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
+            
+            energy = np.mean(np.abs(eigen_modes.flatten())**2)
+            psi = eigen_modes[:,0]
+            curl_energy = np.real(psi.conj() @ (A @ psi))
+            total_energy = np.real(psi.conj() @ (B @ psi))
+            ratio = abs(curl_energy/(total_energy+1e-15))
+            logger.trace(f'Ratio = {ratio:.6f}, Energy = {energy:.4f}, value = {(sign*eigen_values[0])**0.5}, curl_energy = {curl_energy}, total_energy = {total_energy}')
+
+            if ratio > self.ratio_limit and energy > self.energy_limit:
+                self.add_mode(eigen_values[0], eigen_modes.flatten(), energy)
+            
+            if self.n_found_modes >= nmodes:
+                break
+
+            if i == 0:
+                continue
+        
+            sigma = sign*((target_k0/q)**2)
+            logger.trace(f' Searching around {target_k0/q:.2f} rad/m')
             eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
             energy = np.mean(np.abs(eigen_modes.flatten())**2)
-            if energy > self.energy_limit:
-                tot_eigen_values.append(eigen_values[0])
-                tot_eigen_modes.append(eigen_modes.flatten())
-                energies.append(energy)
-            if i!=0:
-                # Below target k0
-                sigma = sign*((target_k0/q)**2)
-                eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
-                energy = np.mean(np.abs(eigen_modes.flatten())**2)
-                if energy > self.energy_limit:
-                    tot_eigen_values.append(eigen_values[0])
-                    tot_eigen_modes.append(eigen_modes.flatten())
-                    energies.append(energy)
+            psi = eigen_modes[:,0]
+            curl_energy = np.real(psi.conj() @ A @ psi)
+            total_energy = np.real(psi.conj() @ B @ psi)
+            ratio = abs(curl_energy/(total_energy+1e-15))
+            logger.trace(f'Ratio = {ratio:.6f}, Energy = {energy:.4f}, value = {(sign*eigen_values[0])**0.5}, curl_energy = {curl_energy}, total_energy = {total_energy}')
+
+            if ratio > self.ratio_limit and energy > self.energy_limit:
+                self.add_mode(eigen_values[0], eigen_modes.flatten(), energy)
+        
+            if self.n_found_modes >= nmodes:
+                break
         
         #Sort solutions on mode energy
-        if not tot_eigen_values or not tot_eigen_modes or not energies:
+        if not self.tot_eigen_values:
             return np.array([]), np.array([])
-        val, mode, energy = zip(*sorted(zip(tot_eigen_values, tot_eigen_modes, energies), key=lambda x: x[2], reverse=True))
-        eigen_values = np.array(val[:nmodes])
-        eigen_modes = np.array(mode[:nmodes]).T
-
+        val, mode, energy = zip(*sorted(zip(self.tot_eigen_values, self.tot_eigen_modes, self.tot_energies), key=lambda x: x[2], reverse=True))
+        eigen_values, eigen_modes = filter_unique_eigenpairs(val, mode)
+        
+        eigen_values = np.array(eigen_values)
+        eigen_modes = np.array(eigen_modes).T
+        
         return eigen_values, eigen_modes
     
 class SmartARPACK(EigSolver):
@@ -1379,7 +1428,7 @@ class SolveRoutine:
             if isinstance(solver, EigSolver):
                 return solver
         
-        if direct or A.shape[0] < 1000:
+        if direct or A.shape[0] < 500:
             return self.solvers[EMSolver.LAPACK]  # type: ignore
         else:
             return self.solvers[EMSolver.SMART_ARPACK_BMA]  # type: ignore
