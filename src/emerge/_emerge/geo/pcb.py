@@ -643,7 +643,12 @@ class StripPath:
         Returns:
             StripPath: The current StripPath object
         """
-        return self.bck.turn(angle, corner_type=corner_type, dsratio=dsratio).skip
+        w = self.end.width
+        dist = abs(w * np.tan(angle*np.pi/360))
+        self.end._back(dist)
+        obj = self.turn(angle, corner_type=corner_type, dsratio=dsratio)
+        obj._consume = dist
+        return obj
     
     def curve(self, angle: float, radius: float,
              width: float | None = None,
