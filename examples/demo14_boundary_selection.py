@@ -1,5 +1,4 @@
 import emerge as em
-import numpy as np
 from emerge.plot import plot_ff_polar, plot_sp
 
 """
@@ -37,7 +36,7 @@ wgb = 10.16*mm
 L = 50*mm
 
 model = em.Simulation('BoundarySelectionDemo')
-model.check_version("2.4.1") # Checks version compatibility.
+model.check_version("2.4.2") # Checks version compatibility.
 
 # first lets define a WR90 waveguide
 wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))

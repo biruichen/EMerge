@@ -1371,16 +1371,18 @@ class Microwave3D:
                 logger.debug(f'Ignoring mode due to low k0: {eig_k0} < {k0_limit}')
                 continue
             eig_freq = eig_k0*299792458/(2*np.pi)
-
-            logger.debug(f'Found k0={eig_k0:.2f}, f0={eig_freq/1e9:.2f} GHz')
+            Q = 0.5*eig_freq.real/eig_freq.imag
+            logger.debug(f'Found k0={eig_k0:.2f}, f0={eig_freq/1e9:.2f} GHz (Q = {Q:.1f})')
             Emode = eigen_modes[:,i]
 
             scalardata = self.data.scalar.new(**self._params)
             scalardata.k0 = eig_k0
+            scalardata.Q = Q
             scalardata.freq = eig_freq
 
             fielddata = self.data.field.new(**self._params)
             fielddata.freq = eig_freq
+            fielddata.Q = Q
             fielddata._der = np.squeeze(er[0,0,:])
             fielddata._dur = np.squeeze(ur[0,0,:])
             fielddata._dsig = np.squeeze(cond[0,0,:])
@@ -1524,7 +1526,7 @@ class Microwave3D:
                     
                     
 
-        if not_conserved and conserve_margin > 0.001:
+        if not_conserved and conserve_margin > 0.01:
             DEBUG_COLLECTOR.add_report(f'S-parameters with an amplitude greater than 1.0 detected. ({20*np.log10(conserve_margin):.2f}dB error. This could be due to a ModalPort with the wrong mode type.\n' +
                                        'Specify the type of mode (TE/TM/TEM) in the constructor using ModalPort(..., modetype=\'TE\') for example.')
         # if not_conserved and conserve_margin < 0.001:
