@@ -32,7 +32,7 @@ from ...const import MU0
 from ...coord import Line
 from emsutil.emdata import EHField, EHFieldFF, DataStructure
 from ...file import Saveable
-from .bcs import background_field as bf
+from . import background_field as bf
 
 EMField = Literal[
     "er",
