@@ -27,8 +27,23 @@ from ..volakis import (
     _nf2,
     _nf1_curl,
     _nf2_curl,
+    _ne1_tri,
+    _ne2_tri,
+    _ne1_curl_tri,
+    _ne2_curl_tri,
+    _nf1_tri,
+    _nf2_tri,
+    _nf1_curl_tri,
+    _nf2_curl_tri,
 )
-
+from ..legrange import (
+    _ne_tri,
+    _nv_tri,
+    _ne_grad_tri,
+    _nv_grad_tri,
+    _ne_curl_tri,
+    _nv_curl_tri,
+)
 
 import numpy as np
 from ...mth.optimized import compute_distances
@@ -183,14 +198,11 @@ def tri_coefficients(vxs, vys):
     c2 = x1 - x3
     c3 = x2 - x1
 
-    # A = 0.5*(b1*c2 - b2*c1)
-    sA = 0.5 * ((x1 - x3) * (y2 - y1) - (x1 - x2) * (y3 - y1))
-    sign = np.sign(sA)
-    A = np.abs(sA)
-    As = np.array([a1, a2, a3]) * sign
-    Bs = np.array([b1, b2, b3]) * sign
-    Cs = np.array([c1, c2, c3]) * sign
-    return As, Bs, Cs, A
+    sA = 0.5 * (b1 * c2 - b2 * c1)
+    As = np.array([a1, a2, a3]) / (2 * sA)
+    Bs = np.array([b1, b2, b3]) / (2 * sA)
+    Cs = np.array([c1, c2, c3]) / (2 * sA)
+    return As, Bs, Cs, np.abs(sA)
 
 
 @njit(i8[:, :](i8[:], i8[:, :]), cache=True, nogil=True)
@@ -767,8 +779,6 @@ def ned2_tri_interp(
 
     nodes = nodes[:2, :]
 
-    l_edge_ids = np.array([[0, 1, 0], [1, 2, 2]])
-
     for itri in range(tris.shape[1]):
         iv1, iv2, iv3 = tris[:, itri]
 
@@ -792,7 +802,7 @@ def ned2_tri_interp(
         Etri = solutions[field_ids]
 
         inside = (
-            ((coords_local[0, :] + coords_local[1, :]) <= 1 + EPS)
+            ((coords_local[0, :] + coords_local[1, :]) <= 1.0 + EPS)
             & (coords_local[0, :] >= -EPS)
             & (coords_local[1, :] >= -EPS)
         )
@@ -800,94 +810,58 @@ def ned2_tri_interp(
         if inside.sum() == 0:
             continue
 
-        ######### INSIDE THE TETRAHEDRON #########
+        ######### INSIDE THE TRIANGLE #########
 
-        x = xs[inside == 1]
-        y = ys[inside == 1]
+        coords = coords[:2, inside == 1]
 
         xvs = nodes[0, tris[:, itri]]
         yvs = nodes[1, tris[:, itri]]
 
-        Ds = compute_distances(xvs, yvs, 0 * xvs)
-
-        L1 = Ds[0, 1]
-        L2 = Ds[1, 2]
-        L3 = Ds[0, 2]
-
-        mult = np.array([L1, L2, L3, L3, L1, L2, L3, L1])
-
         a_s, b_s, c_s, A = tri_coefficients(xvs, yvs)
 
-        Etri = Etri * mult
+        ivec = np.array([0, 1, 0, 0, 0, 1, 0, 0])
+        jvec = np.array([1, 2, 2, 1, 1, 2, 2, 1])
+        kvec = np.array([0, 0, 0, 2, 0, 0, 0, 2])
 
-        Em1s = Etri[:3]
-        Ef1s = Etri[3]
-        Em2s = Etri[4:7]
-        Ef2s = Etri[7]
+        coeff = np.empty((3, 3), dtype=np.float64)
+        coeff[0, :] = a_s
+        coeff[1, :] = b_s
+        coeff[2, :] = c_s
 
-        Exl = np.zeros(x.shape, dtype=np.complex128)
-        Eyl = np.zeros(x.shape, dtype=np.complex128)
+        ex = np.zeros((coords.shape[1],), dtype=np.complex128)
+        ey = np.zeros((coords.shape[1],), dtype=np.complex128)
+        ez = np.zeros((coords.shape[1],), dtype=np.complex128)
 
-        for ie in range(3):
-            Em1, Em2 = Em1s[ie], Em2s[ie]
-            edgeids = l_edge_ids[:, ie]
-            a1, a2 = a_s[edgeids]
-            b1, b2 = b_s[edgeids]
-            c1, c2 = c_s[edgeids]
+        for idof in range(8):
+            i = ivec[idof]
+            j = jvec[idof]
+            k = kvec[idof]
+            if idof < 3:
+                Evec = _ne1_tri(coeff, coords, i, j, k)
+            elif idof == 3:
+                Evec = _nf1_tri(coeff, coords, i, j, k)
+            elif idof < 7:
+                Evec = _ne2_tri(coeff, coords, i, j, k)
+            elif idof == 7:
+                Evec = _nf2_tri(coeff, coords, i, j, k)
 
-            ex = (
-                (Em1 * (a1 + b1 * x + c1 * y) + Em2 * (a2 + b2 * x + c2 * y))
-                * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                / (8 * A**3)
-            )
-            ey = (
-                (Em1 * (a1 + b1 * x + c1 * y) + Em2 * (a2 + b2 * x + c2 * y))
-                * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                / (8 * A**3)
-            )
+            ex += Etri[idof] * Evec[0, :]
+            ey += Etri[idof] * Evec[1, :]
+            ez += Etri[idof] * Evec[2, :]
 
-            Exl += ex
-            Eyl += ey
-
-        Em1, Em2 = Ef1s, Ef2s
-        triids = np.array([0, 1, 2])
-
-        a1, a2, a3 = a_s[triids]
-        b1, b2, b3 = b_s[triids]
-        c1, c2, c3 = c_s[triids]
-
-        ex = (
-            -Em1
-            * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-            * (a2 + b2 * x + c2 * y)
-            + Em2
-            * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-            * (a3 + b3 * x + c3 * y)
-        ) / (8 * A**3)
-        ey = (
-            -Em1
-            * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-            * (a2 + b2 * x + c2 * y)
-            + Em2
-            * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-            * (a3 + b3 * x + c3 * y)
-        ) / (8 * A**3)
-
-        Exl += ex
-        Eyl += ey
-
-        Ex[inside] = Exl
-        Ey[inside] = Eyl
+        Ex[inside == 1] = ex
+        Ey[inside == 1] = ey
+        Ez[inside == 1] = ez
     return Ex, Ey, Ez
 
 
-@njit(
-    types.Tuple((c16[:], c16[:], c16[:]))(
-        f8[:, :], c16[:], i8[:, :], f8[:, :], i8[:, :]
-    ),
-    cache=True,
-    nogil=True,
-)
+# @njit(
+#     types.Tuple((c16[:], c16[:], c16[:]))(
+#         f8[:, :], c16[:], i8[:, :], f8[:, :], i8[:, :]
+#     ),
+#     cache=True,
+#     nogil=True,
+# )
 def ned2_tri_interp_full(
     coords: np.ndarray,
     solutions: np.ndarray,
@@ -899,8 +873,6 @@ def ned2_tri_interp_full(
     ### THIS IS VERIFIED TO WORK
     # Solution has shape (nEdges, nsols)
     nNodes = coords.shape[1]
-    xs = coords[0, :]
-    ys = coords[1, :]
 
     Ex = np.full((nNodes,), np.nan, dtype=np.complex128)
     Ey = np.full((nNodes,), np.nan, dtype=np.complex128)
@@ -941,105 +913,173 @@ def ned2_tri_interp_full(
 
         ######### INSIDE THE TRIANGLE #########
 
-        x = xs[inside == 1]
-        y = ys[inside == 1]
+        coords_inside = coords[:2, inside == 1]
 
         xvs = nodes[0, tris[:, itri]]
         yvs = nodes[1, tris[:, itri]]
 
         a_s, b_s, c_s, A = tri_coefficients(xvs, yvs)
-        e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14 = Etri
 
-        a1, a2, a3 = a_s
-        b1, b2, b3 = b_s
-        c1, c2, c3 = c_s
+        ivec = np.array([0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 1, 0])
+        jvec = np.array([1, 2, 2, 1, 1, 2, 2, 1, 0, 0, 0, 1, 2, 2])
+        kvec = np.array([0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0])
 
-        # New Nedelec-1 order 2 formulation
-        ex = (
-            -2
-            * A
-            * (
-                e1 * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                + e2 * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                + e3 * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-            )
-            - e4
-            * (
-                (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                * (a2 + b2 * x + c2 * y)
-                + (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                * (a1 + b1 * x + c1 * y)
-            )
-            - e5
-            * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-            * (a1 - a2 + b1 * x - b2 * x + c1 * y - c2 * y)
-            - e6
-            * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-            * (a2 - a3 + b2 * x - b3 * x + c2 * y - c3 * y)
-            - e7
-            * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-            * (a1 - a3 + b1 * x - b3 * x + c1 * y - c3 * y)
-            + e8
-            * (
-                (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                * (a3 + b3 * x + c3 * y)
-                + (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                * (a2 + b2 * x + c2 * y)
-            )
-        ) / (8 * A**3)
-        ey = (
-            -2
-            * A
-            * (
-                e1 * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                + e2 * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                + e3 * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-            )
-            - e4
-            * (
-                (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                * (a2 + b2 * x + c2 * y)
-                + (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                * (a1 + b1 * x + c1 * y)
-            )
-            - e5
-            * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-            * (a1 - a2 + b1 * x - b2 * x + c1 * y - c2 * y)
-            - e6
-            * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-            * (a2 - a3 + b2 * x - b3 * x + c2 * y - c3 * y)
-            - e7
-            * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-            * (a1 - a3 + b1 * x - b3 * x + c1 * y - c3 * y)
-            + e8
-            * (
-                (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                * (a3 + b3 * x + c3 * y)
-                + (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                * (a2 + b2 * x + c2 * y)
-            )
-        ) / (8 * A**3)
-        ez = (
-            -e10 * (a2 + b2 * x + c2 * y) * (A - a2 - b2 * x - c2 * y) / 2
-            - e11 * (a3 + b3 * x + c3 * y) * (A - a3 - b3 * x - c3 * y) / 2
-            + e12 * (a1 + b1 * x + c1 * y) * (a2 + b2 * x + c2 * y)
-            + e13 * (a2 + b2 * x + c2 * y) * (a3 + b3 * x + c3 * y)
-            + e14 * (a1 + b1 * x + c1 * y) * (a3 + b3 * x + c3 * y)
-            - e9 * (a1 + b1 * x + c1 * y) * (A - a1 - b1 * x - c1 * y) / 2
-        ) / A**2
-        Ex[inside] = ex
-        Ey[inside] = ey
-        Ez[inside] = ez
+        coeff = np.empty((3, 3), dtype=np.float64)
+        coeff[0, :] = a_s
+        coeff[1, :] = b_s
+        coeff[2, :] = c_s
+
+        ex = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+        ey = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+        ez = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+
+        for idof in range(14):
+            i = ivec[idof]
+            j = jvec[idof]
+            k = kvec[idof]
+            if idof < 3:
+                Evec = _ne1_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * Evec[0, :]
+                ey += Etri[idof] * Evec[1, :]
+                continue
+            elif idof == 3:
+                Evec = _nf1_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * Evec[0, :]
+                ey += Etri[idof] * Evec[1, :]
+                continue
+            elif idof < 7:
+                Evec = _ne2_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * Evec[0, :]
+                ey += Etri[idof] * Evec[1, :]
+                continue
+            elif idof == 7:
+                Evec = _nf2_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * Evec[0, :]
+                ey += Etri[idof] * Evec[1, :]
+                continue
+            elif idof < 11:
+                ezc = _nv_tri(coeff, coords_inside, i, j, k)
+                ez += Etri[idof] * ezc
+                continue
+            else:
+                ezc = _ne_tri(coeff, coords_inside, i, j, k)
+                ez += Etri[idof] * ezc
+                continue
+
+        Ex[inside == 1] = ex
+        Ey[inside == 1] = ey
+        Ez[inside == 1] = ez
+
     return Ex, Ey, Ez
 
 
 @njit(
-    types.Tuple((c16[:], c16[:], c16[:]))(
-        f8[:, :], c16[:], i8[:, :], f8[:, :], i8[:, :], c16[:, :, :], c16
-    ),
+    types.Tuple((c16[:], c16[:]))(f8[:, :], c16[:], i8[:, :], f8[:, :], i8[:, :]),
     cache=True,
     nogil=True,
 )
+def ned2_tri_interp_grad(
+    coords: np.ndarray,
+    solutions: np.ndarray,
+    tris: np.ndarray,
+    nodes: np.ndarray,
+    tri_to_field: np.ndarray,
+):
+    """
+    Computes the spatial gradient of the out-of-plane Ez component
+    of a mixed Nedelec-2 / Lagrange-2 basis on triangles.
+
+    Ez is represented by Lagrange-2 basis functions:
+      - 3 vertex DoFs  (LV_1, LV_2, LV_3)  -> tri_to_field[8:11, :]
+      - 3 edge DoFs    (LE_1, LE_2, LE_3)   -> tri_to_field[11:14, :]
+
+    Vertex basis gradient : _lv_grad(coeff_i,   coords)  -> (2, npts)
+    Edge   basis gradient : _le_grad(coeff_ij,  coords)  -> (2, npts)
+      where coeff_ij = [[a_i,a_j],[b_i,b_j],[c_i,c_j]]
+
+    Returns
+    -------
+    dEz_dx : (nNodes,) complex128
+    dEz_dy : (nNodes,) complex128
+    """
+    nNodes = coords.shape[1]
+
+    dEz_dx = np.full((nNodes,), np.nan, dtype=np.complex128)
+    dEz_dy = np.full((nNodes,), np.nan, dtype=np.complex128)
+
+    nodes = nodes[:2, :]
+
+    l_edge_ids = np.array([[0, 1, 0], [1, 2, 2]])
+
+    for itri in range(tris.shape[1]):
+        iv1, iv2, iv3 = tris[:, itri]
+
+        v1 = nodes[:, iv1]
+        v2 = nodes[:, iv2]
+        v3 = nodes[:, iv3]
+
+        # ---- inside test (same as ned2_tri_interp) -------------------------
+        bv1 = v2 - v1
+        bv2 = v3 - v1
+        blocal = np.zeros((2, 2))
+        blocal[:, 0] = bv1
+        blocal[:, 1] = bv2
+        basis = np.linalg.pinv(blocal)
+
+        coords_offset = coords - v1[:, np.newaxis]
+        coords_local = basis @ coords_offset
+
+        inside = (
+            ((coords_local[0, :] + coords_local[1, :]) <= 1 + EPS)
+            & (coords_local[0, :] >= -EPS)
+            & (coords_local[1, :] >= -EPS)
+        )
+
+        if inside.sum() == 0:
+            continue
+
+        xvs = nodes[0, tris[:, itri]]
+        yvs = nodes[1, tris[:, itri]]
+
+        a_s, b_s, c_s, A = tri_coefficients(xvs, yvs)
+        coeff = np.empty((3, 3), dtype=np.float64)
+        coeff[0, :] = a_s
+        coeff[1, :] = b_s
+        coeff[2, :] = c_s
+
+        field_ids = tri_to_field[:, itri]
+
+        lv_dofs = solutions[field_ids[8:11]]
+        le_dofs = solutions[field_ids[11:14]]
+        pts_inside = coords[:, inside]
+
+        grad_x = np.zeros(pts_inside.shape[1], dtype=np.complex128)
+        grad_y = np.zeros(pts_inside.shape[1], dtype=np.complex128)
+
+        for iv in range(3):
+            g = _nv_grad_tri(coeff, pts_inside, iv, 0, 0)
+            grad_x += lv_dofs[iv] * g[0, :]
+            grad_y += lv_dofs[iv] * g[1, :]
+
+        for ie in range(3):
+            i, j = l_edge_ids[:, ie]
+            g = _ne_grad_tri(coeff, pts_inside, i, j, 0)
+            grad_x += le_dofs[ie] * g[0, :]
+            grad_y += le_dofs[ie] * g[1, :]
+
+        dEz_dx[inside] = grad_x
+        dEz_dy[inside] = grad_y
+
+    return dEz_dx, dEz_dy
+
+
+# @njit(
+#     types.Tuple((c16[:], c16[:], c16[:]))(
+#         f8[:, :], c16[:], i8[:, :], f8[:, :], i8[:, :], c16[:, :, :], c16
+#     ),
+#     cache=True,
+#     nogil=True,
+# )
 def ned2_tri_interp_curl(
     coords: np.ndarray,
     solutions: np.ndarray,
@@ -1047,24 +1087,21 @@ def ned2_tri_interp_curl(
     nodes: np.ndarray,
     tri_to_field: np.ndarray,
     diadic: np.ndarray,
-    beta: float,
+    beta: complex,
 ):
     """Nedelec 2 tetrahedral interpolation"""
     ### THIS IS VERIFIED TO WORK
     # Solution has shape (nEdges, nsols)
     nNodes = coords.shape[1]
-    xs = coords[0, :]
-    ys = coords[1, :]
-    jB = 1j * beta
+
     Ex = np.full((nNodes,), np.nan, dtype=np.complex128)
     Ey = np.full((nNodes,), np.nan, dtype=np.complex128)
     Ez = np.full((nNodes,), np.nan, dtype=np.complex128)
 
     nodes = nodes[:2, :]
-
+    jB = 1j * beta
+    
     for itri in range(tris.shape[1]):
-        dc = diadic[:, :, itri]
-
         iv1, iv2, iv3 = tris[:, itri]
 
         v1 = nodes[:, iv1]
@@ -1082,10 +1119,6 @@ def ned2_tri_interp_curl(
         coords_offset = coords - v1[:, np.newaxis]
         coords_local = basis @ (coords_offset)
 
-        field_ids = tri_to_field[:, itri]
-
-        Etri = solutions[field_ids]
-
         inside = (
             ((coords_local[0, :] + coords_local[1, :]) <= 1.0 + EPS)
             & (coords_local[0, :] >= -EPS)
@@ -1094,196 +1127,82 @@ def ned2_tri_interp_curl(
 
         if inside.sum() == 0:
             continue
+        
+        
+        ######### INSIDE THE TRIANGLE #########
+        
+        field_ids = tri_to_field[:, itri]
 
-        ######### INSIDE THE TETRAHEDRON #########
+        Etri = solutions[field_ids]
+        
+        dc = diadic[:, :, itri]
 
-        x = xs[inside == 1]
-        y = ys[inside == 1]
+        coords_inside = coords[:2, inside == 1]
 
         xvs = nodes[0, tris[:, itri]]
         yvs = nodes[1, tris[:, itri]]
 
         a_s, b_s, c_s, A = tri_coefficients(xvs, yvs)
-        e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14 = Etri
 
-        a1, a2, a3 = a_s
-        b1, b2, b3 = b_s
-        c1, c2, c3 = c_s
+        ivec = np.array([0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 1, 0])
+        jvec = np.array([1, 2, 2, 1, 1, 2, 2, 1, 0, 0, 0, 1, 2, 2])
+        kvec = np.array([0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0])
 
-        # New Nedelec-1 order 2 formulation
-        hx = (
-            4
-            * A
-            * (
-                2 * c1 * e12 * (a2 + b2 * x + c2 * y)
-                + 2 * c1 * e14 * (a3 + b3 * x + c3 * y)
-                + c1 * e9 * (a1 + b1 * x + c1 * y)
-                - c1 * e9 * (A - a1 - b1 * x - c1 * y)
-                + c2 * e10 * (a2 + b2 * x + c2 * y)
-                - c2 * e10 * (A - a2 - b2 * x - c2 * y)
-                + 2 * c2 * e12 * (a1 + b1 * x + c1 * y)
-                + 2 * c2 * e13 * (a3 + b3 * x + c3 * y)
-                + c3 * e11 * (a3 + b3 * x + c3 * y)
-                - c3 * e11 * (A - a3 - b3 * x - c3 * y)
-                + 2 * c3 * e13 * (a2 + b2 * x + c2 * y)
-                + 2 * c3 * e14 * (a1 + b1 * x + c1 * y)
-            )
-            + jB
-            * (
-                2
-                * A
-                * (
-                    e1 * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                    + e2 * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                    + e3 * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                )
-                + e4
-                * (
-                    (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                    * (a2 + b2 * x + c2 * y)
-                    + (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                    * (a1 + b1 * x + c1 * y)
-                )
-                + e5
-                * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                * (a1 - a2 + b1 * x - b2 * x + c1 * y - c2 * y)
-                + e6
-                * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                * (a2 - a3 + b2 * x - b3 * x + c2 * y - c3 * y)
-                + e7
-                * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                * (a1 - a3 + b1 * x - b3 * x + c1 * y - c3 * y)
-                - e8
-                * (
-                    (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                    * (a3 + b3 * x + c3 * y)
-                    + (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                    * (a2 + b2 * x + c2 * y)
-                )
-            )
-        ) / (8 * A**3)
-        hy = (
-            4
-            * A
-            * (
-                -2 * b1 * e12 * (a2 + b2 * x + c2 * y)
-                - 2 * b1 * e14 * (a3 + b3 * x + c3 * y)
-                - b1 * e9 * (a1 + b1 * x + c1 * y)
-                + b1 * e9 * (A - a1 - b1 * x - c1 * y)
-                - b2 * e10 * (a2 + b2 * x + c2 * y)
-                + b2 * e10 * (A - a2 - b2 * x - c2 * y)
-                - 2 * b2 * e12 * (a1 + b1 * x + c1 * y)
-                - 2 * b2 * e13 * (a3 + b3 * x + c3 * y)
-                - b3 * e11 * (a3 + b3 * x + c3 * y)
-                + b3 * e11 * (A - a3 - b3 * x - c3 * y)
-                - 2 * b3 * e13 * (a2 + b2 * x + c2 * y)
-                - 2 * b3 * e14 * (a1 + b1 * x + c1 * y)
-            )
-            - jB
-            * (
-                2
-                * A
-                * (
-                    e1 * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                    + e2 * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                    + e3 * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                )
-                + e4
-                * (
-                    (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                    * (a2 + b2 * x + c2 * y)
-                    + (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                    * (a1 + b1 * x + c1 * y)
-                )
-                + e5
-                * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                * (a1 - a2 + b1 * x - b2 * x + c1 * y - c2 * y)
-                + e6
-                * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                * (a2 - a3 + b2 * x - b3 * x + c2 * y - c3 * y)
-                + e7
-                * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                * (a1 - a3 + b1 * x - b3 * x + c1 * y - c3 * y)
-                - e8
-                * (
-                    (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                    * (a3 + b3 * x + c3 * y)
-                    + (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                    * (a2 + b2 * x + c2 * y)
-                )
-            )
-        ) / (8 * A**3)
-        hz = (
-            4
-            * A
-            * (
-                e1 * (b1 * c2 - b2 * c1)
-                + e2 * (b2 * c3 - b3 * c2)
-                + e3 * (b1 * c3 - b3 * c1)
-            )
-            - e4
-            * (
-                b1 * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-                + b2 * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                - (b1 * c3 - b3 * c1) * (a2 + b2 * x + c2 * y)
-                - (b2 * c3 - b3 * c2) * (a1 + b1 * x + c1 * y)
-            )
-            + e4
-            * (
-                c1 * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-                + c2 * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                + (b1 * c3 - b3 * c1) * (a2 + b2 * x + c2 * y)
-                + (b2 * c3 - b3 * c2) * (a1 + b1 * x + c1 * y)
-            )
-            - e5
-            * (b1 - b2)
-            * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-            + e5
-            * (c1 - c2)
-            * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-            + 2
-            * e5
-            * (b1 * c2 - b2 * c1)
-            * (a1 - a2 + b1 * x - b2 * x + c1 * y - c2 * y)
-            - e6
-            * (b2 - b3)
-            * (c2 * (a3 + b3 * x + c3 * y) - c3 * (a2 + b2 * x + c2 * y))
-            + e6
-            * (c2 - c3)
-            * (b2 * (a3 + b3 * x + c3 * y) - b3 * (a2 + b2 * x + c2 * y))
-            + 2
-            * e6
-            * (b2 * c3 - b3 * c2)
-            * (a2 - a3 + b2 * x - b3 * x + c2 * y - c3 * y)
-            - e7
-            * (b1 - b3)
-            * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-            + e7
-            * (c1 - c3)
-            * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-            + 2
-            * e7
-            * (b1 * c3 - b3 * c1)
-            * (a1 - a3 + b1 * x - b3 * x + c1 * y - c3 * y)
-            + e8
-            * (
-                b2 * (c1 * (a3 + b3 * x + c3 * y) - c3 * (a1 + b1 * x + c1 * y))
-                + b3 * (c1 * (a2 + b2 * x + c2 * y) - c2 * (a1 + b1 * x + c1 * y))
-                - (b1 * c2 - b2 * c1) * (a3 + b3 * x + c3 * y)
-                - (b1 * c3 - b3 * c1) * (a2 + b2 * x + c2 * y)
-            )
-            - e8
-            * (
-                c2 * (b1 * (a3 + b3 * x + c3 * y) - b3 * (a1 + b1 * x + c1 * y))
-                + c3 * (b1 * (a2 + b2 * x + c2 * y) - b2 * (a1 + b1 * x + c1 * y))
-                + (b1 * c2 - b2 * c1) * (a3 + b3 * x + c3 * y)
-                + (b1 * c3 - b3 * c1) * (a2 + b2 * x + c2 * y)
-            )
-        ) / (8 * A**3)
+        coeff = np.empty((3, 3), dtype=np.float64)
+        coeff[0, :] = a_s
+        coeff[1, :] = b_s
+        coeff[2, :] = c_s
 
-        Ex[inside] = hx * dc[0, 0]
-        Ey[inside] = hy * dc[1, 1]
-        Ez[inside] = hz * dc[2, 2]
+        ex = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+        ey = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+        ez = np.zeros((coords_inside.shape[1],), dtype=np.complex128)
+        
+        for idof in range(14):
+            i = ivec[idof]
+            j = jvec[idof]
+            k = kvec[idof]
+            if idof < 3:
+                ezc = _ne1_curl_tri(coeff, coords_inside, i, j, k)
+                Evec = _ne1_tri(coeff, coords_inside, i, j, k)
+                ex += - jB * Etri[idof] * Evec[1,:]
+                ey += jB * Etri[idof] * Evec[0,:]
+                ez += Etri[idof] * ezc
+                continue
+            elif idof == 3:
+                ezc = _nf1_curl_tri(coeff, coords_inside, 0,1,2)
+                Evec = _nf1_tri(coeff, coords_inside, 0,1,2)
+                ex += - jB * Etri[idof] * Evec[1,:]
+                ey += jB * Etri[idof] * Evec[0,:]
+                ez += Etri[idof] * ezc
+                continue
+            elif idof < 7:
+                ezc = _ne2_curl_tri(coeff, coords_inside, i, j, k)
+                Evec = _ne2_tri(coeff, coords_inside, i, j, k)
+                ex += - jB * Etri[idof] * Evec[1,:]
+                ey += jB * Etri[idof] * Evec[0,:]
+                ez += Etri[idof] * ezc
+                continue
+            elif idof == 7:
+                ezc = _nf2_curl_tri(coeff, coords_inside, 0,1,2)
+                Evec = _nf2_tri(coeff, coords_inside, 0,1,2)
+                ex += - jB * Etri[idof] * Evec[1,:]
+                ey += jB * Etri[idof] * Evec[0,:]
+                ez += Etri[idof] * ezc
+                continue
+            elif idof < 11:
+                Evec = _nv_grad_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * (Evec[1, :] )
+                ey += -Etri[idof] * (Evec[0, :] )
+                continue
+            elif idof < 14:
+                Evec = _ne_grad_tri(coeff, coords_inside, i, j, k)
+                ex += Etri[idof] * (Evec[1, :] )
+                ey += -Etri[idof] * (Evec[0, :] )
+                continue
+
+        Ex[inside==1] = ex * dc[0, 0]
+        Ey[inside==1] = ey * dc[1, 1]
+        Ez[inside==1] = ez * dc[2, 2]
     return Ex, Ey, Ez
 
 
