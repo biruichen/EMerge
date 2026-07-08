@@ -786,10 +786,10 @@ class LumpedPort(PortBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*k0*376.7303/self.surfZ
+        return 1j*k0*376.730313412/self.surfZ
     
     def get_Uinc(self, x_local, y_local, k0) -> np.ndarray:
-        Emag = -1j*2*k0 * self.voltage/self.height * (376.7303/self.surfZ)
+        Emag = -1j*2*k0 * self.voltage/self.height * (376.730313412/self.surfZ)
         return Emag*self.port_mode_3d(x_local, y_local, k0)
     
     def port_mode_3d(self, 
@@ -915,4 +915,4 @@ class LumpedElement(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*k0*376.7303/self.surfZ(k0)
+        return 1j*k0*376.730313412/self.surfZ(k0)

@@ -135,7 +135,7 @@ plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 # We can also supersample our data by constructing a model using the Vector Fitting algorithm
 
-f = np.linspace(0.2e9, 10e9, 2001)
+f = np.linspace(0.2e9, 8e9, 2001)
 S11 = gritted_data.model_S(1,1,f)
 S21 = gritted_data.model_S(2,1,f)
 
@@ -145,5 +145,5 @@ plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
 m.display.add_object(pcb, opacity=0.1)
 m.display.add_object(polies, opacity=0.5)
-m.display.add_surf(*sol.field.find(freq=1e9).cutplane(1*mm, z=-0.75*th*mil).scalar('Ez','real'))
+m.display.add_surf(*sol.field[0].cutplane(1*mm, z=-0.75*th*mil).scalar('Ez','real'))
 m.display.show()

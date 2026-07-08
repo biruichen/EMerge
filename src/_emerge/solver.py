@@ -351,13 +351,13 @@ class SolverSuperLU(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         self._perm_c = None
-        self.options: dict[str, str] = dict(SymmetricMode=True)
+        self.options: dict[str, str] = dict(SymmetricMode=True, Equil=False, IterRefine='SINGLE')
         self.lu = None
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling SuperLU Solver, ID={id}')
         self.single = True
         if not reuse_factorization:
-            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
+            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', relax=2, diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
         return x, 0
 
@@ -432,7 +432,7 @@ class SolverLAPACK(Solver):
         vecs : (n, m) complex ndarray eigenvectors, B-orthonormal  (xiᴴ B xj = δij)
         """
         logger.debug('Calling LAPACK eig solver')
-        lam, vecs = eig(A.toarray(), B.toarray(), right=True, left=False)
+        lam, vecs = eig(A.toarray(), B.toarray(), overwrite_a=True, overwrite_b=True, check_finite=False)
         lam, vecs = filter_real_modes(lam, vecs, target_k0, 2, 2)
         return lam, vecs
     

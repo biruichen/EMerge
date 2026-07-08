@@ -36,7 +36,7 @@ f2 = 1.6e9              # stop frequency
 
 # --- Create simulation object -------------------------------------------
 # Using PVDisplay backend for 3D visualization
-model = em.Simulation3D('MyPatchAntenna', PVDisplay, loglevel='DEBUG')
+model = em.Simulation3D('MyPatchAntenna', loglevel='DEBUG')
 
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)

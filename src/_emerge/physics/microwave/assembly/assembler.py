@@ -133,9 +133,6 @@ class Assembler:
         ermesh = ermesh - 1j * sigmesh/(k0*C0*EPS0)
 
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)
-        
-
-       
 
         pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
         if len(pecs) > 0:
@@ -156,7 +153,6 @@ class Assembler:
 
             tri_ids = mesh.get_triangles(face_tags)
             edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
-            
             for ii in edge_ids:
                 i2 = nedlegfield.mesh.from_source_edge(ii)
                 if i2 is None:
@@ -166,7 +162,7 @@ class Assembler:
                 pec_edges.append(eids[0])
                 pec_vertices.append(eids[3]-nedlegfield.n_xy)
                 pec_vertices.append(eids[4]-nedlegfield.n_xy)
-                
+            
 
             for ii in tri_ids:
                 i2 = nedlegfield.mesh.from_source_tri(ii)
@@ -182,8 +178,6 @@ class Assembler:
         pec_ids = set(pec_ids)
         solve_ids = [i for i in range(nedlegfield.n_field) if i not in pec_ids]
 
-        #matplot(E, solve_ids)
-        #matplot(B, solve_ids)
         return E, B, np.array(solve_ids), nedlegfield
 
     def assemble_freq_matrix(self, field: Nedelec2, 

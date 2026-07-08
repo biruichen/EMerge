@@ -73,7 +73,7 @@ air2 = em.geo.subtract(air, horn_out)
 
 # --- Solver parameters --------------------------------------------------
 m.mw.set_frequency_range(90e9, 110e9, 11)  # 90–110 GHz sweep
-m.mw.set_resolution(0.3)                # mesh resolution fraction
+m.mw.set_resolution(0.27)                # mesh resolution fraction
 
 # --- Assemble geometry and mesh -----------------------------------------
 m.generate_mesh()
@@ -87,7 +87,7 @@ abs = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
 # --- Run frequency-domain solver ----------------------------------------
-data = m.mw.frequency_domain(True, 2, frequency_groups=4)
+data = m.mw.frequency_domain(True, 4, frequency_groups=4)
 
 # --- Plot return loss ---------------------------------------------------
 scal = data.scalar.grid
