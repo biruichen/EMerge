@@ -132,7 +132,7 @@ class Assembler:
         Returns:
             tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]: The E, B, solve ids and Mixed order field object.
         """
-        from .generalized_eigen import generelized_eigenvalue_matrix
+        from .generalized_eigen_hb import generelized_eigenvalue_matrix
         logger.debug('Assembling Boundary Mode Matrices')
 
         bcs = bc_set.boundary_conditions
@@ -167,8 +167,6 @@ class Assembler:
                 pec_ids.extend(list(nedlegfield.tri_to_field[:,it]))
 
         # Process all PEC Boundary Conditions
-        pec_edges = []
-        pec_vertices = []
         for pec in pecs:
             logger.trace(f'.implementing {pec}')
             face_tags = pec.tags
@@ -180,16 +178,6 @@ class Assembler:
                     continue
                 eids = nedlegfield.edge_to_field[:, i2]
                 pec_ids.extend(list(eids))
-                pec_edges.append(eids[0])
-                pec_vertices.append(eids[3]-nedlegfield.n_xy)
-                pec_vertices.append(eids[4]-nedlegfield.n_xy)
-            
-            for ii in tri_ids:
-                i2 = nedlegfield.mesh.from_source_tri(ii)
-                if i2 is None:
-                    continue
-                tids = nedlegfield.tri_to_field[:, i2]
-                pec_ids.extend(list(tids))
 
         # Process all port boundary Conditions
         pec_ids_set: set[int] = set(pec_ids)

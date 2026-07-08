@@ -509,6 +509,7 @@ class Microwave3D:
             if TEM:
                 target_kz = ermean*urmean*1.1*k0
             else:
+                
                 target_kz = ermean*urmean*0.7*k0
 
     
@@ -530,7 +531,8 @@ class Microwave3D:
             Emode[solve_ids] = np.squeeze(eigenmode)
             Emode = Emode * np.exp(-1j*np.angle(np.max(Emode)))
 
-            beta = min(k0*np.sqrt(ermax*urmax), np.emath.sqrt(-eigen_values[i]))
+            beta_base = np.emath.sqrt(-eigen_values[i])
+            beta = min(k0*np.sqrt(ermax*urmax), beta_base)
 
             residuals = -1
 
