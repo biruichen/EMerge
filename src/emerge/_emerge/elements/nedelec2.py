@@ -74,8 +74,9 @@ class Nedelec2(FEMBasis, Saveable):
         if tetids is None:
             tetids = self._all_tet_ids
         vals = ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
-        if not usenan:
-            logger.debug(f'Converted {np.isnan(vals).sum()} to zeros.')
+        n_zeros = np.isnan(vals).sum()
+        if not usenan and n_zeros > 0:
+            logger.debug(f'Converted {n_zeros} to zeros.')
             vals = np.nan_to_num(vals)
             
         return vals
@@ -90,8 +91,9 @@ class Nedelec2(FEMBasis, Saveable):
             tetids = self._all_tet_ids
         
         vals = ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
-        if not usenan:
-            logger.debug(f'Converted {np.isnan(vals).sum()} to zeros.')
+        n_zeros = np.isnan(vals).sum()
+        if not usenan and n_zeros > 0:
+            logger.debug(f'Converted {n_zeros} to zeros.')
             vals = np.nan_to_num(vals)
         return vals
     
@@ -105,8 +107,9 @@ class Nedelec2(FEMBasis, Saveable):
             tetids = self._all_tet_ids
         from .index_interp import index_interp
         vals = index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
-        if not usenan:
-            logger.debug(f'Converted {(vals==-1).sum()} to zeros.')
+        n_zeros = np.isnan(vals).sum()
+        if not usenan and n_zeros > 0:
+            logger.debug(f'Converted {n_zeros} to zeros.')
             vals[vals==-1]==0
         return vals
     

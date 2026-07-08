@@ -34,7 +34,7 @@ f1 = 1.55e9             # start frequency
 f2 = 1.60e9             # stop frequency
 
 # --- Create simulation object -------------------------------------------
-model = em.Simulation('PatchAntenna', loglevel='DEBUG')
+model = em.Simulation('PatchAntenna')
 
 model.check_version("2.3.0") # Checks version compatibility.
 
@@ -140,8 +140,7 @@ plot_ff_polar(ff1.ang, [ff1.gain.norm, ff2.gain.norm], dB=True, dBfloor=-20)    
 
 # --- 3D radiation visualization -----------------------------------------
 # Add geometry to 3D display
-model.display.add_object(rpatch, opacity=0.2)
-model.display.add_object(dielectric)
+model.display.populate()
 # Compute full 3D far-field and display surface colored by |E|q
 field = data.field.find(freq=1.59e9)
 ff3d = field.farfield_3d(boundary_selection, origin=(0,0,0))

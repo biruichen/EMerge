@@ -6,6 +6,9 @@ from emerge.plot import plot_sp, plot_ff_polar, smith
 
 In this demo we will do a fairly simple optimization of a coax to waveguide transition.
 
+For the purpose of this demonstration, the mesh is intentionally kept very simple. The results as presented here during
+optimization and during the final simulation are not converged properly. However, fine meshes would add significant
+computational time which is not desired for the purpose of this demonstration.
 """
 
 # Value definitions
@@ -82,20 +85,19 @@ waveguide = em.geo.Box(wga, Ltot, wgb, (-wga/2, 0, -wgb))
 coax_out = em.geo.Cylinder(rout, Lcoax_outside, em.cs(origin=(0, offset, 0)), Nsections=14)
 coax_in = em.geo.Cylinder(rin, Lcoax_outside+Lin, em.cs(origin=(0, offset, -Lin)), Nsections=8).set_material(em.lib.PEC)
 
-#sim.view()
-
 sim.commit_geometry()
 sim.mw.set_frequency_range(8e9, 10e9, 21)
-sim.set_resolution(0.1)
+sim.set_resolution(0.2)
 
 sim.mw.bc.ModalPort(coax_out.face('+z'), 1, modetype='TEM')
 sim.mw.bc.RectangularWaveguide(waveguide.face('+y'), 2)
-#sim.mesher.set_boundary_size(coax_in.face('-z'), 0.3*mm, growth_rate=1.5)
 
+sim.mesher.set_domain_size(coax_out, 1*mm)
+sim.mesher.set_boundary_size(coax_in.face('-z'), 1*mm, growth_rate=1.5)
+    
 sim.generate_mesh()
 sim.view(plot_mesh=True)
-sim.adaptive_mesh_refinement(frequency=9e9, max_steps=15, min_refined_passes=2)
-sim.view(plot_mesh=True)
+
 data = sim.mw.run_sweep()
 
 grid = data.scalar.grid

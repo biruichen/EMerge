@@ -698,7 +698,8 @@ class ModalPort(PortBC, Saveable):
     def _check_mode_betas(self) -> None:
         """Performs a check if the port mode vectors are properly configured
         """
-        
+        if len(self.port_modes) <= 1:
+            return
         for k0, modes in self.available_modes.items():
             if len(modes)==1:
                 continue

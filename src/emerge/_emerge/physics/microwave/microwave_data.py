@@ -1103,6 +1103,7 @@ class MWScalarNdim(Saveable):
         self.Sp = Sout
         
         return self
+    
     @property
     def Smat(self) -> np.ndarray:
         """Returns the full S-matrix
@@ -1164,7 +1165,16 @@ class MWScalarNdim(Saveable):
             else:
                 freq = self._dense_frequencies
         
-        return SparamModel(self.freq, self.S(i,j), n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
+        shape = np.squeeze(self.S(i,j)).shape
+        if len(shape) > 1:
+            *dims, nf = self.S(i,j).shape
+            nf = len(freq)
+            Sarray = np.zeros(tuple(dims) + (nf,), dtype=np.complex128)
+            for ids in np.ndindex(*dims):
+                Sarray[ids,:] = SparamModel(np.squeeze(self.freq[(*ids,slice(None))]), np.squeeze(self.S(i,j)[(*ids,slice(None))]), n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
+            return Sarray
+        else:
+            return SparamModel(np.squeeze(self.freq), np.squeeze(self.S(i,j)), n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
 
     def model_Smat(self, frequencies: np.ndarray | None = None,
                         Npoles: int = 10,

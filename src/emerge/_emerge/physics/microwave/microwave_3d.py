@@ -731,6 +731,9 @@ class Microwave3D:
             # Thread-local storage for per-thread resources
             thread_local = threading.local()
 
+        ## Solveroutine configuration
+        self.solveroutine.symmetry_limit = self._settings.sim_symmetry_limit
+        
         ## DEFINE SOLVE FUNCTIONS
         def get_routine():
             if not hasattr(thread_local, "routine"):

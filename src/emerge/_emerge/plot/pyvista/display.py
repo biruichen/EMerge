@@ -229,7 +229,7 @@ class PVDisplay(EMergeDisplay):
                 labels.append(label_text)
             self._plot.add_point_labels(points, labels, shape_color=self.set.theme.label_color)
             
-    def add_objects(self, opacity: float = 1.0, *objects, **kwargs) -> None:
+    def add_objects(self, *objects, opacity: float = 1.0, **kwargs) -> None:
         """Add a series of objects provided as a list of arguments
         """
         for obj in objects:

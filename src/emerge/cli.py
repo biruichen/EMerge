@@ -27,8 +27,10 @@ def cmd_new(args: argparse.Namespace) -> None:
 def cmd_upgrade(args: argparse.Namespace) -> None:
     branch = args.branch or "main"
     url = f"git+{REPO_URL}@{branch}"
+    # ALLOWED PRINT
     print(f"Upgrading EMerge from branch '{branch}'...")
     _pip("install", "--upgrade", url)
+    # ALLOWED PRINT
     print("Upgrade complete.")
 
 
@@ -50,6 +52,7 @@ def cmd_install_solver(args: argparse.Namespace) -> None:
         _install_extras(solver)
 
     else:
+        # ALLOWED PRINT
         print(f"Unknown solver '{solver}'. Available: {', '.join(SOLVERS)}")
         sys.exit(1)
 
@@ -62,22 +65,27 @@ def _install_umfpack(system: str) -> None:
     if system == "Windows":
         conda = shutil.which("conda")
         if conda is None:
+            # ALLOWED PRINT
             print(
                 "UMFPACK on Windows requires conda, but it was not found on PATH.\n"
                 "Please install Miniconda or Anaconda and try again, or run:\n\n"
                 "  conda install conda-forge::scikit-umfpack\n"
             )
             sys.exit(1)
+        # ALLOWED PRINT
         print("Installing scikit-umfpack via conda (conda-forge)...")
         _run([conda, "install", "--yes", "conda-forge::scikit-umfpack"])
     else:
+        # ALLOWED PRINT
         print("Installing scikit-umfpack via pip...")
         _pip("install", "scikit-umfpack")
+    # ALLOWED PRINT
     print("UMFPACK solver installed.")
 
 
 def _install_cudss(system: str) -> None:
     if system != "Windows":
+        # ALLOWED PRINT
         print(
             "Warning: cuDSS is primarily targeted at Windows + NVIDIA GPUs. "
             "Proceeding anyway..."
@@ -87,21 +95,26 @@ def _install_cudss(system: str) -> None:
         "nvmath-python[cu12]==0.5.0",
         "cupy-cuda12x",
     ]
+    # ALLOWED PRINT
     print("Installing cuDSS solver dependencies...")
     _pip("install", *packages)
+    # ALLOWED PRINT
     print("cuDSS solver installed.")
 
 
 def _install_aasds(system: str, machine: str) -> None:
     if system != "Darwin" or machine != "arm64":
+        # ALLOWED PRINT
         print(
             "The Apple Accelerate solver (emerge-aasds) is only supported on "
             "macOS with Apple Silicon (arm64).\n"
             f"Detected: {system} / {machine}"
         )
         sys.exit(1)
+    # ALLOWED PRINT
     print("Installing emerge-aasds (Apple Accelerate solver)...")
     _pip("install", "emerge-aasds")
+    # ALLOWED PRINT
     print("Apple Accelerate solver installed.")
 
 
@@ -111,8 +124,10 @@ def _install_extras(extra: str) -> None:
         "gerber": "pygerber",
     }
     package = package_map[extra]
+    # ALLOWED PRINT
     print(f"Installing {extra} dependency ({package})...")
     _pip("install", package)
+    # ALLOWED PRINT
     print(f"{extra} dependency installed.")
 
 
