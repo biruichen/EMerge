@@ -667,13 +667,51 @@ class MWField:
         return sum([self.excitation[mode.port_number]*self._fields[mode.port_number] for mode in self.port_modes]) # type: ignore
     
     def set_field_vector(self) -> None:
-        """Defines the default excitation coefficients for the current dataset"""
+        """Defines the default excitation coefficients for the current dataset as an excitation of only port 1."""
         self.excitation = {key: 0.0 for key in self._fields.keys()}
         self.excitation[self.port_modes[0].port_number] = 1.0 + 0j
 
-    def excite_port(self, number: int) -> None:
+    def excite_port(self, number: int, excitation: complex = 1.0 + 0.0j) -> None:
+        """Excite a single port provided by a given port number
+
+        Args:
+            number (int): The port number to excite
+            coefficient (complex): The port excitation. Defaults to 1.0 + 0.0j
+        """
         self.excitation = {key: 0.0 for key in self._fields.keys()}
-        self.excitation[self.port_modes[number].port_number] = 1.0 + 0j
+        self.excitation[self.port_modes[number-1].port_number] = excitation
+    
+    def set_excitations(self, *excitations: complex) -> None:
+        """Set bulk port excitations by an ordered array of excitation coefficients.
+
+        Returns:
+            *complex: A sequence of complex numbers
+        """
+        self.excitation = {key: 0.0 for key in self._fields.keys()}
+        for iport, coeff in enumerate(excitations):
+            self.excitation[self.port_modes[iport].port_number] = coeff
+    
+    def combine_ports(self, p1: int, p2: int) -> MWField:
+        """Combines ports p1 and p2 into a cifferential and common mode port respectively.
+        
+        The p1 index becomes the differential mode port
+        The p2 index becomes the common mode port
+
+        Args:
+            p1 (int): The first port number
+            p2 (int): The second port number
+
+        Returns:
+            MWField: _description_
+        """
+        
+        fp1 = self._fields[p1]
+        fp2 = self._fields[p2]
+        
+        self._fields[p1] = (fp1-fp2)/np.sqrt(2)
+        self._fields[p2] = (fp1+fp2)/np.sqrt(2)
+        
+        return self
         
     @property
     def EH(self) -> tuple[np.ndarray, np.ndarray]:
@@ -746,10 +784,10 @@ class MWField:
         
         return field
     
-    def _solution_quality(self) -> tuple[np.ndarray, np.ndarray]:
+    def _solution_quality(self, solve_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         from .adaptive_mesh import compute_error_estimate
         
-        error_tet, max_elem_size = compute_error_estimate(self)
+        error_tet, max_elem_size = compute_error_estimate(self, solve_ids)
         return error_tet, max_elem_size
         
     def boundary(self,
@@ -1149,6 +1187,54 @@ class MWScalarNdim:
     def S(self, i1: int, i2: int) -> np.ndarray:
         return self.Sp[...,self._portmap[i1], self._portmap[i2]]
     
+    def combine_ports(self, p1: int, p2: int) -> MWScalarNdim:
+        """Combine ports p1 and p2 into a differential and common mode port respectively.
+
+        The p1 index becomes the differential mode port
+        The p2 index becomes the common mode port
+
+        Args:
+            p1 (int): The first port number
+            p2 (int): The second port number
+
+        Returns:
+            MWScalarNdim: _description_
+        """
+        if p1==p2:
+            raise ValueError('p1 and p2 must be different port numbers')
+        
+        F, N, _ = self.Sp.shape
+        p1 = p1-1
+        p2 = p2-1
+        
+        if not (0 <= p1 < N and 0 <= p2 < N):
+            raise IndexError(f'Ports {p1+1} or {p2+1} are out of range {N}')
+        
+        Sout = self.Sp.copy()
+        ii, jj = p1, p2
+        idx = np.ones(N, dtype=np.bool)
+        idx[[ii,jj]] = False
+        others = np.nonzero(idx)[0]
+        isqrt2 = 1.0 / np.sqrt(2.0)
+        
+        Sout[:, others, ii] = (self.Sp[:, others, ii] - self.Sp[:, others, jj]) * isqrt2
+        Sout[:, others, jj] = (self.Sp[:, others, ii] + self.Sp[:, others, jj]) * isqrt2
+        Sout[:, ii, others] = (self.Sp[:, ii, others] - self.Sp[:, jj, others]) * isqrt2
+        Sout[:, jj, others] = (self.Sp[:, ii, others] + self.Sp[:, jj, others]) * isqrt2
+        
+        Sii = self.Sp[:, ii, ii]
+        Sij = self.Sp[:, ii, jj]
+        Sji = self.Sp[:, jj, ii]
+        Sjj = self.Sp[:, jj, jj]
+        
+        Sout[:, ii, ii] = 0.5 *(Sii - Sij - Sji + Sjj)
+        Sout[:, ii, jj] = 0.5 *(Sii + Sij - Sji - Sjj)
+        Sout[:, jj, ii] = 0.5 *(Sii - Sij + Sji - Sjj)
+        Sout[:, jj, jj] = 0.5 *(Sii + Sij + Sji + Sjj)
+        
+        self.Sp = Sout
+        
+        return self
     @property
     def Smat(self) -> np.ndarray:
         """Returns the full S-matrix

@@ -876,7 +876,7 @@ class Microwave3D:
     def _run_adaptive_mesh(self,
                 iteration: int, 
                 frequency: float,
-                automatic_modal_analysis: bool = True) -> MWData:
+                automatic_modal_analysis: bool = True) -> tuple[MWData, list[int]]:
         """Executes a frequency domain study
 
         The study is distributed over "n_workers" workers.
@@ -965,7 +965,7 @@ class Microwave3D:
         self.solveroutine.reset()
         ### Compute S-parameters and return
         self._post_process([job,], [mats,])
-        return self.data
+        return self.data, job._pec_tris
     
     def eigenmode(self, search_frequency: float,
                         nmodes: int = 6,

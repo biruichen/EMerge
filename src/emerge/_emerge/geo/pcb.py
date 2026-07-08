@@ -25,7 +25,7 @@ from .polybased import XYPolygon
 from .operations import change_coordinate_system, unite
 from .pcb_tools.macro import parse_macro
 from .pcb_tools.calculator import PCBCalculator
-
+from ..logsettings import DEBUG_COLLECTOR
 import numpy as np
 from loguru import logger
 from typing import Literal, Callable, overload
@@ -960,7 +960,8 @@ class PCB:
                  stack: list[PCBLayer] = None,
                  name: str | None = None,
                  trace_thickness: float | None = None,
-                 zs: np.ndarray | None = None
+                 zs: np.ndarray | None = None,
+                 thick_traces: bool = False,
                  ):
         """Creates a new PCB layout class instance
 
@@ -974,9 +975,11 @@ class PCB:
             stack (list[PCBLayer], optional): Optional list of PCBLayer classes for multilayer PCB with different dielectrics. Defaults to None.
             name (str | None, optional): The PCB object name. Defaults to None.
             trace_thickness (float | None, optional): The conductor trace thickness if important. Defaults to None.
+            thick_traces: (bool, optional): If traces should be given a thickness and modeled in 3D. Defaults to False
         """
 
         self.thickness: float = thickness
+        self._thick_traces: bool = thick_traces
         self._stack: list[PCBLayer] = []
         
         if zs is not None:
@@ -1016,9 +1019,10 @@ class PCB:
             
         self.dielectric_priority: int = 11
         self.via_priority: int = 12
+        self.conductor_priority: int = 13
 
-        self.traces: list[GeoPolygon] = []
-        self.ports: list[GeoPolygon] = []
+        self.traces: list[GeoPolygon | GeoVolume] = []
+        self.ports: list[GeoPolygon | GeoVolume] = []
         self.vias: list[Via] = []
 
         self.xs: list[float] = []
@@ -1032,7 +1036,10 @@ class PCB:
         self.calc: PCBCalculator = PCBCalculator(self.thickness, self._zs, self.material, self.unit)
 
         self.name: str = _NAME_MANAGER(name, self._DEFNAME)
-    
+
+        if not self._thick_traces and self.trace_material is not PEC:
+            DEBUG_COLLECTOR.add_report('Non PEC surface materials are used without thick traces. The SurfaceImpedance boundary condition will be used that is known to not be accurate.' +
+                                       'Please set thick_traces=True in the PCB constructor to ensure accurate losses until this issue is fixed.')
 
     ############################################################
     #                          PROPERTIES                     #
@@ -1099,7 +1106,7 @@ class PCB:
             self.paths.append(StripPath(self))
         return self.paths[path_nr]
     
-    def _gen_poly(self, xys: list[tuple[float, float]], z: float, name: str | None = None) -> GeoPolygon:
+    def _gen_poly(self, xys: list[tuple[float, float]], z: float, name: str | None = None) -> GeoPolygon | GeoVolume:
         """ Generates a GeoPoly out of a list of (x,y) coordinate tuples.
         
         
@@ -1120,8 +1127,16 @@ class PCB:
         
         tag_wire = gmsh.model.occ.addWire(ltags)
         planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-        poly = GeoPolygon([planetag,], name=name)
-        poly._store('thickness', self.trace_thickness)
+        if self._thick_traces:
+            if self.trace_thickness is None:
+                raise ValueError('Trace thickness not defined, cannot generate polygons. Make sure to define a trace thickness in the PCB() constructor.')
+            dx, dy, dz = self.cs.zax.np*self.trace_thickness
+            dimtags = gmsh.model.occ.extrude([(2,planetag),], dx, dy, dz)
+            voltags = [dt[1] for dt in dimtags if dt[0]==3]
+            poly = GeoVolume(voltags, name=name).prio_set(self.conductor_priority)
+        else:
+            poly = GeoPolygon([planetag,], name=name)
+            poly._store('thickness', self.trace_thickness)
         return poly
     
 
@@ -1236,7 +1251,7 @@ class PCB:
               height: float | None = None,
               origin: tuple[float, float] | None = None,
               alignment: Alignment = Alignment.CORNER,
-              name: str | None = None) -> GeoSurface:
+              name: str | None = None) -> GeoSurface | GeoVolume:
         """Generates a generic rectangular plate in the XY grid.
         If no size is provided, it defaults to the entire PCB size assuming that the bounds are determined.
 
@@ -1264,10 +1279,13 @@ class PCB:
                                                         origin[1] - height*self.unit/2, 
                                                         origin[2])
 
-        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0), name=name) # type: ignore
-        plane._store('thickness', self.thickness)
-        plane = change_coordinate_system(plane, self.cs) # type: ignore
-        plane.set_material(self.trace_material)
+        if self._thick_traces:
+            plane = Box(width*self.unit, height*self.unit, self.trace_thickness, position=origin, name=name).set_material(self.trace_material)
+        else:
+            plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0), name=name) # type: ignore
+            plane._store('thickness', self.thickness)
+            plane = change_coordinate_system(plane, self.cs) # type: ignore
+            plane.set_material(self.trace_material)
         return plane # type: ignore
     
     def radial_stub(self, pos: tuple[float, float], length: float, angle: float, direction: tuple[float, float], Nsections: int = 8, w0: float = 0, z: float = 0, material: Material = None, name: str = None) -> None:
@@ -1525,12 +1543,12 @@ class PCB:
         self.polies.append(poly)
     
     @overload
-    def compile_paths(self, merge: Literal[True]) -> GeoSurface: ...
+    def compile_paths(self, merge: Literal[True]) -> GeoSurface | GeoVolume: ...
     
     @overload
-    def compile_paths(self, merge: Literal[False] = ...) -> list[GeoSurface]: ...
+    def compile_paths(self, merge: Literal[False] = ...) -> list[GeoSurface] | list[GeoVolume]: ...
 
-    def compile_paths(self, merge: bool = False) -> list[GeoPolygon] | GeoSurface:
+    def compile_paths(self, merge: bool = False) -> list[GeoPolygon] | GeoSurface | GeoVolume:
         """Compiles the striplines and returns a list of polygons or asingle one.
 
         The Z=0 argument determines the height of the striplines. Z=0 corresponds to the top of

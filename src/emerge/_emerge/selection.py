@@ -21,6 +21,9 @@ import numpy as np
 from .cs import Axis, CoordinateSystem, _parse_vector, Plane
 from typing import Callable, TypeVar, Iterable, Any
 
+class SelectionError(Exception):
+    pass
+
 def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, Any]:
     """Tries to find a rectangle as convex-hull of a set of points with a given normal vector.
 
@@ -174,7 +177,7 @@ class Selection:
     """
     dim: int = -1
     def __init__(self, tags: list[int] | set[int] | tuple[int] | None = None):
-
+        self.name: str = 'Selection'
         self._tags: set[int] = set()
 
         if tags is not None:
@@ -252,7 +255,19 @@ class Selection:
                 maxy = max(maxy, y1)
                 maxz = max(maxz, z1)
             return (minx, miny, minz), (maxx, maxy, maxz)
-        
+    
+    def _named(self, name: str) -> Selection:
+        """Sets the name of the selection and returns it
+
+        Args:
+            name (str): The name of the selection
+
+        Returns:
+            Selection: The same selection object
+        """
+        self.name = name
+        return self
+    
     def exclude(self, xyz_excl_function: Callable = lambda x,y,z: True, plane: Plane | None = None, axis: Axis | None = None) -> Selection:
         """Exclude points by evaluating a function(x,y,z)-> bool
 

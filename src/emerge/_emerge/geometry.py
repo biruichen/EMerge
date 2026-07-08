@@ -18,11 +18,10 @@
 from __future__ import annotations
 import gmsh # type: ignore
 from .material import Material, AIR
-from .selection import FaceSelection, DomainSelection, EdgeSelection, PointSelection, Selection
+from .selection import FaceSelection, DomainSelection, EdgeSelection, PointSelection, Selection, SelectionError
 from loguru import logger
-from typing import Literal, Any, Iterable, TypeVar
+from typing import Literal, Any, Iterable, Callable
 import numpy as np
-
 
 
 def _map_tags(tags: list[int], mapping: dict[int, list[int]]):
@@ -33,6 +32,7 @@ def _map_tags(tags: list[int], mapping: dict[int, list[int]]):
 
 def _bbcenter(x1, y1, z1, x2, y2, z2):
     return np.array([(x1+x2)/2, (y1+y2)/2, (z1+z2)/2])
+
 
 FaceNames = Literal['back','front','left','right','top','bottom']
 
@@ -232,6 +232,8 @@ class _FacePointer:
     def copy(self) -> _FacePointer:
         return _FacePointer(self.o, self.n)
 
+    def __eq__(self, other: _FacePointer) -> bool:
+        return (np.linalg.norm(self.o - other.o) + np.linalg.norm(self.n - other.n)) < 1e-6
 
 _GENERATOR = _KEY_GENERATOR()
 _GEOMANAGER = _GeometryManager()
@@ -241,6 +243,7 @@ class GeoObject:
     """
     dim: int = -1
     _default_name: str = 'GeoObject'
+    
     def __init__(self, tags: list[int] | None = None, name: str | None = None):
         if tags is None:
             tags = []
@@ -263,7 +266,24 @@ class GeoObject:
         
         self.give_name(name)
         _GEOMANAGER.submit_geometry(self)
-
+        self._fill_face_pointers()
+        
+    def _fill_face_pointers(self) -> None:
+        """ Fills the list of all face pointers of this object
+        """
+        current = list(self._face_pointers.values())
+        ctr = 0
+        gmsh.model.occ.synchronize()
+        for dim, tag in gmsh.model.get_boundary(self.dimtags, True, False):
+            if dim != 2:
+                continue
+            o = gmsh.model.occ.get_center_of_mass(2, tag)
+            n = gmsh.model.get_normal(tag, (0,0))
+            fp = _FacePointer(o, n)
+            if fp not in current:
+                self._face_pointers[f'Face{ctr}'] = fp
+                ctr += 1
+            
     def _store(self, name: str, data: Any) -> None:
         """Store a property as auxilliary data under a given name
 
@@ -361,6 +381,19 @@ class GeoObject:
     def _data(self, *labels) -> tuple[Any | None, ...]:
         return tuple([self._aux_data[lab] for lab in labels])
     
+    def _replace_pointer(self, name: str, face_pointer: _FacePointer) -> None:
+        """Will be used to replace face pointers so only one unique one exists.
+
+        Args:
+            name (str): _description_
+            face_pointer (_FacePointer): _description_
+        """
+        for key, fp in self._face_pointers.items():
+            if fp == face_pointer:
+                self._face_pointers.pop(key)
+                break
+        self._face_pointers[name] = face_pointer
+
     def _add_face_pointer(self, 
                           name: str,
                           origin: np.ndarray | None = None,
@@ -378,15 +411,16 @@ class GeoObject:
             ValueError: _description_
         """
         if tag is not None:
-            o = gmsh.model.occ.get_center_of_mass(2, tag)
-            n = gmsh.model.get_normal(tag, (0,0))
-            self._face_pointers[name] = _FacePointer(o, n)
-            return
-        if origin is not None and normal is not None:
-            self._face_pointers[name] = _FacePointer(origin, normal)
-            return
-        raise ValueError('Eitehr a tag or an origin + normal must be provided!')
-    
+            origin = gmsh.model.occ.get_center_of_mass(2, tag)
+            normal = gmsh.model.get_normal(tag, (0,0))
+        
+        if origin is None or normal is None:
+            raise ValueError('Eitehr a tag or an origin + normal must be provided!')
+        fp = _FacePointer(origin, normal)
+        self._face_pointers[name] = fp
+        #self._replace_pointer(name, fp) <-- Will be added in later versions
+        
+        
     def make_copy(self) -> GeoObject:
         """ Copies this object and returns a new object (also in GMSH)"""
         new_dimtags = gmsh.model.occ.copy(self.dimtags)
@@ -452,7 +486,7 @@ class GeoObject:
     def _face_tags(self, name: FaceNames, tool: GeoObject | None = None) -> list[int]:
         names = self._all_pointer_names
         if name not in names:
-            raise ValueError(f'The face {name} does not exist in {self}')
+            raise ValueError(f'The face {name} does not exist in {self}. Only {list(self._face_pointers.keys())}')
         
         gmsh.model.occ.synchronize()
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
@@ -467,6 +501,7 @@ class GeoObject:
         logger.info(f'Selected face {tags}.')
         return tags
 
+    
     def set_material(self, material: Material) -> GeoObject:
         self.material = material
         return self
@@ -563,6 +598,9 @@ class GeoObject:
         Returns:
             FaceSelection: The selected faces
         """
+        # if not self._exists:
+        #     raise SelectionError('Cannot select faces from an object that no longer exists.')
+        
         if isinstance(exclude, str):
             exclude = (exclude,)
             
@@ -572,11 +610,13 @@ class GeoObject:
         if tags is None:
             tags = []
         
-        
         for name in exclude:
             tags.extend(self.face(name, tool=tool).tags)
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
-        return FaceSelection([t for d,t in dimtags if t not in tags])
+        selname = 'Boundary'
+        if exclude:
+            selname = selname + 'Except[' + ','.join(exclude) + ']'
+        return FaceSelection([t for d,t in dimtags if t not in tags])._named(selname)
     
     def face(self, name: FaceNames = None, tool: GeoObject | None = None, no: FaceNames = None) -> FaceSelection:
         """Returns the FaceSelection for a given face name.
@@ -596,8 +636,16 @@ class GeoObject:
         if no is not None:
             return self.boundary(exclude=no)
         
-        return FaceSelection(self._face_tags(name, tool))
+        return FaceSelection(self._face_tags(name, tool))._named(name)
 
+    def all_faces(self) -> list[FaceSelection]:
+        """Returns a list of all face selections of this object
+
+        Returns:
+            list[FaceSelection]: A list of all face selections
+        """
+        return [self.face(name) for name in self._face_pointers]
+    
     def faces(self, *names: FaceNames, tool: GeoObject | None = None) -> FaceSelection:
         """Returns the FaceSelection for a given face names.
         
@@ -613,7 +661,7 @@ class GeoObject:
         tags = []
         for name in names:
             tags.extend(self._face_tags(name, tool))
-        return FaceSelection(tags)
+        return FaceSelection(tags)._named('Faces[' + ','.join(names) + ']')
     
     def hide(self) -> GeoObject:
         """Hides the object from views
@@ -658,7 +706,22 @@ class GeoObject:
     def remove(self) -> None:
         self._exists = False
         gmsh.model.occ.remove(self.dimtags, True)
-        
+    
+    def extract(self, tags: int | list[int]) -> GeoObject:
+        """Returns a new GeoObject of the same dimensional type that isolates a set of given tags
+
+        Args:
+            tags (list[int]): A list of GMSH tags
+
+        Returns:
+            GeoObject: _description_
+        """
+        if isinstance(tags, int):
+            tags = [tags,]
+        self.tags = [t for t in self.tags if t not in tags]
+        dts = [(self.dim, t) for t in tags]
+        return GeoObject.from_dimtags(dts)
+    
 class GeoVolume(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
     specific geometry data.'''
@@ -675,10 +738,94 @@ class GeoVolume(GeoObject):
         else:
             self.tags = [tag,]
 
+        self._fill_face_pointers()
+        self._autoname()
+        
     @property
     def selection(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
+    def _auto_face_tag(self) -> GeoVolume:
+        self._face_pointers = dict()
+        self._tools = dict()
+        logger.trace('Automatically assigning face pointers.')
+        ctr = 0
+        for tag in self.tags:
+            loops = gmsh.model.occ.getSurfaceLoops(tag)
+            for loopcluster in loops[1]:
+                for st in loopcluster:
+                    self._add_face_pointer(f'Face{ctr}', tag=st)
+                    ctr += 1
+        return self
+    
+    def exterior_faces(self, base_object: GeoObject) -> FaceSelection:
+        """Select the exterior faces of an object based on the face
+        pointers of an original base object. For example
+        
+        Example:
+        >>> cheese = em.geo.Box(...)
+        >>> hole = em.geo.Box(...) 
+        >>> holed_cheese = em.geo.subtract(cheese, hole)
+        >>> holed_cheese.exterior_faces(cheese)
+
+        Args:
+            base_object (GeoObject): The object to base the selection on.
+
+        Returns:
+            FaceSelection: The resultant face selection
+        """
+        dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
+        
+        normals = [gmsh.model.get_normal(t, [0,0]) for d,t, in dimtags]
+        origins = [gmsh.model.occ.get_center_of_mass(d, t) for d,t in dimtags]
+        
+        tool_tags = []
+        for key, tool in self._tools.items():
+            if key == base_object._key:
+                continue
+            for name in tool.keys():
+                tags = tool[name].find(dimtags, origins, normals)
+                tool_tags.extend(tags)
+        tags = [dt[1] for dt in dimtags if dt[1] not in tool_tags]
+        return FaceSelection(tags)
+    
+    def _find_fp(self, condition: Callable):
+        for key, fp in self._face_pointers.items():
+            if condition(fp):
+                return key, fp
+        return None, None
+    
+    def _rename_fp(self, new_name: str, condition: Callable):
+        name, fp = self._find_fp(condition)
+        if fp is not None:
+            self._face_pointers.pop(name)
+            self._face_pointers[new_name] = fp
+        
+    def _autoname(self) -> None:
+        if len(self._face_pointers)==0:
+            return
+        
+        xs = []
+        ys = []
+        zs = []
+        for fp in self._face_pointers.values():
+            xs.append(fp.o[0])
+            ys.append(fp.o[1])
+            zs.append(fp.o[2])
+        minx = min(xs)
+        maxx = max(xs)
+        miny = min(ys)
+        maxy = max(ys)
+        minz = min(zs)
+        maxz = max(zs)
+        
+        self._rename_fp('-x', lambda fp: (fp.o[0]==minx) and np.abs(np.dot(fp.n, np.array([1,0,0])))>0.999)
+        self._rename_fp('+x', lambda fp: (fp.o[0]==maxx) and np.abs(np.dot(fp.n, np.array([1,0,0])))>0.999)
+        self._rename_fp('-y', lambda fp: (fp.o[1]==miny) and np.abs(np.dot(fp.n, np.array([0,1,0])))>0.999)
+        self._rename_fp('+y', lambda fp: (fp.o[1]==maxy) and np.abs(np.dot(fp.n, np.array([0,1,0])))>0.999)
+        self._rename_fp('-z', lambda fp: (fp.o[2]==minz) and np.abs(np.dot(fp.n, np.array([0,0,1])))>0.999)
+        self._rename_fp('+z', lambda fp: (fp.o[2]==maxz) and np.abs(np.dot(fp.n, np.array([0,0,1])))>0.999)
+        
 class GeoPoint(GeoObject):
     dim = 0
     _default_name: str = 'GeoPoint'

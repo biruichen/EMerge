@@ -209,7 +209,7 @@ def filter_real_modes(eigvals: np.ndarray, eigvecs: np.ndarray,
     filtered_vals = eigvals[mask]
     filtered_vecs = eigvecs[:, mask]
     k0vals = np.sqrt(sign*filtered_vals)
-    order = np.argsort(np.abs(k0vals))# ascending distance
+    order = np.argsort(np.abs(k0vals)) # ascending distance
     filtered_vals = filtered_vals[order]             # reorder eigenvalues
     filtered_vecs = filtered_vecs[:, order] 
     return filtered_vals, filtered_vecs
@@ -1282,7 +1282,7 @@ class SolveRoutine:
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
-        logger.debug(self.pre + f'Removing {NF-NS} prescribed DOFs ({NS} left)')
+        logger.debug(self.pre + f' Removing {NF-NS} prescribed DOFs ({NS} left)')
 
         Asel = A[np.ix_(solve_ids, solve_ids)]
         Bsel = B[np.ix_(solve_ids, solve_ids)]
@@ -1325,7 +1325,7 @@ class SolveRoutine:
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
-        logger.debug(self.pre + f'Removing {NF-NS} prescribed DOFs ({NS} left)')
+        logger.debug(self.pre + f' Removing {NF-NS} prescribed DOFs ({NS} left)')
 
         Asel = A[np.ix_(solve_ids, solve_ids)]
         Bsel = B[np.ix_(solve_ids, solve_ids)]

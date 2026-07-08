@@ -20,6 +20,66 @@ import numpy as np
 from ...mth.optimized import matmul, outward_normal, cross_c
 from numba import njit, f8, c16, i8, types, prange # type: ignore, p
 from loguru import logger
+from ...const import C0, MU0, EPS0
+
+@njit(cache=True, nogil=True)
+def diam_circum_circle(v1: np.ndarray, v2: np.ndarray, v3: np.ndarray, eps: float = 1e-14) -> float:
+    """
+    Diameter of the circumcircle of triangle (v1,v2,v3) in 3D.
+    Uses D = (|AB|*|AC|*|BC|) / ||AB x AC||.
+    Returns np.inf if points are (near) collinear.
+    """
+    AB = v2 - v1
+    AC = v3 - v1
+    BC = v3 - v2
+
+    a = np.linalg.norm(BC)
+    b = np.linalg.norm(AC)
+    c = np.linalg.norm(AB)
+
+    cross = np.cross(AB, AC)
+    denom = np.linalg.norm(cross)  # 2 * area of triangle
+
+    if denom < eps:
+        return np.inf  # degenerate/collinear
+
+    return (a * b * c) / denom  # diameter = 2R
+
+
+@njit(cache=True, nogil=True)
+def circum_sphere_diam(v1: np.ndarray, v2: np.ndarray, v3: np.ndarray, v4: np.ndarray, eps: float = 1e-14) -> float:
+    """
+    Diameter of the circumsphere of tetrahedron (v1,v2,v3,v4) in 3D.
+    Solves for center c from 2*(pi - p4) · c = |pi|^2 - |p4|^2, i=1..3.
+    Returns np.inf if points are (near) coplanar/degenerate.
+    """
+    p1, p2, p3, p4 = v1, v2, v3, v4
+
+    M = np.empty((3, 3), dtype=np.float64)
+    M[0, :] = 2.0 * (p1 - p4)
+    M[1, :] = 2.0 * (p2 - p4)
+    M[2, :] = 2.0 * (p3 - p4)
+
+    # manual 3x3 determinant (Numba-friendly)
+    det = (
+        M[0,0] * (M[1,1]*M[2,2] - M[1,2]*M[2,1])
+        - M[0,1] * (M[1,0]*M[2,2] - M[1,2]*M[2,0])
+        + M[0,2] * (M[1,0]*M[2,1] - M[1,1]*M[2,0])
+    )
+    if np.abs(det) < eps:
+        return np.inf  # coplanar/degenerate
+
+    rhs = np.empty(3, dtype=np.float64)
+    rhs[0] = np.dot(p1, p1) - np.dot(p4, p4)
+    rhs[1] = np.dot(p2, p2) - np.dot(p4, p4)
+    rhs[2] = np.dot(p3, p3) - np.dot(p4, p4)
+
+    # Solve for circumcenter
+    c = np.linalg.solve(M, rhs)
+
+    # Radius = distance to any vertex
+    R = np.linalg.norm(c - p1)
+    return 2.0 * R  # diameter
 
 def print_sparam_matrix(pre: str, S: np.ndarray):
     """
@@ -40,7 +100,7 @@ def print_sparam_matrix(pre: str, S: np.ndarray):
             phase_deg = np.degrees(np.angle(S[i, j]))
             row_str.append(f"{mag_db:6.2f} dB ∠ {phase_deg:6.1f}°")
         logger.debug(" | ".join(row_str))
-        
+
 def compute_convergence(Sold: np.ndarray, Snew: np.ndarray) -> float:
     """
     Return a single scalar: max |Snew - Sold|.
@@ -61,37 +121,51 @@ def compute_convergence(Sold: np.ndarray, Snew: np.ndarray) -> float:
 
 def select_refinement_indices(errors: np.ndarray, refine: float) -> np.ndarray:
     """
-    Pick indices to refine based on two rules, then take the smaller set:
-      (A) All indices with |error| >= (1 - refine) * max(|error|)
-      (B) The top ceil(refine * N) indices by |error|
-    Returns indices sorted from largest to smallest |error|.
+    Dörfler marking:
+    Choose the minimal number of elements whose squared error sum
+    reaches at least 'refine' (theta in [0,1]) of the global squared error.
+
+    Args:
+        errors: 1D or ND array of local error indicators (nonnegative).
+        refine: theta in [0,1]; fraction of total error energy to target.
+
+    Returns:
+        np.ndarray of indices (ints) sorted by decreasing error.
     """
-    errs = np.abs(np.ravel(errors))
-    N = errs.size
-    if N == 0:
-        return np.array([], dtype=int)
-    refine = float(np.clip(refine, 0.0, 1.0))
-    if refine == 0.0:
-        return np.array([], dtype=int)
+    # Flatten and sanitize
+    errs = np.abs(np.ravel(errors).astype(float))
+    n = errs.size
+    if n == 0:
+        return np.empty(0, dtype=int)
 
-    # Sorted indices by decreasing amplitude
-    sorted_desc = np.argsort(errs)[::-1]
+    errs[~np.isfinite(errs)] = 0.0  # replace NaN/inf by 0
+    theta = float(np.clip(refine, 0.0, 1.0))
+    if theta <= 0.0:
+        return np.empty(0, dtype=int)
 
-    # Rule A: threshold by amplitude
-    thresh = (1.0 - refine) * errs[sorted_desc[0]]
-    A = np.flatnonzero(errs >= thresh)
+    # Dörfler uses squared indicators
+    ind = errs * errs
+    total = ind.sum()
+    if total <= 0.0:
+        return np.empty(0, dtype=int)
 
-    # Rule B: top-k by count
-    k = int(np.ceil(refine * N))
-    B = sorted_desc[:k]
-
-    # Choose the smaller set (tie-breaker: use B)
-    chosen = B#A if A.size > B.size else B
+    # Sort by decreasing indicator
+    order = np.argsort(ind)[::-1]
+    sum_error = 0
+    indices = []
+    for index in order:
+        sum_error += ind[index]
+        indices.append(index)
+        if sum_error >= refine*total:
+            break
     
-    # Return chosen indices sorted from largest to smallest amplitude
-    mask = np.zeros(N, dtype=bool)
-    mask[chosen] = True
-    return sorted_desc[mask[sorted_desc]]
+    #cum = np.cumsum(ind[order])
+
+    # Smallest m with cumulative ≥ theta * total
+    #m = int(np.searchsorted(cum, theta * total, side="left")) + 1
+
+    #chosen = order[:m]                # already from largest to smallest
+    return np.array(indices)#chosen.astype(int)
 
 @njit(f8[:](i8, f8[:,:], f8, f8, f8[:]), cache=True, nogil=True, parallel=False)
 def compute_size(id: int, coords: np.ndarray, q: float, scaler: float, dss: np.ndarray) -> float:
@@ -114,7 +188,7 @@ def compute_size(id: int, coords: np.ndarray, q: float, scaler: float, dss: np.n
         if n == id:
             sizes[n] = dss[n]*scaler
             continue
-        nsize = scaler*dss[n]/q - (1-q)/q * ((x-coords[0,n])**2 + (y-coords[1,n])**2 + (z-coords[2,n])**2)**0.5
+        nsize = scaler*dss[n]/q - (1-q)/q * max(0, (((x-coords[0,n])**2 + (y-coords[1,n])**2 + (z-coords[2,n])**2)**0.5-dss[n]/3))
         sizes[n] = nsize
     return sizes
 
@@ -167,7 +241,7 @@ def reduce_point_set(coords: np.ndarray, q: float, dss: np.ndarray, scaler: floa
         if (N-counter)/N < keep_percentage:
             break
         
-        n_imposed = np.sum(impressed_size[:,i] <= (current_min*1.01))
+        n_imposed = np.sum(impressed_size[:,i] <= (current_min*1.3))
         
         if n_imposed == 0:
             include[i] = 0
@@ -257,16 +331,42 @@ def tet_coefficients(xs, ys, zs):
 
     return aas, bbs, ccs, dds, V
 
-@njit(c16[:](f8[:], f8[:,:], c16[:], i8[:,:], i8[:,:]), cache=True, nogil=True)
+DPTS_2D = np.array([[0.22338159, 0.22338159, 0.22338159, 0.10995174, 0.10995174,
+        0.10995174],
+       [0.10810302, 0.44594849, 0.44594849, 0.81684757, 0.09157621,
+        0.09157621],
+       [0.44594849, 0.44594849, 0.10810302, 0.09157621, 0.09157621,
+        0.81684757],
+       [0.44594849, 0.10810302, 0.44594849, 0.09157621, 0.81684757,
+        0.09157621]], dtype=np.float64)
+
+DPTS_3D = np.array([[-0.078933  ,  0.04573333,  0.04573333,  0.04573333,  0.04573333,
+         0.14933333,  0.14933333,  0.14933333,  0.14933333,  0.14933333,
+         0.14933333],
+       [ 0.25      ,  0.78571429,  0.07142857,  0.07142857,  0.07142857,
+         0.39940358,  0.39940358,  0.39940358,  0.10059642,  0.10059642,
+         0.10059642],
+       [ 0.25      ,  0.07142857,  0.07142857,  0.07142857,  0.78571429,
+         0.10059642,  0.10059642,  0.39940358,  0.39940358,  0.39940358,
+         0.10059642],
+       [ 0.25      ,  0.07142857,  0.07142857,  0.78571429,  0.07142857,
+         0.39940358,  0.10059642,  0.10059642,  0.39940358,  0.10059642,
+         0.39940358],
+       [ 0.25      ,  0.07142857,  0.78571429,  0.07142857,  0.07142857,
+         0.10059642,  0.39940358,  0.10059642,  0.10059642,  0.39940358,
+         0.39940358]], dtype=np.float64)
+
+@njit(c16[:,:](f8[:,:], f8[:,:], c16[:], i8[:,:], i8[:,:]), cache=True, nogil=True)
 def compute_field(coords: np.ndarray, 
                  vertices: np.ndarray,
                  Etet: np.ndarray, 
                  l_edge_ids: np.ndarray, 
                  l_tri_ids: np.ndarray):
     
-    x = coords[0]
-    y = coords[1]
-    z = coords[2]
+    x = coords[0,:]
+    y = coords[1,:]
+    z = coords[2,:]
+    N = coords.shape[1]
     
     xvs = vertices[0,:]
     yvs = vertices[1,:]
@@ -279,11 +379,12 @@ def compute_field(coords: np.ndarray,
     Em2s = Etet[10:16]
     Ef2s = Etet[16:20]
     
-    Exl = 0.0 + 0.0j
-    Eyl = 0.0 + 0.0j
-    Ezl = 0.0 + 0.0j
+    Exl = np.zeros_like(x, dtype=np.complex128)
+    Eyl = np.zeros_like(x, dtype=np.complex128)
+    Ezl = np.zeros_like(x, dtype=np.complex128)
     
-    V1 = (216*V**3)
+    V1 = (6*V)**3
+    
     for ie in range(6):
         Em1, Em2 = Em1s[ie], Em2s[ie]
         edgeids = l_edge_ids[:, ie]
@@ -334,10 +435,10 @@ def compute_field(coords: np.ndarray,
         Eyl += ey
         Ezl += ez
 
-    out = np.zeros((3,), dtype=np.complex128)
-    out[0] = Exl
-    out[1] = Eyl
-    out[2] = Ezl
+    out = np.zeros((3,N), dtype=np.complex128)
+    out[0,:] = Exl
+    out[1,:] = Eyl
+    out[2,:] = Ezl
     return out
 
 @njit(c16[:,:](f8[:,:], f8[:,:], c16[:], i8[:,:], i8[:,:]), cache=True, nogil=True)
@@ -366,8 +467,8 @@ def compute_curl(coords: np.ndarray,
     Eyl = np.zeros((x.shape[0],), dtype=np.complex128)
     Ezl = np.zeros((x.shape[0],), dtype=np.complex128)
     
-    V1 = (216*V**3)
-    V2 = (72*V**3)
+    V1 = 216*V**3
+    V2 = 72*V**3
     
     for ie in range(6):
         Em1, Em2 = Em1s[ie], Em2s[ie]
@@ -461,8 +562,103 @@ def compute_curl(coords: np.ndarray,
     out[2,:] = Ezl
     return out
 
-@njit(c16[:](f8[:], f8[:,:], c16[:], i8[:,:], i8[:,:], c16[:,:]), cache=True, nogil=True)
-def compute_curl_curl(coords: np.ndarray, 
+@njit(c16[:](f8[:,:], f8[:,:], c16[:], i8[:,:], i8[:,:], c16[:,:]), cache=True, nogil=True)
+def compute_div(coords: np.ndarray, 
+                 vertices: np.ndarray,
+                 Etet: np.ndarray, 
+                 l_edge_ids: np.ndarray, 
+                 l_tri_ids: np.ndarray,
+                 Um: np.ndarray):
+    
+    uxx, uxy, uxz = Um[0,0], Um[0,1], Um[0,2]
+    uyx, uyy, uyz = Um[1,0], Um[1,1], Um[1,2]
+    uzx, uzy, uzz = Um[2,0], Um[2,1], Um[2,2]
+    
+    xs = coords[0,:]
+    ys = coords[1,:]
+    zs = coords[2,:]
+    
+    xvs = vertices[0,:]
+    yvs = vertices[1,:]
+    zvs = vertices[2,:]
+    
+    a_s, b_s, c_s, d_s, V = tet_coefficients(xvs, yvs, zvs)
+    
+    Em1s = Etet[0:6]
+    Ef1s = Etet[6:10]
+    Em2s = Etet[10:16]
+    Ef2s = Etet[16:20]
+    
+    difE = np.zeros((xs.shape[0],), dtype=np.complex128)
+    
+    V1 = (216*V**3)
+    V2 = (72*V**3)
+    
+    for ie in range(6):
+        Em1, Em2 = Em1s[ie], Em2s[ie]
+        edgeids = l_edge_ids[:, ie]
+        a1, a2 = a_s[edgeids]
+        b1, b2 = b_s[edgeids]
+        c1, c2 = c_s[edgeids]
+        d1, d2 = d_s[edgeids]
+        x1, x2 = xvs[edgeids]
+        y1, y2 = yvs[edgeids]
+        z1, z2 = zvs[edgeids]
+
+        L = np.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
+        C1 = (a2 + b2*xs + c2*ys + d2*zs)
+        C2 = (a1 + b1*xs + c1*ys + d1*zs)
+        C3 = (b1*C1 - b2*C2)
+        C4 = (c1*C1 - c2*C2)
+        C5 = (d1*C1 - d2*C2)
+        C6 = (b1*c2 - b2*c1)
+        C7 = (c1*d2 - c2*d1)
+        C8 = (b1*d2 - b2*d1)
+        difE += (Em1*L*(b1*uxx*C3 + b1*uxy*C4 + b1*uxz*C5 + c1*uyx*C3 + c1*uyy*C4 + c1*uyz*C5 + d1*uzx*C3 
+                       + d1*uzy*C4 + d1*uzz*C5 - uxy*C6*C2 - uxz*C8*C2 + uyx*C6*C2 - uyz*C7*C2 + uzx*C8*C2 + uzy*C7*C2) + 
+                Em2*L*(b2*uxx*C3 + b2*uxy*C4 + b2*uxz*C5 + c2*uyx*C3 + c2*uyy*C4 + c2*uyz*C5 + d2*uzx*C3 
+                       + d2*uzy*C4 + d2*uzz*C5 - uxy*C6*C1 - uxz*C8*C1 + uyx*C6*C1 - uyz*C7*C1 + uzx*C8*C1 + uzy*C7*C1))/V1
+    
+    for ie in range(4):
+        Em1, Em2 = Ef1s[ie], Ef2s[ie]
+        triids = l_tri_ids[:, ie]
+        a1, a2, a3 = a_s[triids]
+        b1, b2, b3 = b_s[triids]
+        c1, c2, c3 = c_s[triids]
+        d1, d2, d3 = d_s[triids]
+
+        x1, x2, x3 = xvs[l_tri_ids[:, ie]]
+        y1, y2, y3 = yvs[l_tri_ids[:, ie]]
+        z1, z2, z3 = zvs[l_tri_ids[:, ie]]
+
+        L1 = np.sqrt((x1-x3)**2 + (y1-y3)**2 + (z1-z3)**2)
+        L2 = np.sqrt((x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2)
+        C1 = (a3 + b3*xs + c3*ys + d3*zs)
+        C2 = (a1 + b1*xs + c1*ys + d1*zs)
+        C6 = (a2 + b2*xs + c2*ys + d2*zs)
+        C3 = (b1*C1 - b3*C2)
+        C4 = (c1*C1 - c3*C2)
+        C5 = (d1*C1 - d3*C2)
+        C7 = (b1*c3 - b3*c1)
+        C8 = (b1*d3 - b3*d1)
+        C9 = (c1*d3 - c3*d1)
+        C10 = (b1*C6 - b2*C2)
+        C11 = (c1*C6 - c2*C2)
+        C12 = (d1*C6 - d2*C2)
+        C13 = (b1*c2 - b2*c1)
+        C14 = (b1*d2 - b2*d1)
+        C15 = (c1*d2 - c2*d1)
+        
+        difE += (-Em1*L1*(b2*uxx*C3 + b2*uxy*C4 + b2*uxz*C5 + c2*uyx*C3 + c2*uyy*C4 + c2*uyz*C5 + d2*uzx*C3 
+                         + d2*uzy*C4 + d2*uzz*C5 - uxy*C7*C6 - uxz*C8*C6 + uyx*C7*C6 - uyz*C9*C6 + uzx*C8*C6 + uzy*C9*C6) 
+                + Em2*L2*(b3*uxx*C10 + b3*uxy*C11 + b3*uxz*C12 + c3*uyx*C10 + c3*uyy*C11 + c3*uyz*C12 
+                          + d3*uzx*C10 + d3*uzy*C11 + d3*uzz*C12 - uxy*C13*C1 - uxz*C14*C1 + uyx*C13*C1 - uyz*C15*C1 + uzx*C14*C1 + uzy*C15*C1))/V1
+    
+    return difE
+
+
+@njit(c16[:](f8[:,:], c16[:], i8[:,:], i8[:,:], c16[:,:]), cache=True, nogil=True)
+def compute_curl_curl(
                     vertices: np.ndarray,
                     Etet: np.ndarray, 
                     l_edge_ids: np.ndarray, 
@@ -472,10 +668,6 @@ def compute_curl_curl(coords: np.ndarray,
     uxx, uxy, uxz = Um[0,0], Um[0,1], Um[0,2]
     uyx, uyy, uyz = Um[1,0], Um[1,1], Um[1,2]
     uzx, uzy, uzz = Um[2,0], Um[2,1], Um[2,2]
-    
-    x = coords[0]
-    y = coords[1]
-    z = coords[2]
     
     xvs = vertices[0,:]
     yvs = vertices[1,:]
@@ -492,7 +684,7 @@ def compute_curl_curl(coords: np.ndarray,
     Em2s = Etet[10:16]
     Ef2s = Etet[16:20]
     
-    V1 = (216*V**3)
+    V1 = (6*V)**3
     
     for ie in range(6):
         Em1, Em2 = Em1s[ie], Em2s[ie]
@@ -510,9 +702,9 @@ def compute_curl_curl(coords: np.ndarray,
         ey = 3*L1*(Em1*(b1**2*c2*uzz - b1**2*d2*uzy - b1*b2*c1*uzz + b1*b2*d1*uzy + b1*c1*d2*uzx - b1*c2*d1*uxz - b1*c2*d1*uzx + b1*d1*d2*uxy + b2*c1*d1*uxz - b2*d1**2*uxy - c1*d1*d2*uxx + c2*d1**2*uxx) + Em2*(b1*b2*c2*uzz - b1*b2*d2*uzy - b1*c2*d2*uxz + b1*d2**2*uxy - b2**2*c1*uzz + b2**2*d1*uzy + b2*c1*d2*uxz + b2*c1*d2*uzx - b2*c2*d1*uzx - b2*d1*d2*uxy - c1*d2**2*uxx + c2*d1*d2*uxx))
         ez = -3*L1*(Em1*(b1**2*c2*uyz - b1**2*d2*uyy - b1*b2*c1*uyz + b1*b2*d1*uyy - b1*c1*c2*uxz + b1*c1*d2*uxy + b1*c1*d2*uyx - b1*c2*d1*uyx + b2*c1**2*uxz - b2*c1*d1*uxy - c1**2*d2*uxx + c1*c2*d1*uxx) + Em2*(b1*b2*c2*uyz - b1*b2*d2*uyy - b1*c2**2*uxz + b1*c2*d2*uxy - b2**2*c1*uyz + b2**2*d1*uyy + b2*c1*c2*uxz + b2*c1*d2*uyx - b2*c2*d1*uxy - b2*c2*d1*uyx - c1*c2*d2*uxx + c2**2*d1*uxx))
         
-        Exl += ex*V1
-        Eyl += ey*V1
-        Ezl += ez*V1
+        Exl += ex/V1
+        Eyl += ey/V1
+        Ezl += ez/V1
     
     for ie in range(4):
         Em1, Em2 = Ef1s[ie], Ef2s[ie]
@@ -529,13 +721,13 @@ def compute_curl_curl(coords: np.ndarray,
         L1 = np.sqrt((x1-x3)**2 + (y1-y3)**2 + (z1-z3)**2)
         L2 = np.sqrt((x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2)
         
-        ex = L1*(Em1*L1*(3*c2*uzx*(c1*d3 - c3*d1) + 3*c2*uzz*(b1*c3 - b3*c1) - 3*d2*uyx*(c1*d3 - c3*d1) + 3*d2*uyy*(b1*d3 - b3*d1) - uyz*(-b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) + 2*d2*(b1*c3 - b3*c1)) - uzy*(b2*(c1*d3 - c3*d1) + 2*c2*(b1*d3 - b3*d1) + d2*(b1*c3 - b3*c1))) - Em2*L2*(3*c3*uzx*(c1*d2 - c2*d1) + 3*c3*uzz*(b1*c2 - b2*c1) - 3*d3*uyx*(c1*d2 - c2*d1) + 3*d3*uyy*(b1*d2 - b2*d1) - uyz*(-b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) + 2*d3*(b1*c2 - b2*c1)) - uzy*(b3*(c1*d2 - c2*d1) + 2*c3*(b1*d2 - b2*d1) + d3*(b1*c2 - b2*c1))))
-        ey = L1*(Em1*L1*(3*b2*uzy*(b1*d3 - b3*d1) - 3*b2*uzz*(b1*c3 - b3*c1) + 3*d2*uxx*(c1*d3 - c3*d1) - 3*d2*uxy*(b1*d3 - b3*d1) + uxz*(-b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) + 2*d2*(b1*c3 - b3*c1)) - uzx*(2*b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) - d2*(b1*c3 - b3*c1))) - Em2*L2*(3*b3*uzy*(b1*d2 - b2*d1) - 3*b3*uzz*(b1*c2 - b2*c1) + 3*d3*uxx*(c1*d2 - c2*d1) - 3*d3*uxy*(b1*d2 - b2*d1) + uxz*(-b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) + 2*d3*(b1*c2 - b2*c1)) - uzx*(2*b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) - d3*(b1*c2 - b2*c1))))
-        ez = -L1*(Em1*L1*(3*b2*uyy*(b1*d3 - b3*d1) - 3*b2*uyz*(b1*c3 - b3*c1) + 3*c2*uxx*(c1*d3 - c3*d1) + 3*c2*uxz*(b1*c3 - b3*c1) - uxy*(b2*(c1*d3 - c3*d1) + 2*c2*(b1*d3 - b3*d1) + d2*(b1*c3 - b3*c1)) - uyx*(2*b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) - d2*(b1*c3 - b3*c1))) - Em2*L2*(3*b3*uyy*(b1*d2 - b2*d1) - 3*b3*uyz*(b1*c2 - b2*c1) + 3*c3*uxx*(c1*d2 - c2*d1) + 3*c3*uxz*(b1*c2 - b2*c1) - uxy*(b3*(c1*d2 - c2*d1) + 2*c3*(b1*d2 - b2*d1) + d3*(b1*c2 - b2*c1)) - uyx*(2*b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) - d3*(b1*c2 - b2*c1)))) 
+        ex = (Em1*L1*(3*c2*uzx*(c1*d3 - c3*d1) + 3*c2*uzz*(b1*c3 - b3*c1) - 3*d2*uyx*(c1*d3 - c3*d1) + 3*d2*uyy*(b1*d3 - b3*d1) - uyz*(-b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) + 2*d2*(b1*c3 - b3*c1)) - uzy*(b2*(c1*d3 - c3*d1) + 2*c2*(b1*d3 - b3*d1) + d2*(b1*c3 - b3*c1))) - Em2*L2*(3*c3*uzx*(c1*d2 - c2*d1) + 3*c3*uzz*(b1*c2 - b2*c1) - 3*d3*uyx*(c1*d2 - c2*d1) + 3*d3*uyy*(b1*d2 - b2*d1) - uyz*(-b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) + 2*d3*(b1*c2 - b2*c1)) - uzy*(b3*(c1*d2 - c2*d1) + 2*c3*(b1*d2 - b2*d1) + d3*(b1*c2 - b2*c1))))
+        ey = (Em1*L1*(3*b2*uzy*(b1*d3 - b3*d1) - 3*b2*uzz*(b1*c3 - b3*c1) + 3*d2*uxx*(c1*d3 - c3*d1) - 3*d2*uxy*(b1*d3 - b3*d1) + uxz*(-b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) + 2*d2*(b1*c3 - b3*c1)) - uzx*(2*b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) - d2*(b1*c3 - b3*c1))) - Em2*L2*(3*b3*uzy*(b1*d2 - b2*d1) - 3*b3*uzz*(b1*c2 - b2*c1) + 3*d3*uxx*(c1*d2 - c2*d1) - 3*d3*uxy*(b1*d2 - b2*d1) + uxz*(-b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) + 2*d3*(b1*c2 - b2*c1)) - uzx*(2*b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) - d3*(b1*c2 - b2*c1))))
+        ez = -(Em1*L1*(3*b2*uyy*(b1*d3 - b3*d1) - 3*b2*uyz*(b1*c3 - b3*c1) + 3*c2*uxx*(c1*d3 - c3*d1) + 3*c2*uxz*(b1*c3 - b3*c1) - uxy*(b2*(c1*d3 - c3*d1) + 2*c2*(b1*d3 - b3*d1) + d2*(b1*c3 - b3*c1)) - uyx*(2*b2*(c1*d3 - c3*d1) + c2*(b1*d3 - b3*d1) - d2*(b1*c3 - b3*c1))) - Em2*L2*(3*b3*uyy*(b1*d2 - b2*d1) - 3*b3*uyz*(b1*c2 - b2*c1) + 3*c3*uxx*(c1*d2 - c2*d1) + 3*c3*uxz*(b1*c2 - b2*c1) - uxy*(b3*(c1*d2 - c2*d1) + 2*c3*(b1*d2 - b2*d1) + d3*(b1*c2 - b2*c1)) - uyx*(2*b3*(c1*d2 - c2*d1) + c3*(b1*d2 - b2*d1) - d3*(b1*c2 - b2*c1)))) 
         
-        Exl += ex*V1
-        Eyl += ey*V1
-        Ezl += ez*V1
+        Exl += ex/V1
+        Eyl += ey/V1
+        Ezl += ez/V1
 
     out = np.zeros((3,), dtype=np.complex128)
     out[0] = Exl
@@ -543,9 +735,40 @@ def compute_curl_curl(coords: np.ndarray,
     out[2] = Ezl
     return out
 
+@njit(c16[:,:](c16[:], c16[:,:]), cache=True, fastmath=True, nogil=True)
+def cross_c_arry(a: np.ndarray, b: np.ndarray):
+    """Optimized complex single vector cross product
+
+    Args:
+        a (np.ndarray): (3,) vector a
+        b (np.ndarray): (3,) vector b
+
+    Returns:
+        np.ndarray: a ⨉ b
+    """
+    crossv = np.empty((3,b.shape[1]), dtype=np.complex128)
+    crossv[0,:] = a[1]*b[2,:] - a[2]*b[1,:]
+    crossv[1,:] = a[2]*b[0,:] - a[0]*b[2,:]
+    crossv[2,:] = a[0]*b[1,:] - a[1]*b[0,:]
+    return crossv
+
+@njit(c16[:](c16[:], c16[:,:]), cache=True, fastmath=True, nogil=True)
+def dot_c_arry(a: np.ndarray, b: np.ndarray):
+    """Optimized complex single vector cross product
+
+    Args:
+        a (np.ndarray): (3,) vector a
+        b (np.ndarray): (3,) vector b
+
+    Returns:
+        np.ndarray: a ⨉ b
+    """
+    dotv = a[0]*b[0,:] + a[1]*b[1,:] + a[2]*b[2,:]
+    return dotv
+
 @njit(types.Tuple((f8[:], f8[:]))(f8[:,:], i8[:,:], i8[:,:], i8[:,:], f8[:,:],
                                   c16[:], f8[:], f8[:], i8[:,:], i8[:,:],
-                                  f8[:,:], i8[:,:], i8[:,:], c16[:], c16[:], f8), cache=True, nogil=True)
+                                  f8[:,:], i8[:,:], i8[:,:], c16[:], c16[:], i8[:], f8), cache=True, nogil=True)
 def compute_error_single(nodes, tets, tris, edges, centers, 
                          Efield, 
                          edge_lengths,
@@ -557,83 +780,200 @@ def compute_error_single(nodes, tets, tris, edges, centers,
                          tet_to_field, 
                          er, 
                          ur,
+                         pec_tris,
                          k0,) -> np.ndarray:
 
+    is_pec = np.zeros((tris.shape[1],), dtype=np.bool)
+    is_pec[pec_tris] = True
 
-    # UNPACK DATA
+    # CONSTANTS
     ntet = tets.shape[1]
     nedges = edges.shape[1]
+    W0 = k0*C0
+    N2D = DPTS_2D.shape[1]
+    W_VOL = DPTS_3D[0,:]
+    Y0 = np.sqrt(1/MU0)
     
-    
-    # INIT POSTERIORI ERROR ESTIMATE
-    error = np.zeros((ntet,), dtype=np.float64)
+    # INIT POSTERIORI ERROR ESTIMATE QUANTITIES
+    alpha_t = np.zeros((ntet,), dtype=np.complex128)
     max_elem_size = np.zeros((ntet,), dtype=np.float64)
     
-    hks = np.zeros((ntet,), dtype=np.float64)
-    hfs = np.zeros((4,ntet), dtype=np.float64)
-    face_error1 = np.zeros((4,3,ntet), dtype=np.complex128)
-    face_error2 = np.zeros((4,3,ntet), dtype=np.complex128)
+    Qf_face1 = np.zeros((4,N2D,ntet), dtype=np.complex128)
+    Qf_face2 = np.zeros((4,N2D,ntet), dtype=np.complex128)
+    Jf_face1 = np.zeros((4,3,N2D,ntet), dtype=np.complex128)
+    Jf_face2 = np.zeros((4,3,N2D,ntet), dtype=np.complex128)
     
-
+    areas_fr = np.zeros((4, N2D, ntet), dtype=np.float64)
+    Rf_fr = np.zeros((4, ntet), dtype=np.float64)
+    adj_tets_mat = -np.ones((4,ntet), dtype=np.int32)
+    
     # Compute Error estimate
     for itet in range(ntet):
         uinv = (1/ur[itet])*np.eye(3)
         ermat = er[itet]*np.eye(3)
+        erc = er[itet]
+        urc = ur[itet]
         
+        # GEOMETRIC QUANTITIES
         vertices = nodes[:,tets[:, itet]]
+        v1 = vertices[:,0]
+        v2 = vertices[:,1]
+        v3 = vertices[:,2]
+        v4 = vertices[:,3]
         
+        # VOLUME INTEGRATION POINTS
+        vxs = DPTS_3D[1,:]*v1[0] + DPTS_3D[2,:]*v2[0] + DPTS_3D[3,:]*v3[0] + DPTS_3D[4,:]*v4[0]
+        vys = DPTS_3D[1,:]*v1[1] + DPTS_3D[2,:]*v2[1] + DPTS_3D[3,:]*v3[1] + DPTS_3D[4,:]*v4[1]
+        vzs = DPTS_3D[1,:]*v1[2] + DPTS_3D[2,:]*v2[2] + DPTS_3D[3,:]*v3[2] + DPTS_3D[4,:]*v4[2]
+        
+        intpts = np.empty((3,DPTS_3D.shape[1]), dtype=np.float64)
+        intpts[0,:] = vxs
+        intpts[1,:] = vys
+        intpts[2,:] = vzs
+        
+        # TET TRI NODE COUPLINGS
         g_node_ids = tets[:, itet]
         g_edge_ids = edges[:, tet_to_field[:6, itet]]
         g_tri_ids = tris[:, tet_to_field[6:10, itet]-nedges]
-
         l_edge_ids = local_mapping(g_node_ids, g_edge_ids)
         l_tri_ids = local_mapping(g_node_ids, g_tri_ids)
-
-        coords = centers[:,itet]
-        Ef = Efield[tet_to_field[:,itet]]
-        Rv1 = -compute_curl_curl(coords, vertices, Ef, l_edge_ids, l_tri_ids, uinv)
-        Rv2 = k0**2*(ermat @ compute_field(coords, vertices, Ef, l_edge_ids, l_tri_ids))
-        
         triids = tet_to_tri[:,itet]
-        facecoords = tri_centers[:, triids]
+        
+        size_max = circum_sphere_diam(v1,v2,v3,v4)
+        #size_max = np.max(edge_lengths[tet_to_edge[:,itet]])
         
         Volume = compute_volume(vertices[0,:], vertices[1,:], vertices[2,:])
-        hks[itet] = Volume**(1/3)
-        Rf = matmul(uinv, compute_curl(facecoords, vertices, Ef, l_edge_ids, l_tri_ids))
+        
+        Rt = size_max
+        # Efield
+        Ef = Efield[tet_to_field[:,itet]]
+        
+        # Qt term
+        Qt = Volume*EPS0*np.sum(W_VOL*compute_div(intpts, vertices, Ef, l_edge_ids, l_tri_ids, ermat), axis=0)
+
+        # Jt term
+        
+        Rv1 = compute_curl_curl(vertices, Ef, l_edge_ids, l_tri_ids, uinv)
+        Rv2 = -k0**2*(ermat @ compute_field(intpts, vertices, Ef, l_edge_ids, l_tri_ids))
+        Rv = 1*Rv2
+        Rv[0,:] += Rv1[0] # X-component
+        Rv[1,:] += Rv1[1] # Y-component
+        Rv[2,:] += Rv1[2] # Z-component
+        
+        Rv[0,:] = Rv[0,:]*W_VOL
+        Rv[1,:] = Rv[1,:]*W_VOL
+        Rv[2,:] = Rv[2,:]*W_VOL
+        
+        Jt = -Volume*np.sum(1/(1j*W0*MU0) * Rv, axis=1)
+  
+        Gt = (1j*W0*np.exp(-1j*k0*Rt)/(4*np.pi*Rt))
+        alpha_t[itet] = - Gt/(erc*EPS0) * Qt*Qt - Gt*urc*MU0 * np.sum(Jt*Jt)
+        
+        # Face Residual computation
+        
+        all_face_coords = np.empty((3,4*N2D), dtype=np.float64)
+        for itri in range(4):
+            triid = triids[itri]
+            tnodes = nodes[:,tris[:,triid]]
+            n1 = tnodes[:,0]
+            n2 = tnodes[:,1]
+            n3 = tnodes[:,2]
+            all_face_coords[0,itri*N2D:(itri+1)*N2D] = DPTS_2D[1,:]*n1[0] + DPTS_2D[2,:]*n2[0] + DPTS_2D[3,:]*n3[0]
+            all_face_coords[1,itri*N2D:(itri+1)*N2D] = DPTS_2D[1,:]*n1[1] + DPTS_2D[2,:]*n2[1] + DPTS_2D[3,:]*n3[1]
+            all_face_coords[2,itri*N2D:(itri+1)*N2D] = DPTS_2D[1,:]*n1[2] + DPTS_2D[2,:]*n2[2] + DPTS_2D[3,:]*n3[2]
+        
+        Qf_all = erc*EPS0*compute_field(all_face_coords, vertices, Ef, l_edge_ids, l_tri_ids)
+        Jf_all = -1/(1j*MU0*W0)*matmul(uinv, compute_curl(all_face_coords, vertices, Ef, l_edge_ids, l_tri_ids))
+        E_face_all = compute_field(all_face_coords, vertices, Ef, l_edge_ids, l_tri_ids)
         tetc = centers[:,itet].flatten()
         
-        max_elem_size[itet] = (Volume*12/np.sqrt(2))**(1/3)#(np.max(edge_lengths[tet_to_edge[:,itet]]) + np.min(edge_lengths[tet_to_edge[:,itet]]))/2
+        max_elem_size[itet] = size_max
         
         for iface in range(4):
-            i1, i2, i3 = tris[:, triids[iface]]
+            tri_index = triids[iface]
+            
+            pec_face = is_pec[tri_index]
+            
+            i1, i2, i3 = tris[:, tri_index]
+            
+            slc1 = iface*N2D
+            slc2 = slc1+N2D
+            
             normal = outward_normal(nodes[:,i1], nodes[:,i2], nodes[:,i3], tetc).astype(np.complex128)
+            
+            area = areas[triids[iface]]
+            
+            n1 = nodes[:,i1]
+            n2 = nodes[:,i2]
+            n3 = nodes[:,i3]
+            l1 = np.linalg.norm(n2-n1)
+            l2 = np.linalg.norm(n3-n1)
+            l3 = np.linalg.norm(n3-n2)
+            Rf = np.max(np.array([l1, l2, l3]))
+            Rf = diam_circum_circle(n1,n2,n3)
+            Rf_fr[iface,itet] = Rf
+            areas_fr[iface, :, itet] = area
             
             adj_tets = [int(tri_to_tet[j,triids[iface]]) for j in range(2)]
             adj_tets = [num for num in adj_tets if num not in (itet, -1234)]
             
             if len(adj_tets) == 0:
                 continue
-            area = areas[triids[iface]]
             
-            hfs[iface,itet] = area**0.5
+            if pec_face is True:
+                Jtan = Y0*np.sqrt(1/urc)*cross_c_arry(normal, -cross_c_arry(normal, E_face_all[:, slc1: slc2]))
+                
+                itet_adj = adj_tets[0]
+                iface_adj = np.argwhere(tet_to_tri[:,itet_adj]==triids[iface])[0][0]
+                
+                Jf_face1[iface, :, :, itet] = Jtan
+
+                adj_tets_mat[iface,itet] = itet_adj
+                continue
             
             itet_adj = adj_tets[0]
             iface_adj = np.argwhere(tet_to_tri[:,itet_adj]==triids[iface])[0][0]
             
-            face_error2[iface_adj, :, itet_adj] = -area*cross_c(normal, uinv @ Rf[:, iface])
-            face_error1[iface, :, itet] = area*cross_c(normal, uinv @ Rf[:,iface])
-        
+            Jf_face1[iface, :, :, itet] = cross_c_arry(normal, Jf_all[:, slc1:slc2])
+            Jf_face2[iface_adj, :, :, itet_adj] = -cross_c_arry(normal, Jf_all[:, slc1:slc2])
+            
+            Qf_face1[iface, :, itet] = dot_c_arry(normal, Qf_all[:, slc1:slc2])
+            Qf_face2[iface_adj, :, itet_adj] = -dot_c_arry(normal, Qf_all[:, slc1:slc2])
 
-        error[itet] = np.linalg.norm(np.abs(Volume*(Rv1 + Rv2)))**2
+            adj_tets_mat[iface,itet] = itet_adj
+
+    # Compute 2D Gauss quadrature weight matrix
+    fWs = np.empty_like(areas_fr, dtype=np.float64)
+    for i in range(N2D):
+        fWs[:,i,:] = DPTS_2D[0,i]
     
-    fdiff = np.abs(face_error1 - face_error2)
-    fnorm = fdiff[:,0,:]**2 + fdiff[:,1,:]**2 + fdiff[:,2,:]**2
-    ferror = np.sum(fnorm*hfs, axis=0)
-    error = hks**2*error + 0.5*ferror
-
+    # Compute the εE field difference (4, NDPTS, NTET)
+    Qf_delta = Qf_face1 - Qf_face2
+    Jf_delta = Jf_face1 - Jf_face2
+    
+    # Perform Gauss-Quadrature integration (4, NTET)
+    Qf_int = np.sum(Qf_delta*areas_fr*fWs, axis=1)
+    Jf_int_x = np.sum(Jf_delta[:,0,:,:]*areas_fr*fWs, axis=1)
+    Jf_int_y = np.sum(Jf_delta[:,1,:,:]*areas_fr*fWs, axis=1)
+    Jf_int_z = np.sum(Jf_delta[:,2,:,:]*areas_fr*fWs, axis=1)
+    
+    Gf = (1j*W0*np.exp(-1j*k0*Rf_fr)/(4*np.pi*Rf_fr))
+    alpha_Df = - Gf/(er*EPS0)*(Qf_int*Qf_int) - Gf*(ur*MU0) * (Jf_int_x*Jf_int_x + Jf_int_y*Jf_int_y + Jf_int_z*Jf_int_z)
+    
+    alpha_Nf = np.zeros((4, ntet), dtype=np.complex128)
+    for it in range(ntet):
+        for iface in range(4):
+            it2 = adj_tets_mat[iface, it]
+            if it2==-1:
+                continue
+            alpha_Nf[iface,it] = alpha_t[it2]
+    
+    alpha_f = np.sum((alpha_t/(alpha_t + alpha_Nf + 1e-13))*alpha_Df, axis=0)
+    error = (np.abs(alpha_t + alpha_f))**0.5
+    
     return error, max_elem_size
 
-def compute_error_estimate(field: MWField) -> np.ndarray:
+def compute_error_estimate(field: MWField, pec_tris: list[int]) -> np.ndarray:
     mesh = field.mesh
 
     nodes = mesh.nodes
@@ -650,8 +990,10 @@ def compute_error_estimate(field: MWField) -> np.ndarray:
     tet_to_field = field.basis.tet_to_field
     er = field._der
     ur = field._dur
+    
     Ls = mesh.edge_lengths
     
+    pec_tris = np.sort(np.unique(np.array(pec_tris)))
     errors = []
     for key in field._fields.keys():
         excitation = field._fields[key]
@@ -659,7 +1001,7 @@ def compute_error_estimate(field: MWField) -> np.ndarray:
         error, sizes = compute_error_single(nodes, tets, tris, edges,
                              centers, excitation, Ls, As, 
                              tet_to_edge, tet_to_tri, tri_centers,
-                             tri_to_tet, tet_to_field, er, ur, field.k0)
+                             tri_to_tet, tet_to_field, er, ur, pec_tris, field.k0)
         
         errors.append(error)
     

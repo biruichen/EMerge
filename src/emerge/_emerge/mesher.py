@@ -75,9 +75,13 @@ class Mesher:
         self.objects: list[GeoObject] = []
         self.size_definitions: list[tuple[int, float]] = []
         self.mesh_fields: list[int] = []
+        
         self._amr_fields: list[int] = []
         self._amr_coords: np.ndarray = None
         self._amr_sizes: np.ndarray = None
+        self._amr_ratios: np.ndrray = None
+        self._amr_new: np.ndarray = None
+
         self.min_size: float = None
         self.max_size: float = None
         self.periodic_cell: PeriodicCell = None
@@ -152,7 +156,6 @@ class Mesher:
                                         3: dict()}
         if len(objects) > 0: # type: ignore
             dimtags, output_mapping = gmsh.model.occ.fragment(final_dimtags, embedding_dimtags)
-
             for domain, mapping in zip(final_dimtags + embedding_dimtags, output_mapping):
                 tag_mapping[domain[0]][domain[1]] = [o[1] for o in mapping]
             for dom in objects: # type: ignore
@@ -289,7 +292,7 @@ class Mesher:
             gmsh.model.mesh.setSizeFromBoundary(dimtag[0], dimtag[1], 0)
     
     
-    def add_refinement_points(self, coords: np.ndarray, sizes: np.ndarray) -> None:
+    def add_refinement_points(self, coords: np.ndarray, sizes: np.ndarray, ratios: np.ndarray):
         if self._amr_coords is None:
             self._amr_coords = coords
         else:
@@ -299,25 +302,46 @@ class Mesher:
             self._amr_sizes = sizes
         else:
             self._amr_sizes = np.hstack((self._amr_sizes, sizes))
-            
+        
+        if self._amr_ratios is None:
+            self._amr_ratios = ratios
+        else:
+            self._amr_ratios = np.hstack((self._amr_ratios, ratios))
+        
+        if self._amr_new is None:
+            self._amr_new = np.ones_like(sizes)
+        else:
+            self._amr_new = np.hstack((0.0*self._amr_new, np.ones_like(sizes)))
+        
+        
     def set_refinement_function(self,
-                                refinement: float,
                                 gr: float = 1.5,
                                 _qf: float = 1.0):
         xs = self._amr_coords[0,:]
         ys = self._amr_coords[1,:]
         zs = self._amr_coords[2,:]
-        newsize = refinement*self._amr_sizes
+        newsize = self._amr_ratios*self._amr_sizes
         A = newsize/gr
         B = (1-gr)/gr
         from numba import njit, i8, f8
 
         @njit(f8(i8,i8,f8,f8,f8,f8), nogil=True, fastmath=True, parallel=False)
         def func(dim, tag, x, y, z, lc):
-            sizes = np.maximum(newsize, A - B * _qf*np.sqrt((x-xs)**2 + (y-ys)**2 + (z-zs)**2))
+            sizes = np.maximum(newsize, A - B * _qf*np.clip(np.sqrt((x-xs)**2 + (y-ys)**2 + (z-zs)**2) - newsize/3, a_min=0, a_max=None))
             return min(lc,  float(np.min(sizes)))
-        gmsh.model.mesh.setSizeCallback(func)
         
+        gmsh.model.mesh.setSizeCallback(func)
+    
+    def refine_finer(self, factor: float):
+        newids = self._amr_new==1
+        self._amr_ratios[newids] = self._amr_ratios[newids]*(0.85**factor)
+        return self._amr_ratios[newids][0]
+    
+    def refine_coarser(self, factor: float):
+        newids = self._amr_new==1
+        self._amr_ratios[newids] = self._amr_ratios[newids]/(0.85**factor)
+        return self._amr_ratios[newids][0]
+    
     def add_refinement_point(self,
                              coordinate: np.ndarray,
                              refinement: float,
@@ -389,7 +413,7 @@ class Mesher:
             if obj.dim==2:
                 logger.warning('Forwarding to set_face_size')
                 self.set_face_size(obj, size)
-        logger.debug(f'Setting size {size*1000:.3f}ff for object {obj}')
+        logger.debug(f'Setting size {size*1000:.3f}mm for object {obj}')
         self._set_size_in_domain(obj.tags, size)
 
     def set_face_size(self, obj: GeoSurface | Selection, size: float):
@@ -405,7 +429,7 @@ class Mesher:
                 logger.warning('Forwarding to set_domain_size')
                 self.set_face_size(obj, size)
         
-        logger.debug(f'Setting size {size*1000:.3f}ff for face {obj}')
+        logger.debug(f'Setting size {size*1000:.3f}mm for face {obj}')
         self._set_size_on_face(obj.tags, size)
     
     def set_size(self, obj: GeoObject, size: float) -> None:

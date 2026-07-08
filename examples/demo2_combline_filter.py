@@ -42,7 +42,7 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-model = em.Simulation('ComblineFilter', loglevel='DEBUG', write_log=False)
+model = em.Simulation('ComblineFilter')
 model.check_version("1.1.0") # Checks version compatibility.
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.
@@ -81,7 +81,7 @@ model.view()
 # We define our frequency range and a fine sampling.
 model.mw.set_frequency_range(6e9, 8e9, 21)
 
-model.mw.set_resolution(0.05)
+model.mw.set_resolution(0.1)
 # To improve simulation quality we refine the faces at the top of the cylinders.
 for stub in stubs:
     model.mesher.set_boundary_size(box.face('back', tool=stub), 0.25*mm)
@@ -117,7 +117,8 @@ Y = Y.flatten()
 Z = Z.flatten()
 
 # The E-field can be interpolated by selecting a desired solution and then interpolating it.
-Ex, Ey, Ez = data.field[3].interpolate(X,Y,Z).E
+field = data.field.find(freq=7.25e9)
+Ex, Ey, Ez = field.interpolate(X,Y,Z).E
 
 # We can add the objects we want and fields using the shown methods.
 model.display.add_object(box, opacity=0.1, show_edges=True)
@@ -126,5 +127,5 @@ model.display.add_object(feed1out, opacity=0.1)
 model.display.add_portmode(port1, 21)
 model.display.add_portmode(port2, 21)
 outside = box.boundary()
-model.display.add_boundary_field(outside, data.field[3].boundary(outside).scalar('normE'), opacity=0.4)
+model.display.add_boundary_field(outside, field.boundary(outside).scalar('normE'), opacity=0.4)
 model.display.show()

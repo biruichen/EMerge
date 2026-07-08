@@ -273,13 +273,17 @@ class Assembler:
 
         logger.debug('Implementing PEC Boundary Conditions.')
         pec_ids: list[int] = []
+        pec_tris: list[int] = []
         
         # Conductivity above al imit, consider it all PEC
         ipec = 0
+        
         for itet in range(field.n_tets):
             if cond[0,0,itet] > self.settings.mw_3d_peclim:
                 ipec+=1
                 pec_ids.extend(field.tet_to_field[:,itet])
+                for tri in field.mesh.tet_to_tri[:,itet]:
+                    pec_tris.append(tri)
         if ipec>0:
             logger.trace(f'Extended PEC with {ipec} tets with a conductivity > {self.settings.mw_3d_peclim}.')
 
@@ -295,9 +299,12 @@ class Assembler:
                 eids = field.edge_to_field[:, ii]
                 pec_ids.extend(list(eids))
 
+            
             for ii in tri_ids:
                 tids = field.tri_to_field[:, ii]
                 pec_ids.extend(list(tids))
+                
+            pec_tris.extend(tri_ids)
 
 
         ############################################################
@@ -412,7 +419,8 @@ class Assembler:
         
         simjob.port_vectors = port_vectors
         simjob.solve_ids = solve_ids
-
+        simjob._pec_tris = pec_tris
+        
         if has_periodic:
             simjob.P = Pmat
             simjob.Pd = Pmat.getH()

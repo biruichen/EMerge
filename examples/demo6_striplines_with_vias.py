@@ -13,11 +13,11 @@ Notice that the results of this simulation are not supposed to be good. Its more
 mm = 0.001    # Define a millimeter
 th = 1.0      # mm
 
-model = em.Simulation('StriplineWithVias', loglevel='DEBUG')
+model = em.Simulation('StriplineWithVias')
 model.check_version("1.1.0") # Checks version compatibility.
 
 # As usual we start by creating our layouter
-ly = em.geo.PCB(th, mm, em.GCS, material=em.lib.DIEL_RO4350B, trace_material=em.lib.MET_COPPER)
+ly = em.geo.PCB(th, mm, em.GCS, material=em.lib.DIEL_RO4350B, trace_material=em.lib.PEC)
 
 # Here we define a simple stripline path that makes a knick turn and a via jump to a new layer.
 # None of the transmission lines are conciously matched in any way, this is just about the routing

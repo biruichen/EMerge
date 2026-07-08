@@ -76,3 +76,9 @@ filename = "examples/demo14_boundary_selection.py"
 
 [[tool.bumpversion.files]]
 filename = "examples/demo15_strip_slotline_transition.py"
+
+[[tool.bumpversion.files]]
+filename = "examples/demo16_differential_common_mode.py"
+
+[[tool.bumpversion.files]]
+filename = "examples/demo17_step_import.py"
