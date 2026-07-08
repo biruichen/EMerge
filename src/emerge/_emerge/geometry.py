@@ -67,7 +67,13 @@ class _GeometryManager:
 
     def reset(self, modelname: str) -> None:
         self.geometry_list[modelname] = []
-        
+    
+    def lowest_priority(self) -> int:
+        return min([geo._priority for geo in self.all_geometries()])
+    
+    def highest_priority(self) -> int:
+        return min([geo._priority for geo in self.all_geometries()])
+    
 class _FacePointer:
     """The FacePointer class defines a face to be selectable as a
     face normal vector plus an origin. All faces of an object
@@ -387,6 +393,24 @@ class GeoObject:
         self._priority -= 1
         return self
 
+    def background(self) -> GeoObject:
+        """Set the priority to be on the background.
+
+        Returns:
+            GeoObject: _description_
+        """
+        self._priority = _GEOMANAGER.lowest_priority()-10
+        return self
+
+    def foreground(self) -> GeoObject:
+        """Set the priority to be on top.
+
+        Returns:
+            GeoObject: _description_
+        """
+        self._priority = _GEOMANAGER.highest_priority()+10
+        return self
+    
     def outside(self, *exclude: FaceNames, tags: list[int] | None = None) -> FaceSelection:
         """Returns the complete set of outside faces.
 

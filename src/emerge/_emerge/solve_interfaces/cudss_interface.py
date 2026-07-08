@@ -21,6 +21,7 @@ from nvmath import CudaDataType # ty: ignore
 
 from scipy.sparse import csr_matrix
 import numpy as np
+from typing import Literal
 
 from loguru import logger
 
@@ -51,6 +52,11 @@ def _c_pointer(arry) -> int:
 ############################################################
 
 class CuDSSInterface:
+    """the CuDSSInterface class implements the nvmath bindings and cupy
+    control for EMerge.
+    """
+    AlgType = cudss.AlgType
+
     def __init__(self):
         self.A_cu = None
         self.b_cu = None
@@ -92,10 +98,31 @@ class CuDSSInterface:
             reorder_alg.nbytes
         )
 
-    def set_algorithm(self, alg_type: cudss.AlgType):
-        self.RALG = alg_type
+    def set_algorithm(self, alg_type: Literal['METIS','COLAMD','COLAM_BT','AMD']):
+        """Define fill-in reduction column permuation algorithm. The options are:
+
+         - "METIS" (Default) = NVidia's own Nested Dissection METIS sorter
+         - "COLAMD" = Column approximate minimum degree
+         - "COLAM_BT" = Column Approximate Minimum Degree Block Triangular
+         - "AMD" = Approximate Minimum Degree
+
+        Args:
+            alg_type (str): The chosen type
+        """
+        if alg_type=='METIS':
+            self.RALG = ALG_NEST_DISS_METIS
+        elif alg_type =='COLAMD':
+            self.RALG = ALG_COLAMD
+        elif alg_type == 'COLAMD_BT':
+            self.RALG = ALG_COLAMD_BLOCK_TRI
+        elif alg_type == 'AMD':
+            self.RALG = ALG_AMD
+        else:
+            logger.warning(f'Algorithm type {alg_type} is not of the chosen set. Ignoring setting.')
     
     def init_type(self):
+        """Initializes the value data type of the solver (float vs complex, single vs double).
+        """
         if self._PRES == 1:
             if self._COMP:
                 self.c_dtype = cp.complex64
@@ -112,6 +139,11 @@ class CuDSSInterface:
                 self.VTYPE = FLOAT64
 
     def submit_matrix(self, A: csr_matrix):
+        """Sets the given csr_matrix as the matrix to be solved.
+
+        Args:
+            A (csr_matrix): The csr_format matrix for the problem Ax=b
+        """
         self.N = A.shape[0]
 
         if np.iscomplexobj(A):
@@ -132,12 +164,21 @@ class CuDSSInterface:
         self._COL_IDS = self.A_cu.indices.astype(cp.int32)
 
     def submit_vector(self, b: np.ndarray):
+        """Submits the dense vector b to be solved.
+
+        Args:
+            b (np.ndarray): The dense vector for the problem Ax=b
+        """
         self.b_cu = cp.array(b).astype(self.c_dtype)
     
     def create_solvec(self):
+        """Initializes a solution vector that the nvmath binding can access.
+        """
         self.x_cu = cp.empty_like(self.b_cu)
 
     def _update_dss_data(self):
+        """Updates the currently defined matrix data into the existing memory.ALG_AMD
+        """
         cudss.matrix_set_values(self.A_cobj, _c_pointer(self._VAL))
 
         
@@ -147,6 +188,7 @@ class CuDSSInterface:
                                     int(self.VTYPE), int(cudss.Layout.COL_MAJOR))
 
     def _create_dss_data(self):
+        """Creates a new memory slot for the CSR matrix of the matrix A"""
         self.A_cobj = cudss.matrix_create_csr(
             self.N,self.N,self._NNZ,
             _c_pointer(self._ROW_START),

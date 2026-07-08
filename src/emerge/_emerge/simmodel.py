@@ -435,7 +435,21 @@ class Simulation3D:
             else:
                 yield (dim[i_iter] for dim in dims_flat) # type: ignore
         self.mw.cache_matrices = True
+    
+    def export(self, filename: str):
+        """Exports the model or mesh depending on the extension. 
+        
+        Exporting is realized by GMSH.
+        Supported file formats are:
+        
+        3D Model: .opt, .geo_unrolled, .brep, .xao ,.step and .iges
+        Mesh: .msh, .inp, .key, ._0000.rad, .celum, .cgns, .diff, .unv, .ir3, .mes, .mesh 
+              .mail, .m, .bdf, .off, .p3d, .stl, .wrl, .vtk, .dat, .ply2, .su2, .neu, .x3d
 
+        Args:
+            filename (str): The filename
+        """
+        gmsh.write(filename)
     ############################################################
     #                     DEPRICATED FUNCTIONS                #
     ############################################################

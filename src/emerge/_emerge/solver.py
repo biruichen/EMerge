@@ -44,11 +44,8 @@ If so, attempt to import PyPardiso (if its installed)
 ############################################################
 
 if 'arm' not in platform.processor():
-    try:
-        from .solve_interfaces.pardiso_interface import PardisoInterface
-        _PARDISO_AVAILABLE = True
-    except ModuleNotFoundError:
-        logger.info('Pardiso not found, defaulting to SuperLU')
+    from .solve_interfaces.pardiso_interface import PardisoInterface
+    _PARDISO_AVAILABLE = True
 
 
 ############################################################
@@ -62,7 +59,6 @@ try:
 except ModuleNotFoundError:
     logger.debug('UMFPACK not found, defaulting to SuperLU')
 
-
 ############################################################
 #                           CUDSS                          #
 ############################################################
@@ -72,7 +68,10 @@ try:
     _CUDSS_AVAILABLE = True
 except ModuleNotFoundError:
     pass
-
+except ImportError as e:
+    logger.error('Error while importing CuDSS dependencies:')
+    logger.exception(e)
+    
 ############################################################
 #                       SOLVE REPORT                       #
 ############################################################
@@ -177,7 +176,8 @@ def filter_real_modes(eigvals: np.ndarray, eigvecs: np.ndarray,
 #               EIGENMODE ORTHOGONALITY CHECK              #
 ############################################################
 
-def filter_unique_eigenpairs(eigen_values: list[complex], eigen_vectors: list[np.ndarray], tol=-3) -> tuple[list[complex], list[np.ndarray]]:
+def filter_unique_eigenpairs(eigen_values: list[complex], 
+                             eigen_vectors: list[np.ndarray], tol=-3) -> tuple[list[complex], list[np.ndarray]]:
     """
     Filters eigenvectors by orthogonality using dot-product tolerance.
     
@@ -301,7 +301,8 @@ class Solver:
         Options may be ignored depending on the type of solver used."""
         pass
         
-    def solve(self, A: csr_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, SolveReport]:
+    def solve(self, A: csr_matrix, b: np.ndarray, precon: Preconditioner, 
+              reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, SolveReport]:
         raise NotImplementedError("This classes Ax=B solver method is not implemented.")
     
     def reset(self) -> None:
@@ -329,13 +330,13 @@ class EigSolver:
     def duplicate(self) -> Solver:
         return self.__class__()
 
-    def eig(self, A: csr_matrix | csr_matrix, B: csr_matrix | csr_matrix, nmodes: int = 6, target_k0: float = 0.0, which: str = 'LM', sign: float = 1.):
+    def eig(self, A: csr_matrix | csr_matrix, B: csr_matrix | csr_matrix, nmodes: int = 6, 
+            target_k0: float = 0.0, which: str = 'LM', sign: float = 1.):
         raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
     
     def reset(self) -> None:
         """Reset state variables like numeric and symbollic factorizations."""
         pass
-
 
 
 ############################################################
@@ -379,7 +380,9 @@ class ILUPrecon(Preconditioner):
 
     def init(self, A, b):
         logger.info("Generating ILU Preconditioner")
-        self.ilu = sparse.linalg.spilu(A, drop_tol=1e-2, fill_factor=self.fill_factor, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options) # ty: ignore
+        self.ilu = sparse.linalg.spilu(A, drop_tol=1e-2, fill_factor=self.fill_factor, # ty: ignore
+                                       permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, 
+                                       options=self.options) 
         self.M = sparse.linalg.LinearOperator(A.shape, self.ilu.solve) # ty: ignore
 
 
@@ -601,7 +604,7 @@ class CuDSSSolver(Solver):
         self.fact_numb = False
 
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
-        logger.info(f'[{id}] Calling cuDSS Solver')
+        logger.info(f'[ID={id}] Calling cuDSS Solver')
         
         if self.fact_symb is False:
             logger.debug('Executing symbollic factorization')
@@ -911,7 +914,8 @@ class SolveRoutine:
         return new_routine
     
     def set_solver(self, *solvers: EMSolver | EigSolver | Solver) -> None:
-        """Set a given Solver class instance as the main solver. Solvers will be checked on validity for the given problem.
+        """Set a given Solver class instance as the main solver. 
+        Solvers will be checked on validity for the given problem.
 
         Args:
             solver (EMSolver | Solver): The solver objects
@@ -923,7 +927,8 @@ class SolveRoutine:
                 self.forced_solver.append(solver)
     
     def disable(self, *solvers: EMSolver) -> None:
-        """Disable a given Solver class instance as the main solver. Solvers will be checked on validity for the given problem.
+        """Disable a given Solver class instance as the main solver. 
+        Solvers will be checked on validity for the given problem.
 
         Args:
             solver (EMSolver): The solver objects
@@ -945,7 +950,8 @@ class SolveRoutine:
                     - "SI" = Single threaded
                     - "MT" = Multi threaded
                     - "MP" = Multi-processing,
-            smart_search (bool, optional): Wether to use smart-search solvers for eigenmode problems. Defaults to False.
+            smart_search (bool, optional): Wether to use smart-search solvers 
+            for eigenmode problems. Defaults to False.
 
         Returns:
             SolveRoutine: The same SolveRoutine object.
@@ -998,7 +1004,6 @@ class SolveRoutine:
                 return solver
         return self.pick_solver(A,b)
         
-    
     def pick_solver(self, A: csr_matrix, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
 
@@ -1187,7 +1192,10 @@ class SolveRoutine:
         end = time.time()
 
         simtime = end-start
-        return eigen_values, eigen_modes, SolveReport(ndof=A.shape[0], nnz=A.nnz, ndof_solve=Asel.shape[0], nnz_solve=Asel.nnz, simtime=simtime, solver=str(solver), sorter='None', precon='None')
+        return eigen_values, eigen_modes, SolveReport(ndof=A.shape[0], nnz=A.nnz, 
+                                                      ndof_solve=Asel.shape[0], nnz_solve=Asel.nnz, 
+                                                      simtime=simtime, solver=str(solver), 
+                                                      sorter='None', precon='None')
 
     def eig(self, 
             A: csr_matrix | csr_matrix, 
@@ -1233,7 +1241,6 @@ class SolveRoutine:
             sols[solve_ids,i] = eigen_modes[:,i]
 
         return eigen_values, sols, SolveReport(ndof=A.shape[0], nnz=A.nnz, ndof_solve=Asel.shape[0], nnz_solve=Asel.nnz, simtime=simtime, solver=str(solver), sorter='None', precon='None')
-
 
 class AutomaticRoutine(SolveRoutine):
     """ Defines the Automatic Routine for EMerge.

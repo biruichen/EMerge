@@ -146,6 +146,7 @@ class Mesh3D(Mesh):
         self.ftag_to_node: dict[int, list[int]] = dict()
         self.ftag_to_edge: dict[int, list[int]] = dict()
         self.vtag_to_tet:  dict[int, list[int]] = dict()
+        self.etag_to_edge: dict[int, list[int]] = dict()
         
         self.exterior_face_tags: list[int] = []
     
@@ -176,7 +177,7 @@ class Mesh3D(Mesh):
         search = (min(int(i1),int(i2)), max(int(i1),int(i2)))
         result =  self.inv_edges.get(search, -10)
         if result == -10:
-            ValueError(f'There is no edge with indices {i1}, {i2}')
+            raise ValueError(f'There is no edge with indices {i1}, {i2}')
         return result
     
     def get_edge_sign(self, i1: int, i2: int) -> int:
@@ -240,6 +241,31 @@ class Mesh3D(Mesh):
 
         return np.array(indices)
     
+    def domain_edges(self, dimtags: list[tuple[int,int]]) -> np.ndarray:
+        """Returns a np.ndarray of all edge indices corresponding to a set of dimension tags.
+
+        Args:
+            dimtags (list[tuple[int,int]]): A list of dimtags.
+
+        Returns:
+            np.ndarray: The list of mesh edge element indices.
+        """
+        dimtags_edge = []
+        for (d,t) in dimtags:
+            if d==1:
+                dimtags_edge.append(t)
+            if d==2:
+                dimtags_edge.extend(gmsh.model.getBoundary([(d,t),], False, False))
+            if d==3:
+                dts = gmsh.model.getBoundary([(d,t),], False, False)
+                dimtags_edge.extend(gmsh.model.getBoundary(dts, False, False))
+        
+        edge_ids = []
+        for tag in dimtags_edge:
+            edge_ids.extend(self.etag_to_edge[tag[1]])
+        edge_ids = np.array(edge_ids)
+        return edge_ids
+        
     def get_face_tets(self, *taglist: list[int]) -> np.ndarray:
         ''' Return a list of a tetrahedrons that share a node with any of the nodes in the provided face.'''
         nodes: set = set()
@@ -271,6 +297,8 @@ class Mesh3D(Mesh):
     
     
     def update(self, periodic_bcs: list[Periodic] | None = None):
+        
+        logger.trace('Generating mesh data.')
         if periodic_bcs is None:
             periodic_bcs = []
             
@@ -282,7 +310,7 @@ class Mesh3D(Mesh):
         self.nodes = coords
         self.n_i2t = {i: int(t) for i, t in enumerate(nodes)}
         self.n_t2i = {t: i for i, t in self.n_i2t.items()}
-
+        logger.trace(f'Total of {self.nodes.shape[1]} nodes imported.')
         ## Tetrahedras
 
         _, tet_tags, tet_node_tags = gmsh.model.mesh.get_elements(3)
@@ -297,8 +325,8 @@ class Mesh3D(Mesh):
         self.tets = np.array(tet_node_tags).reshape(-1,4).T
         self.tet_i2t = {i: int(t) for i, t in enumerate(tet_tags)}
         self.tet_t2i = {t: i for i, t in self.tet_i2t.items()}
-
         self.centers = (self.nodes[:,self.tets[0,:]] + self.nodes[:,self.tets[1,:]] + self.nodes[:,self.tets[2,:]] + self.nodes[:,self.tets[3,:]]) / 4
+        logger.trace(f'Total of {self.tets.shape[1]} tetrahedra imported.')
         
         # Resort node indices to be sorted on all periodic conditions
         # This sorting makes sure that each edge and triangle on a source face is 
@@ -307,6 +335,7 @@ class Mesh3D(Mesh):
         # Then this ensures that if i1>i2>i3 then j1>j2>j3
     
         for bc in periodic_bcs:
+            logger.trace(f'reassigning ordered node numbers for periodic boundary {bc}')
             nodemap, ids1, ids2 = self._derive_node_map(bc)
             nodemap = {int(a): int(b) for a,b in nodemap.items()}
             self.nodes[:,ids2] = self.nodes[:,ids1]
@@ -330,25 +359,26 @@ class Mesh3D(Mesh):
             triset.add((i1,i2,i4))
             triset.add((i1,i3,i4))
             triset.add((i2,i3,i4))
-
+        logger.trace(f'Total of {len(edgeset)} unique edges and {len(triset)} unique triangles.')
+        
         # Edges are effectively Randomly sorted
         # It contains index pairs of vertices edge 1 = (ev1, ev2) etc.
-        # Same for traingles
+        # Same for triangles
         self.edges = np.array(sorted(list(edgeset))).T
         self.tris = np.array(sorted(list(triset))).T
-        
         self.tri_centers = (self.nodes[:,self.tris[0,:]] + self.nodes[:,self.tris[1,:]] + self.nodes[:,self.tris[2,:]]) / 3
+        
         def _hash(ints):
             return tuple(sorted([int(x) for x in ints]))
         
         # Map edge index tuples to edge indices
         # This mapping tells which characteristic index pair (4,3) maps to which edge
+        logger.trace('Constructing tet/tri/edge and node mappings.')
         self.inv_edges = {(int(self.edges[0,i]), int(self.edges[1,i])): i for i in range(self.edges.shape[1])}
         self.inv_tris = {_hash((self.tris[0,i], self.tris[1,i], self.tris[2,i])): i for i in range(self.tris.shape[1])}
         self.inv_tets = {_hash((self.tets[0,i], self.tets[1,i], self.tets[2,i], self.tets[3,i])): i for i in range(self.tets.shape[1])}
         
         # Tet links
-
         self.tet_to_edge = np.zeros((6, self.tets.shape[1]), dtype=int)-99999
         self.tet_to_edge_sign = np.zeros((6, self.tets.shape[1]), dtype=int)-999999
         self.tet_to_tri = np.zeros((4, self.tets.shape[1]), dtype=int)-99999
@@ -414,14 +444,29 @@ class Mesh3D(Mesh):
         self.node_to_edge = {key: sorted(list(set(val))) for key, val in self.node_to_edge.items()}
 
         ## Quantities
-
+        logger.trace('Computing derived quantaties (centres, areas and lengths).')
         self.edge_centers = (self.nodes[:,self.edges[0,:]] + self.nodes[:,self.edges[1,:]]) / 2
         self.edge_lengths = np.sqrt(np.sum((self.nodes[:,self.edges[0,:]] - self.nodes[:,self.edges[1,:]])**2, axis=0))
         self.areas = np.array([area(self.nodes[:,self.tris[0,i]], self.nodes[:,self.tris[1,i]], self.nodes[:,self.tris[2,i]]) for i in range(self.tris.shape[1])])
         
+        ## Edge tag pairings
+        _, edge_tags, edge_node_tags = gmsh.model.mesh.get_elements(1)
+        edge_tags = np.array(edge_tags).flatten()
+        ent = np.array(edge_node_tags).reshape(-1,2).T
+        nET = ent.shape[1]
+        self.edge_t2i = {int(edge_tags[i]): self.get_edge(self.n_t2i[ent[0,i]], self.n_t2i[ent[1,i]]) for i in range(nET)}
+        self.edge_i2t = {i: t for t, i in self.edge_t2i.items()}
+        
+        edge_dimtags = gmsh.model.get_entities(1)
+        for _d, t in edge_dimtags:
+            _, edge_tags, node_tags = gmsh.model.mesh.get_elements(1, t)
+            self.etag_to_edge[t] = [int(self.edge_t2i[tag]) for tag in edge_tags[0]]
+        
+        
         ## Tag bindings
+        logger.trace('Constructing geometry to mesh mappings.')
         face_dimtags = gmsh.model.get_entities(2)
-        for d,t in face_dimtags:
+        for _d,t in face_dimtags:
             domain_tag, f_tags, node_tags = gmsh.model.mesh.get_elements(2, t)
             node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
             self.ftag_to_node[t] = node_tags
@@ -430,13 +475,14 @@ class Mesh3D(Mesh):
             self.ftag_to_edge[t] = sorted(list(np.unique(self.tri_to_edge[:,self.ftag_to_tri[t]].flatten())))
         
         vol_dimtags = gmsh.model.get_entities(3)
-        for d,t in vol_dimtags:
+        for _d,t in vol_dimtags:
             domain_tag, v_tags, node_tags = gmsh.model.mesh.get_elements(3, t)
             node_tags = [self.n_t2i[int(t)] for t in node_tags[0]]
             node_tags = np.squeeze(np.array(node_tags)).reshape(-1,4).T
             self.vtag_to_tet[t] = [self.get_tet(node_tags[0,i], node_tags[1,i], node_tags[2,i], node_tags[3,i]) for i in range(node_tags.shape[1])]
 
         self.defined = True
+        logger.trace('Done analyzing mesh.')
 
 
     ## Higher order functions
@@ -455,7 +501,7 @@ class Mesh3D(Mesh):
         Returns:
             tuple[dict[int, int], np.ndarray, np.ndarray]: The node index mapping and the node index arrays
         """
-        
+
         node_ids_1 = []
         node_ids_2 = []
 
@@ -597,9 +643,9 @@ class Mesh3D(Mesh):
         tri_ids = self.get_triangles(face_tags)
         if origin is None:
             nodes = self.nodes[:,self.get_nodes(face_tags)]
-            x0 = np.mean(nodes[0,:])
-            y0 = np.mean(nodes[1,:])
-            z0 = np.mean(nodes[2,:])
+            x0 = float(np.mean(nodes[0,:]))
+            y0 = float(np.mean(nodes[1,:]))
+            z0 = float(np.mean(nodes[2,:]))
             origin = (x0, y0, z0)
 
         return SurfaceMesh(self, tri_ids, origin)
