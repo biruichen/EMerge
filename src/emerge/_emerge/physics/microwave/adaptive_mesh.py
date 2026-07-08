@@ -18,9 +18,97 @@
 from .microwave_data import MWField
 import numpy as np
 from ...mth.optimized import matmul, outward_normal
-from numba import njit, f8, c16, i8, types, prange # type: ignore, p
+from numba import njit, f8, c16, i8, types, prange, b1# type: ignore, p
 from loguru import logger
 from ...const import C0, MU0, EPS0
+
+
+@njit(types.Tuple((f8[:,:], f8[:]))(f8[:,:], i8[:,:], f8[:], b1[:]), nogil=True, cache=True)
+def tet_to_node(nodes, tets, sizes, included):
+    """
+    Parameters
+    ----------
+    nodes : (3, N) float64
+        Node coordinates.
+    tets : (4, M) int64
+        Node indices for each tetrahedron.
+    sizes : (M,) float64
+        Requested mesh sizes per tetrahedron.
+    included : (M,) boolean
+        Whether a tetrahedron imposes a size constraint.
+
+    Returns
+    -------
+    coords_out : (K, 3) float64
+        Coordinates of nodes that received a constraint.
+    sizes_out : (K,) float64
+        Minimum size constraint per returned node.
+    """
+    N = nodes.shape[1]
+    M = tets.shape[1]
+
+    big = 1e300
+    node_sizes = np.full(N, big)
+    constrained = np.zeros(N, dtype=np.uint8)  # 0/1 flag
+
+    # Accumulate min size per node from included tets
+    for e in range(M):
+        if included[e]:
+            s = sizes[e]
+            # four vertices per tet
+            n0 = tets[0, e]
+            n1 = tets[1, e]
+            n2 = tets[2, e]
+            n3 = tets[3, e]
+
+            if constrained[n0] == 0:
+                node_sizes[n0] = s
+                constrained[n0] = 1
+            else:
+                if s < node_sizes[n0]:
+                    node_sizes[n0] = s
+
+            if constrained[n1] == 0:
+                node_sizes[n1] = s
+                constrained[n1] = 1
+            else:
+                if s < node_sizes[n1]:
+                    node_sizes[n1] = s
+
+            if constrained[n2] == 0:
+                node_sizes[n2] = s
+                constrained[n2] = 1
+            else:
+                if s < node_sizes[n2]:
+                    node_sizes[n2] = s
+
+            if constrained[n3] == 0:
+                node_sizes[n3] = s
+                constrained[n3] = 1
+            else:
+                if s < node_sizes[n3]:
+                    node_sizes[n3] = s
+
+    # Count constrained nodes
+    K = 0
+    for i in range(N):
+        if constrained[i] == 1:
+            K += 1
+
+    # Pack outputs
+    coords_out = np.empty((3, K), dtype=nodes.dtype)
+    sizes_out = np.empty(K, dtype=sizes.dtype)
+
+    j = 0
+    for i in range(N):
+        if constrained[i] == 1:
+            coords_out[0, j] = nodes[0, i]
+            coords_out[1, j] = nodes[1, i]
+            coords_out[2, j] = nodes[2, i]
+            sizes_out[j] = node_sizes[i]
+            j += 1
+
+    return coords_out, sizes_out
 
 @njit(cache=True, nogil=True)
 def diam_circum_circle(v1: np.ndarray, v2: np.ndarray, v3: np.ndarray, eps: float = 1e-14) -> float:

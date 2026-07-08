@@ -96,7 +96,7 @@ m.mw.set_frequency_range(4e9, 7e9, 21)
 # We don't use any manual refinement steps to illustrate the power of
 # Adaptive Mesh refinement.
 # We generate the mesh and view it
-m.mw.set_resolution(0.2)
+m.mw.set_resolution(0.33)
 m.generate_mesh()
 
 # Notice the course initial mesh
@@ -122,7 +122,7 @@ p2 = m.mw.bc.ModalPort(mp2, 2, modetype='TE')
 p2.align_modes(em.YAX)
 
 # we also add an absorbing boundary at the top and bottom face to minimize resonance modes
-m.mw.bc.AbsorbingBoundary(em.select(air_top.top, air_bottom.bottom))
+m.mw.bc.AbsorbingBoundary(em.select(air_top.tpyop, air_bottom.bottom))
 ############################################################
 #                        SIMULATION                       #
 ############################################################

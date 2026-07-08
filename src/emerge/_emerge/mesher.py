@@ -332,14 +332,9 @@ class Mesher:
         
         gmsh.model.mesh.setSizeCallback(func)
     
-    def refine_finer(self, factor: float):
+    def set_ratio(self, ratio: float) -> None:
         newids = self._amr_new==1
-        self._amr_ratios[newids] = self._amr_ratios[newids]*(0.85**factor)
-        return self._amr_ratios[newids][0]
-    
-    def refine_coarser(self, factor: float):
-        newids = self._amr_new==1
-        self._amr_ratios[newids] = self._amr_ratios[newids]/(0.85**factor)
+        self._amr_ratios[newids] = ratio
         return self._amr_ratios[newids][0]
     
     def add_refinement_point(self,
