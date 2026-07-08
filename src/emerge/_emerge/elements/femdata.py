@@ -44,36 +44,6 @@ class FEMBasis(Saveable):
         self._cols: np.ndarray = np.array([])
         
     
-    def interpolate_Ef(self, field: np.ndarray, basis: np.ndarray | None = None, origin: np.ndarray | None = None, tetids: np.ndarray | None = None) -> Callable:
-        '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
-        from ..mth.optimized import matmul
-        
-        if basis is None:
-            basis = np.eye(3)
-
-        if origin is None:
-            origin = np.zeros(3)
-        
-        ibasis = np.linalg.pinv(basis)
-        def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
-            xyz = np.array([xs, ys, zs]) + origin[:, np.newaxis]
-            xyzg = matmul(basis, xyz)
-            return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids, usenan=False)))
-        return func
-    
-    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        raise NotImplementedError()
-    
-    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Interpolates the curl of the field at the given points.
-        """
-        raise NotImplementedError()
-    
-    def interpolate_error(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None, cs: tuple[float, float] = (1.0, 1.0)) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        raise NotImplementedError()
-    
-    
     def empty_tet_matrix(self) -> np.ndarray:
         nnz = self.n_tets*self.n_tet_dofs**2
         matrix = np.empty((nnz,), dtype=np.complex128)
@@ -132,27 +102,45 @@ class FEMBasis(Saveable):
         from scipy.sparse import csr_matrix # type: ignore
         ids = np.argwhere(data!=0)[:,0]
         return csr_matrix((data[ids], (self._rows[ids], self._cols[ids])), shape=(self.n_field, self.n_field))
-    ### QUANTITIES
-
-    def tet_to_edge_lengths(self, itet: int) -> np.ndarray:
-        """
-        Returns the edge lengths of the tetrahedron itet.
-        """
-        return self.mesh.edge_lengths[self.mesh.tet_to_edge[:,itet]]
     
-    def tri_to_edge_lengths(self, itri: int) -> np.ndarray:
+
+    ############################################################
+    #                         INTERPOLATORS                    #
+    ############################################################
+
+    def interpolate_Ef(self, field: np.ndarray, basis: np.ndarray | None = None, origin: np.ndarray | None = None, tetids: np.ndarray | None = None) -> Callable:
+        '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
+        from ..mth.optimized import matmul
+        
+        if basis is None:
+            basis = np.eye(3)
+
+        if origin is None:
+            origin = np.zeros(3)
+        
+        ibasis = np.linalg.pinv(basis)
+        def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
+            xyz = np.array([xs, ys, zs]) + origin[:, np.newaxis]
+            xyzg = matmul(basis, xyz)
+            return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids, usenan=False)))
+        return func
+    
+    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        raise NotImplementedError()
+    
+    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Returns the edge lengths of the triangle itri.
+        Interpolates the curl of the field at the given points.
         """
-        return self.mesh.edge_lengths[self.mesh.tri_to_edge[:,itri]]
+        raise NotImplementedError()
+    
+    def interpolate_error(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None, cs: tuple[float, float] = (1.0, 1.0)) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        raise NotImplementedError()
+    
+    
+    
+    
     ####### INDEX MAPPINGS
-
-    def local_tet_to_triid(self, itet: int) -> np.ndarray:
-        raise NotImplementedError("local_tet_to_triid not implemented")
-    
-    def local_tet_to_edgeid(self, itet: int) -> np.ndarray:
-        raise NotImplementedError("local_tet_to_edgeid not implemented")
-
     def interpolate_index(self, xs: np.ndarray,
                     ys: np.ndarray,
                     zs: np.ndarray,
@@ -160,12 +148,6 @@ class FEMBasis(Saveable):
                     usenan: bool = True) -> np.ndarray:
         raise NotImplementedError()
     
-    def map_edge_to_field(self, edge_ids: np.ndarray) -> np.ndarray:
-        """
-        Returns the field ids for the edges.
-        """
-        return edge_ids
-
     # ##### CUTS
 
     @property
@@ -177,42 +159,3 @@ class FEMBasis(Saveable):
         zmin = np.min(self.mesh.nodes[2,:])
         zmax = np.max(self.mesh.nodes[2,:])
         return (xmin, xmax), (ymin, ymax), (zmin, zmax)
-
-    # @staticmethod
-    # def tet_stiff_mass_submatrix(tet_vertices: np.ndarray, 
-    #                              edge_lengths: np.ndarray, 
-    #                              local_edge_map: np.ndarray, 
-    #                              local_tri_map: np.ndarray, 
-    #                              C_stiffness: float, 
-    #                              C_mass: float) -> tuple[np.ndarray, np.ndarray]:
-    #     pass
-    
-    # @staticmethod
-    # def tri_stiff_mass_submatrix(tri_vertices: np.ndarray, 
-    #                              edge_lengths: np.ndarray,
-    #                              local_edge_map: np.ndarray,
-    #                              C_stiffness: float, 
-    #                              C_mass: float) -> tuple[np.ndarray, np.ndarray]:
-    #     pass
-    
-    # @staticmethod
-    # def tri_stiff_vec_matrix(lcs_vertices: np.ndarray, 
-    #                          edge_lengths: np.ndarray, 
-    #                          gamma: complex, 
-    #                          lcs_Uinc: np.ndarray, 
-    #                          DPTs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    #     pass
-
-    # @staticmethod
-    # def tri_stiff_matrix(lcs_vertices: np.ndarray, 
-    #                          edge_lengths: np.ndarray, 
-    #                          gamma: complex) -> tuple[np.ndarray, np.ndarray]:
-    #     pass
-    
-    
-    # @staticmethod
-    # def tri_surf_integral(lcs_vertices: np.ndarray, 
-    #                       edge_lengths: np.ndarray, 
-    #                       lcs_Uinc: np.ndarray, 
-    #                       DPTs: np.ndarray) -> complex:
-    #     pass

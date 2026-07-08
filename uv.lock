@@ -496,6 +496,8 @@ umfpack = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "emerge-aasds" },
+    { name = "emerge-iron" },
     { name = "ezdxf" },
     { name = "pipdeptree" },
     { name = "psutil" },
@@ -536,6 +538,8 @@ provides-extras = ["umfpack", "cudss", "cudss12", "dxf", "gerber"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "emerge-aasds", git = "https://github.com/FennisRobert/emerge-aasds" },
+    { name = "emerge-iron", git = "https://github.com/FennisRobert/EMerge-IRON" },
     { name = "ezdxf", specifier = ">=1.4.3" },
     { name = "pipdeptree", specifier = ">=2.28.0" },
     { name = "psutil", specifier = ">=7.2.2" },
@@ -544,6 +548,22 @@ dev = [
     { name = "scikit-umfpack", specifier = ">=0.4.2" },
     { name = "threadpoolctl", specifier = ">=3.6.0" },
 ]
+
+[[package]]
+name = "emerge-aasds"
+version = "0.1.0"
+source = { git = "https://github.com/FennisRobert/emerge-aasds#412a30383df2ec4ac67e5238f3999c26850962f2" }
+dependencies = [
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[[package]]
+name = "emerge-iron"
+version = "0.1.0"
+source = { git = "https://github.com/FennisRobert/EMerge-IRON#240209d1a69f14f6eba611188629aca1717757db" }
 
 [[package]]
 name = "emsutil"

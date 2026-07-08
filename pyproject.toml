@@ -3,7 +3,7 @@ allow-direct-references = true
 
 [project]
 name = "emerge"
-version = "2.3.2"
+version = "2.3.1"
 description = "An open source EM FEM simulator in Python"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
@@ -70,6 +70,8 @@ dev = [
     "pygerber",
     "ezdxf>=1.4.3",
     "psutil>=7.2.2",
+    "emerge-aasds",
+    "emerge-iron",
 ]
 
 [tool.uv]
@@ -91,6 +93,8 @@ publish-url = "https://test.pypi.org/legacy"
 
 [tool.uv.sources]
 emsutil = { path = "../emsutil", editable = true }
+emerge-aasds = { git = "https://github.com/FennisRobert/emerge-aasds" }
+emerge-iron = { git = "https://github.com/FennisRobert/EMerge-IRON" }
 
 [tool.pytest.ini_options]
 addopts = [

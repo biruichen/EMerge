@@ -314,7 +314,7 @@ def reduce_point_set(coords: np.ndarray, gr: float, dss: np.ndarray, scaler: flo
         if (N-counter)/N < keep_percentage:
             break
         
-        if (N-counter) <= 10:
+        if (N-counter) <= 20:
             break
         
         if current_min[i] <= impressed_size[i,i]*0.8:

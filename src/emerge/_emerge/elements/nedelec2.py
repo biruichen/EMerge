@@ -21,7 +21,10 @@ from ..mesh3d import Mesh3D
 from .femdata import FEMBasis
 from emsutil import Saveable
 from loguru import logger
+from ..compiled import MATHLIB
+
 ############### Nedelec2 Class
+USE_NUMBA = False
 
 class Nedelec2(FEMBasis, Saveable):
 
@@ -70,33 +73,26 @@ class Nedelec2(FEMBasis, Saveable):
         ''' 
         Interpolate the provided field data array at the given xs, ys and zs coordinates
         '''
-        from .ned2_interp import ned2_tet_interp
-        if tetids is None:
-            tetids = self._all_tet_ids
-        vals = ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
+        
+        tetids = self._all_tet_ids
+        vals = MATHLIB.ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
         n_zeros = np.isnan(vals).sum()
         if not usenan and n_zeros > 0:
             logger.debug(f'Converted {n_zeros} to zeros.')
             vals = np.nan_to_num(vals)
-            
         return vals
     
     def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, c: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
         """
-        from .ned2_interp import ned2_tet_interp_curl
-        
-        if tetids is None:
-            tetids = self._all_tet_ids
-        
-        vals = ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
+        tetids = self._all_tet_ids
+        vals = vals = MATHLIB.ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
         n_zeros = np.isnan(vals).sum()
         if not usenan and n_zeros > 0:
             logger.debug(f'Converted {n_zeros} to zeros.')
             vals = np.nan_to_num(vals)
         return vals
-    
     
     def interpolate_index(self, xs: np.ndarray,
                         ys: np.ndarray,
@@ -105,60 +101,9 @@ class Nedelec2(FEMBasis, Saveable):
                         usenan: bool = True) -> np.ndarray:
         if tetids is None:
             tetids = self._all_tet_ids
-        from .index_interp import index_interp
-        vals = index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
+        vals = MATHLIB.index_interp(np.array([xs, ys, zs]), self.mesh.tets, self.mesh.nodes, tetids)
         n_zeros = np.isnan(vals).sum()
         if not usenan and n_zeros > 0:
             logger.debug(f'Converted {n_zeros} to zeros.')
             vals[vals==-1]==0
         return vals
-    
-    ###### INDEX MAPPINGS
-
-    def local_tet_to_triid(self, itet: int) -> np.ndarray:
-        from ..mth.optimized import local_mapping
-        tri_ids = self.tet_to_field[6:10, itet] - self.n_edges
-        global_tri_map = self.mesh.tris[:, tri_ids]
-        return local_mapping(self.mesh.tets[:, itet], global_tri_map)
-
-    def local_tet_to_edgeid(self, itet: int) -> np.ndarray:
-        from ..mth.optimized import local_mapping
-        global_edge_map = self.mesh.edges[:, self.tet_to_field[:6,itet]]
-        return local_mapping(self.mesh.tets[:, itet], global_edge_map)
-
-    def local_tri_to_edgeid(self, itri: int) -> np.ndarray:
-        from ..mth.optimized import local_mapping
-        global_edge_map = self.mesh.edges[:, self.tri_to_field[:3,itri]]
-        return local_mapping(self.mesh.tris[:, itri], global_edge_map)
-    
-    def map_edge_to_field(self, edge_ids: np.ndarray) -> np.ndarray:
-        """
-        Returns the field ids for the edges.
-        """
-        # Concatinate the edges with the edges + ntris + nedges
-        edge_ids = np.array(edge_ids)
-        return np.concatenate((edge_ids, edge_ids + self.ntris + self.nedges))
-    
-    ########
-    # @staticmethod
-    # def tet_stiff_mass_submatrix(tet_vertices: np.ndarray, 
-    #                              edge_lengths: np.ndarray, 
-    #                              local_edge_map: np.ndarray, 
-    #                              local_tri_map: np.ndarray, 
-    #                              C_stiffness: float, 
-    #                              C_mass: float) -> tuple[np.ndarray, np.ndarray]:
-    #     return ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_map, C_stiffness, C_mass)
-    
-    # @staticmethod
-    # def tri_stiff_vec_matrix(lcs_vertices: np.ndarray, 
-    #                          gamma: complex, 
-    #                          lcs_Uinc: np.ndarray, 
-    #                          DPTs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    #     return ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs)
-
-    # @staticmethod
-    # def tri_surf_integral(lcs_vertices: np.ndarray, 
-    #                       edge_lengths: np.ndarray, 
-    #                       lcs_Uinc: np.ndarray, 
-    #                       DPTs: np.ndarray) -> complex:
-    #     return ned2_tri_surface_integral(lcs_vertices, edge_lengths, lcs_Uinc, DPTs)

@@ -305,6 +305,7 @@ def extrude(main: GeoSurface, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0)
     dtout = gmsh.model.occ.extrude(main.dimtags, dx, dy, dz)
     out = [dt[1] for dt in dtout if dt[0]==3]
     obj_out = GeoVolume(out, name=f'Extrusion[{main.name}]')
+    main.remove()
     gmsh.model.occ.synchronize()
     return obj_out
     
