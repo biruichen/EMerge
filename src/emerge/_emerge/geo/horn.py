@@ -17,6 +17,7 @@
 
 from ..geometry import GeoVolume
 from ..cs import CoordinateSystem
+from ..selection import FaceSelection
 
 import gmsh # type: ignore
 

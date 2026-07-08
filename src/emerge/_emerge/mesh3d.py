@@ -28,7 +28,6 @@ from loguru import logger
 from functools import cache
 from .bc import Periodic
 from .mth.pairing import pair_coordinates
-from .material import Material
 
 @njit(f8(f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
@@ -539,40 +538,24 @@ class Mesh3D(Mesh):
         return conv_map, np.array(node_ids_2_unsorted), np.array(node_ids_2_sorted)
 
 
-    def retreive(self, volumes: list[GeoVolume]) -> list[Material]:
+    def retreive(self, material_selector: Callable, volumes: list[GeoVolume]) -> np.ndarray:
         '''Retrieve the material properties of the geometry'''
-        #arry = np.zeros((3,3,self.n_tets,), dtype=np.complex128)
-        for vol in volumes:
-            vol.material.reset()
-        
-        materials = []
-        i = 0
-        for vol in volumes:
-            if vol.material not in materials:
-                materials.append(vol.material)
-                vol.material._hash_key = i
-                i += 1
-        
+        arry = np.zeros((3,3,self.n_tets,), dtype=np.complex128)
+
         xs = self.centers[0,:]
         ys = self.centers[1,:]
         zs = self.centers[2,:]
-        
-        matassign = -1*np.ones((self.n_tets,), dtype=np.int64)
         
         for volume in sorted(volumes, key=lambda x: x._priority):
         
             for dimtag in volume.dimtags:
                 etype, etag_list, ntags = gmsh.model.mesh.get_elements(*dimtag)
                 for etags in etag_list:
-                    tet_ids = np.array([self.tet_t2i[t] for t in etags])
-                    matassign[tet_ids] = volume.material._hash_key
-        
-        for mat in materials:
-            ids = np.argwhere(matassign==mat._hash_key).flatten()
-            mat.initialize(xs[ids], ys[ids], zs[ids], ids)
-                    
-        
-        return materials
+                    tet_ids = [self.tet_t2i[t] for t in etags]
+
+                    value = material_selector(volume.material, xs[tet_ids], ys[tet_ids], zs[tet_ids])
+                    arry[:,:,tet_ids] = value
+        return arry
     
     def plot_gmsh(self) -> None:
         gmsh.fltk.run()

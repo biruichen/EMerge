@@ -73,11 +73,11 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         """
         bcs = self.oftype(PEC)
         for bc in self.oftype(SurfaceImpedance):
-            if bc.sigma > 10.0:
+            if bc.material.cond > 1e3:
                 bcs.append(bc)
 
         return bcs
-        
+
     def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort','SurfaceImpedance']) -> FaceSelection:
         tags = []
         for bc in self.boundary_conditions:
@@ -306,17 +306,11 @@ class AbsorbingBoundary(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        if self.order == 2:
-            
-            p0 = 1.06103
-            p2 = -0.84883
-            ky = k0*0.5
-            return 1j*k0*p0 - 1j*p2*ky**2/k0
-        else:
-            Factor = 1
-            return 1j*self.get_beta(k0)*Factor
+        return 1j*self.get_beta(k0)
     
-   
+    def get_Uinc(self, x_local: np.ndarray, y_local: np.ndarray, k0: float) -> np.ndarray:
+        return np.zeros((3, len(x_local)), dtype=np.complex128)
+
 @dataclass
 class PortMode:
     modefield: np.ndarray
@@ -360,7 +354,7 @@ class FloquetPort(PortBC):
         if cs is None:
             cs = GCS
         self.port_number: int= port_number
-        self.active: bool = False
+        self.active: bool = True
         self.power: float = power
         self.type: str = 'TEM'
         self.mode: tuple[int,int] = (1,0)
@@ -445,6 +439,7 @@ class ModalPort(PortBC):
     def __init__(self,
                  face: FaceSelection | GeoSurface,
                  port_number: int, 
+                 active: bool = False,
                  cs: CoordinateSystem | None = None,
                  power: float = 1,
                  TEM: bool = False,
@@ -462,6 +457,7 @@ class ModalPort(PortBC):
         Args:
             face (FaceSelection, GeoSurface): The port mode face
             port_number (int): The port number as an integer
+            active (bool, optional): Whether the port is set active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system of the port face. Defaults to None.
             power (float, optional): The radiated power. Defaults to 1.
             TEM (bool, optional): Wether the mode should be considered as a TEM mode. Defaults to False
@@ -471,7 +467,7 @@ class ModalPort(PortBC):
         super().__init__(face)
 
         self.port_number: int= port_number
-        self.active: bool = False
+        self.active: bool = active
         self.power: float = power
         self.alignment_vectors: list[Axis] = []
 
@@ -670,7 +666,7 @@ class RectangularWaveguide(PortBC):
     def __init__(self, 
                  face: FaceSelection | GeoSurface,
                  port_number: int, 
-                 mode: tuple[int, int] = (1,0),
+                 active: bool = False,
                  cs: CoordinateSystem | None = None,
                  dims: tuple[float, float] | None = None,
                  power: float = 1):
@@ -685,7 +681,7 @@ class RectangularWaveguide(PortBC):
         Args:
             face (FaceSelection, GeoSurface): The port boundary face selection
             port_number (int): The port number
-            mode: (tuple[int, int], optional): The TE mode number. Defaults to (1,0).
+            active (bool, optional): Ther the port is active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system. Defaults to None.
             dims (tuple[float, float], optional): The port face. Defaults to None.
             power (float): The port power. Default to 1.
@@ -693,10 +689,10 @@ class RectangularWaveguide(PortBC):
         super().__init__(face)
 
         self.port_number: int= port_number
-        self.active: bool = False
+        self.active: bool = active
         self.power: float = power
         self.type: str = 'TE'
-        self.mode: tuple[int,int] = mode
+        self.mode: tuple[int,int] = (1,0)
 
         if dims is None:
             logger.info("Determining port face based on selection")
@@ -705,12 +701,13 @@ class RectangularWaveguide(PortBC):
             self.dims = (width, height)
             logger.debug(f'Port CS: {self.cs}')
             logger.debug(f'Detected port {self.port_number} size = {width*1000:.1f} mm x {height*1000:.1f} mm')
-        else:
-            self.dims = dims
-            self.cs = cs
+        
         if self.cs is None:
             logger.info('Constructing coordinate system from normal port')
             self.cs = Axis(self.selection.normal).construct_cs()
+        else:
+            self.cs: CoordinateSystem = cs # type: ignore
+
     def get_basis(self) -> np.ndarray:
         return self.cs._basis
         
@@ -758,12 +755,11 @@ class RectangularWaveguide(PortBC):
 
         width = self.dims[0]
         height = self.dims[1]
-        m, n= self.mode
-        Ev = self.get_amplitude(k0)*np.cos(np.pi*m*(x_local)/width)*np.cos(np.pi*n*(y_local)/height)
-        Eh = self.get_amplitude(k0)*np.sin(np.pi*m*(x_local)/width)*np.sin(np.pi*n*(y_local)/height)
-        Ex = Eh
-        Ey = Ev
-        Ez = 0*Eh
+
+        E = self.get_amplitude(k0)*np.cos(np.pi*self.mode[0]*(x_local)/width)*np.cos(np.pi*self.mode[1]*(y_local)/height)
+        Ex = 0*E
+        Ey = E
+        Ez = 0*E
         Exyz =  self._qmode(k0) * np.array([Ex, Ey, Ez])
         return Exyz
 
@@ -791,6 +787,7 @@ class LumpedPort(PortBC):
                  width: float | None = None,
                  height: float | None = None,
                  direction: Axis | None = None,
+                 active: bool = False,
                  power: float = 1,
                  Z0: float = 50):
         """Generates a lumped power boundary condition.
@@ -807,6 +804,7 @@ class LumpedPort(PortBC):
             width (float): The port width (meters).
             height (float): The port height (meters).
             direction (Axis): The port direction as an Axis object (em.Axis(..) or em.ZAX)
+            active (bool, optional): Whether the port is active. Defaults to False.
             power (float, optional): The port output power. Defaults to 1.
             Z0 (float, optional): The port impedance. Defaults to 50.
         """
@@ -821,7 +819,7 @@ class LumpedPort(PortBC):
         
         logger.debug(f'Lumped port: width={1000*width:.1f}mm, height={1000*height:.1f}mm, direction={direction}') # type: ignore
         self.port_number: int= port_number
-        self.active: bool = False
+        self.active: bool = active
 
         self.power: float = power
         self.Z0: float = Z0
@@ -831,10 +829,10 @@ class LumpedPort(PortBC):
         self.Vdirection: Axis = direction # type: ignore
         self.type = 'TEM'
         
-        # logger.info('Constructing coordinate system from normal port')
-        # self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
-        self.cs = GCS
-        self.vintline: list[Line] = []
+        logger.info('Constructing coordinate system from normal port')
+        self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
+
+        self.vintline: Line | None = None
         self.v_integration = True
 
     @property
@@ -887,7 +885,14 @@ class LumpedPort(PortBC):
                      k0: float,
                      which: Literal['E','H'] = 'E') -> np.ndarray:
         ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
-        raise RuntimeError('This function should never be called in this context.')
+
+        px, py, pz = self.cs.in_local_basis(*self.Vdirection.np)
+        
+        Ex = px*np.ones_like(x_local)
+        Ey = py*np.ones_like(x_local)
+        Ez = pz*np.ones_like(x_local)
+        Exyz = np.array([Ex, Ey, Ez])
+        return Exyz
 
     def port_mode_3d_global(self, 
                             x_global: np.ndarray,
@@ -910,9 +915,10 @@ class LumpedPort(PortBC):
         Returns:
             np.ndarray: The E-field in (3,N) indexing.
         """
-        ON = np.ones_like(x_global)
-        Ex, Ey, Ez = self.Vdirection.np
-        return np.array([Ex*ON, Ey*ON, Ez*ON])
+        xl, yl, _ = self.cs.in_local_cs(x_global, y_global, z_global)
+        Ex, Ey, Ez = self.port_mode_3d(xl, yl, k0)
+        Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
+        return np.array([Exg, Eyg, Ezg])
 
 
 class LumpedElement(RobinBC):
@@ -1028,13 +1034,12 @@ class SurfaceImpedance(RobinBC):
         self._material: Material | None = material
         self._mur: float | complex = 1.0
         self._epsr: float | complex = 1.0
+
         self.sigma: float = 0.0
-        
         if material is not None:
-            self.sigma = material.cond.scalar(1e9)
+            self.sigma = material.cond
             self._mur = material.ur
             self._epsr = material.er
-        
         if surface_conductance is not None:
             self.sigma = surface_conductance
         
@@ -1061,15 +1066,10 @@ class SurfaceImpedance(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        
         w0 = k0*C0
-        f0 = w0/(2*np.pi)
         sigma = self.sigma
-        mur = self._material.ur.scalar(f0)
-        er = self._material.er.scalar(f0)
-        
         rho = 1/sigma
-        d_skin = (2*rho/(w0*MU0*mur) * ((1+(w0*EPS0*er*rho)**2)**0.5 + rho*w0*EPS0*er))**0.5
+        d_skin = (2*rho/(w0*MU0*self._mur) * ((1+(w0*EPS0*self._epsr*rho)**2)**0.5 + rho*w0*EPS0*self._epsr))**0.5
         R = rho/d_skin
         if self._sr_model=='Hammerstad-Jensen' and self._sr > 0.0:
             R = R * (1 + 2/np.pi * np.arctan(1.4*(self._sr/d_skin)**2))

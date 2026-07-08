@@ -24,16 +24,16 @@ Lres = 0.481 * inch              # resonator cylinder height
 
 # --- Material definitions ------------------------------------------------
 # High-er support material (e.g., alumina)
-mat_support = em.lib.Material(er=10, color="#ffffff", opacity=0.2)
+mat_support = em.lib.Material(er=10, color="#ffffff")
 # Dielectric resonator material (e.g., ceramic)
-mat_resonator = em.lib.Material(er=34, color="#ededed", opacity=0.2)
+mat_resonator = em.lib.Material(er=34, color="#ededed")
 
 # Number of resonant modes to extract
 Nmodes = 5
 
 # --- Create simulation ---------------------------------------------------
 model = em.Simulation('DielectricResonatorFilter')
-model.check_version("0.6.11") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 
 # --- Build geometry ------------------------------------------------------
 # Metal enclosure box (PEC by default)
@@ -48,7 +48,6 @@ support = em.geo.Cylinder(
     cs=em.GCS,
     Nsections=20
 ).set_material(mat_support).prio_up()
-
 # DDR cylinder placed atop support
 resonator = em.geo.Cylinder(
     radius=Dres/2,
@@ -79,8 +78,9 @@ for mode_index in range(Nmodes):
     # Extract field grid for this mode (sample spacing ~0.2 in)
     field = data.field[mode_index].grid(0.2 * inch)
     # Show enclosure, support, and resonator transparently
-    model.display.add_objects(*model.all_geos())
-    
+    model.display.add_object(box, opacity=0.1)
+    model.display.add_object(support, opacity=0.3)
+    model.display.add_object(resonator, opacity=0.3)
     # Plot E-field vectors in red and H-field vectors in blue
     Evec = field.vector('E', 'real')
     Hvec = field.vector('H', 'real')

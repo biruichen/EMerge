@@ -19,14 +19,12 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
-from ...geometry import GeoSurface
 from ...elements.femdata import FEMBasis
 from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
 from ...mth.optimized import compute_distances
-from ...settings import Settings
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -55,7 +53,7 @@ def run_job_multi(job: SimJob) -> SimJob:
     Returns:
         SimJob: The solved SimJob
     """
-    routine = DEFAULT_ROUTINE._configure_routine('MP')
+    routine = DEFAULT_ROUTINE.duplicate()._configure_routine('MP')
     for A, b, ids, reuse, aux in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         report.add(**aux)
@@ -124,16 +122,16 @@ class Microwave3D:
     formulation.
 
     """
-    def __init__(self, mesher: Mesher, settings: Settings, mwdata: MWData, order: int = 2):
+    def __init__(self, mesher: Mesher, mwdata: MWData, order: int = 2):
         self.frequencies: list[float] = []
         self.current_frequency = 0
         self.order: int = order
         self.resolution: float = 1
-        self._settings: Settings = settings
+
         self.mesher: Mesher = mesher
         self.mesh: Mesh3D = Mesh3D(self.mesher)
 
-        self.assembler: Assembler = Assembler(self._settings)
+        self.assembler: Assembler = Assembler()
         self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
         self.basis: Nedelec2 | None = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
@@ -192,28 +190,14 @@ class Microwave3D:
         return sorted(self.bc.oftype(PortBC), key=lambda x: x.number) # type: ignore
     
     
-    def _initialize_bcs(self, surfaces: list[GeoSurface]) -> None:
+    def _initialize_bcs(self) -> None:
         """Initializes the boundary conditions to set PEC as all exterior boundaries.
         """
         logger.debug('Initializing boundary conditions.')
 
         tags = self.mesher.domain_boundary_face_tags
-        
-        # Assigning surface impedance boundary condition
-        if self._settings.mw_2dbc:
-            for surf in surfaces:
-                if surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_peclim:
-                    logger.debug(f'Assinging PEC to {surf}')
-                    self.bc.PEC(surf)
-                elif surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_lim:
-                    logger.debug(f'Assigning SurfaceImpedance to {surf}')
-                    self.bc.SurfaceImpedance(surf, surf.material)
-                
-        
         tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
-        
         self.bc.PEC(FaceSelection(tags))
-        
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
         if self.mesher.periodic_cell is not None:
             self.mesher.periodic_cell.generate_bcs()
@@ -285,7 +269,7 @@ class Microwave3D:
             Callable: The discretizer function
         """
         def disc(material: Material):
-            return 299792458/(max(self.frequencies) * np.real(material.neff(max(self.frequencies))))
+            return 299792458/(max(self.frequencies) * np.real(material.neff))
         return disc
     
     def _initialize_field(self):
@@ -308,7 +292,6 @@ class Microwave3D:
         ''' Initializes auxilliary required boundary condition information before running simulations.
         '''
         logger.debug('Initializing boundary conditions')
-        self.bc.cleanup()
         for port in self.bc.oftype(LumpedPort):
             self.define_lumped_port_integration_points(port)
     
@@ -328,25 +311,22 @@ class Microwave3D:
 
         if points.size==0:
             raise SimulationError(f'The lumped port {port} has no nodes associated with it')
-        
         xs = self.mesh.nodes[0,points]
         ys = self.mesh.nodes[1,points]
         zs = self.mesh.nodes[2,points]
 
         dotprod = xs*field_axis[0] + ys*field_axis[1] + zs*field_axis[2]
 
-        start_id = np.argwhere(dotprod == np.min(dotprod)).flatten()
+        start_id = points[np.argwhere(dotprod == np.min(dotprod))]
         
-        xs = xs[start_id]
-        ys = ys[start_id]
-        zs = zs[start_id]
-        
+        start = _pick_central(self.mesh.nodes[:,start_id.flatten()])
+        logger.info(f'Starting node = {_dimstring(start)}')
+        end = start + port.Vdirection.np*port.height
 
-        for x,y,z in zip(xs, ys, zs):
-            start = np.array([x,y,z])
-            end = start + port.Vdirection.np*port.height
-            port.vintline.append(Line.from_points(start, end, 21))
-            logger.trace(f'Port[{port.port_number}] integration line {start} -> {end}.')
+
+        port.vintline = Line.from_points(start, end, 21)
+
+        logger.info(f'Ending node = {_dimstring(end)}')
         
         port.v_integration = True
     
@@ -487,25 +467,10 @@ class Microwave3D:
             raise SimulationError('Cannot proceed, the current basis class is undefined.')
 
         logger.debug('Retreiving material properties.')
-        
-        if freq is None:
-            freq = self.frequencies[0]
-        
-        materials = self.mesh.retreive(self.mesher.volumes)
+        ertet = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+        urtet = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        condtet = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
 
-        ertet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
-        tandtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
-        urtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
-        condtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
-        
-        for mat in materials:
-            ertet = mat.er(freq, ertet)
-            tandtet = mat.tand(freq, tandtet)
-            urtet = mat.ur(freq, urtet)
-            condtet = mat.cond(freq, condtet)
-        
-        ertet = ertet * (1-1j*tandtet)
-        
         er = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
         ur = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
         cond = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
@@ -514,7 +479,7 @@ class Microwave3D:
             itet = self.mesh.tri_to_tet[0,itri]
             er[:,:,itri] = ertet[:,:,itet]
             ur[:,:,itri] = urtet[:,:,itet]
-            cond[itri] = condtet[0,0,itet]
+            cond[itri] = condtet[itet]
 
         itri_port = self.mesh.get_triangles(port.tags)
 
@@ -523,7 +488,11 @@ class Microwave3D:
         ermax = np.max(er[:,:,itri_port].flatten())
         urmax = np.max(ur[:,:,itri_port].flatten())
 
+        if freq is None:
+            freq = self.frequencies[0]
+        
         k0 = 2*np.pi*freq/299792458
+        kmax = k0*np.sqrt(ermax.real*urmax.real)
         
         Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.bc)
         
@@ -542,7 +511,8 @@ class Microwave3D:
             else:
                 
                 target_kz = ermean*urmean*0.7*k0
-                
+
+    
         logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
         eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz, sign=-1)
@@ -580,19 +550,21 @@ class Microwave3D:
             Ez = np.max(np.abs(Efz))
             Exy = np.max(np.abs(Efxy))
             
-            if Ez/Exy < 1e-1 and not TEM:
+            # Exy = np.max(np.max(Emode))
+            # Ez = 0
+            if Ez/Exy < 1e-3 and not TEM:
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
-            elif Ez/Exy > 1e-1 and not TEM:
+            elif Ez/Exy > 1e-3 and not TEM:
                 logger.debug('High Ez/Et ratio detected, assuming TM mode')
                 mode.modetype = 'TM'
             elif TEM:
                 G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
-                mode.modetype = 'TEM'
+                mode.modetype='TEM'
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
-                mode.Z0 = abs(voltage**2/(2*P))
+                mode.Z0 = voltage**2/(2*P)
                 logger.debug(f'Port Z0 = {mode.Z0}')
 
             mode.set_power(P*port._qmode(k0)**2)
@@ -649,7 +621,9 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
 
-        materials = self.mesh.retreive(self.mesher.volumes)
+        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
@@ -700,8 +674,7 @@ class Microwave3D:
             freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
 
         results: list[SimJob] = []
-        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-        
+
         ## Single threaded
         job_id = 1
 
@@ -718,7 +691,7 @@ class Microwave3D:
                     logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                     if automatic_modal_analysis:
                         self._compute_modes(freq)
-                    job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
                                                             self.bc.boundary_conditions, 
                                                             freq, 
                                                             cache_matrices=self.cache_matrices)
@@ -727,7 +700,6 @@ class Microwave3D:
                     job.id = job_id
                     job_id += 1
                     jobs.append(job)
-                    matset.append(mats)
                 
                 logger.info(f'Starting single threaded solve of {len(jobs)} jobs.')
                 group_results = [run_job_single(job) for job in jobs]
@@ -744,7 +716,7 @@ class Microwave3D:
                         logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
-                        job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
+                        job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
                                                                 self.bc.boundary_conditions, 
                                                                 freq, 
                                                                 cache_matrices=self.cache_matrices)
@@ -753,7 +725,6 @@ class Microwave3D:
                         job.id = job_id
                         job_id += 1
                         jobs.append(job)
-                        matset.append(mats)
                     
                     logger.info(f'Starting distributed solve of {len(jobs)} jobs with {njobs} threads.')
                     group_results = list(executor.map(run_job, jobs))
@@ -778,8 +749,8 @@ class Microwave3D:
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
                         
-                        job, mats = self.assembler.assemble_freq_matrix(
-                            self.basis, materials,
+                        job = self.assembler.assemble_freq_matrix(
+                            self.basis, er, ur, cond,
                             self.bc.boundary_conditions,
                             freq,
                             cache_matrices=self.cache_matrices
@@ -790,7 +761,6 @@ class Microwave3D:
                         job.id = job_id
                         job_id += 1
                         jobs.append(job)
-                        matset.append(mats)
 
                     logger.info(
                         f'Starting distributed solve of {len(jobs)} jobs '
@@ -813,7 +783,7 @@ class Microwave3D:
 
         self.solveroutine.reset()
         ### Compute S-parameters and return
-        self._post_process(results, matset)
+        self._post_process(results, er, ur, cond)
         return self.data
     
     def eigenmode(self, search_frequency: float,
@@ -847,21 +817,19 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed. The simulation basis class is undefined.')
 
-        materials = self.mesh.retreive(self.mesher.volumes)
-        
-        # er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        # ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        # cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
             
         logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
         
-        job, matset = self.assembler.assemble_eig_matrix(self.basis, materials, 
+        job = self.assembler.assemble_eig_matrix(self.basis, er, ur, cond, 
                                                             self.bc.boundary_conditions, search_frequency)
         
-        er, ur, cond = matset
+
         logger.info('Solving complete')
 
         A, C, solve_ids = job.yield_AC()
@@ -902,7 +870,7 @@ class Microwave3D:
         
         return self.data
 
-    def _post_process(self, results: list[SimJob], materials: list[tuple[np.ndarray, np.ndarray, np.ndarray]]):
+    def _post_process(self, results: list[SimJob], er: np.ndarray, ur: np.ndarray, cond: np.ndarray):
         """Compute the S-parameters after Frequency sweep
 
         Args:
@@ -920,19 +888,18 @@ class Microwave3D:
 
         logger.info('Computing S-parameters')
         
+        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
-        for freq, job, mats in zip(self.frequencies, results, materials):
-            er, ur, cond = mats
-            ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-            urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-            condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
+        for itri in range(self.mesh.n_tris):
+            itet = self.mesh.tri_to_tet[0,itri]
+            ertri[:,:,itri] = er[:,:,itet]
+            urtri[:,:,itri] = ur[:,:,itet]
+            condtri[itri] = cond[itet]
 
-            for itri in range(self.mesh.n_tris):
-                itet = self.mesh.tri_to_tet[0,itri]
-                ertri[:,:,itri] = er[:,:,itet]
-                urtri[:,:,itri] = ur[:,:,itet]
-                condtri[itri] = cond[0,0,itet]
-                
+        for freq, job in zip(self.frequencies, results):
+
             k0 = 2*np.pi*freq/299792458
 
             scalardata = self.data.scalar.new(freq=freq, **self._params)
@@ -1023,8 +990,7 @@ class Microwave3D:
             if bc.Z0 is None:
                 raise SimulationError('Trying to compute the impedance of a boundary condition with no characteristic impedance.')
             
-            Voltages = [line.line_integral(fieldfunction) for line in bc.vintline]
-            V = sum(Voltages)/len(Voltages)
+            V = bc.vintline.line_integral(fieldfunction)
             
             if bc.active:
                 if bc.voltage is None:

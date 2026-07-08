@@ -186,7 +186,7 @@ def _norm(x, y, z):
 
 def _select(obj: GeoObject | Selection) -> Selection:
     if isinstance(obj, GeoObject):
-        return obj.selection
+        return obj.select
     return obj
 
 def _merge(lst: Iterable[GeoObject | Selection]) -> Selection:
@@ -284,16 +284,15 @@ class PVDisplay(BaseDisplay):
         self._ruler.min_length = max(1e-3, min(self._mesh.edge_lengths))
         self._update_camera()
         self._add_aux_items()
-        # self._plot.renderer.enable_depth_peeling(20, 0.8)
-        # self._plot.enable_anti_aliasing(self.set.anti_aliassing)
         if self._do_animate:
             self._wire_close_events()
             self.add_text('Press Q to close!',color='red', position='upper_left')
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
             self._animate()
+            
+            
         else:
             self._plot.show()
-        
         self._reset()
     
     def set_mesh(self, mesh: Mesh3D):
@@ -316,6 +315,7 @@ class PVDisplay(BaseDisplay):
         """The private callback function that stops the animation.
         """
         self._stop = True
+        print('CLOSE!')
 
     def _animate(self) -> None:
         """Private function that starts the animation loop.
@@ -441,20 +441,8 @@ class PVDisplay(BaseDisplay):
         opacity = obj.opacity
         line_width = 0.5
         color = obj.color_rgb
-        metal = obj._metal
         style='surface'
         
-        # Default render settings
-        metallic = 0.05
-        roughness = 0.0
-        pbr = False
-        
-        if metal:
-            pbr = True
-            metallic = 0.8
-            roughness = self.set.metal_roughness
-        
-        # Default keyword arguments when plotting Mesh mode.
         if mesh is True:
             show_edges = True
             opacity = 0.7
@@ -462,36 +450,15 @@ class PVDisplay(BaseDisplay):
             style='wireframe'
             color=next(C_CYCLE)
         
-        # Defining the default keyword arguments for PyVista
-        kwargs = setdefault(kwargs, color=color, 
-                            opacity=opacity, 
-                            metallic=metallic, 
-                            pbr=pbr,
-                            roughness=roughness,
-                            line_width=line_width, 
-                            show_edges=show_edges, 
-                            pickable=True, 
-                            style=style)
+        kwargs = setdefault(kwargs, color=color, opacity=opacity, line_width=line_width, show_edges=show_edges, pickable=True, style=style)
         mesh_obj = self.mesh(obj)
         
         if mesh is True and volume_mesh is True:
             mesh_obj = mesh_obj.extract_all_edges()
+        
         actor = self._plot.add_mesh(mesh_obj, *args, **kwargs)
-        
-        # Push 3D Geometries back to avoid Z-fighting with 2D geometries.
-        if obj.dim==3:
-            mapper = actor.GetMapper()
-            mapper.SetResolveCoincidentTopology(1)
-            mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(1,0.5)
-        
         self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=2, show_edges=True)
 
-    def add_objects(self, *objects, **kwargs) -> None:
-        """Add a series of objects provided as a list of arguments
-        """
-        for obj in objects:
-            self.add_object(obj, **kwargs)
-        
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         """Adds a scatter point cloud
 
@@ -529,19 +496,18 @@ class PVDisplay(BaseDisplay):
         d = _min_distance(xf, yf, zf)
 
         if port.vintline is not None:
-            for line in port.vintline:
-                xs, ys, zs = line.cpoint
-                p_line = pv.Line(
-                    pointa=(xs[0], ys[0], zs[0]),
-                    pointb=(xs[-1], ys[-1], zs[-1]),
-                )
-                self._plot.add_mesh(
-                    p_line,
-                    color='red',
-                    pickable=False,
-                    line_width=3.0,
-                )
-            
+            xs, ys, zs = port.vintline.cpoint
+            p_line = pv.Line(
+                pointa=(xs[0], ys[0], zs[0]),
+                pointb=(xs[-1], ys[-1], zs[-1]),
+            )
+            self._plot.add_mesh(
+                p_line,
+                color='red',
+                pickable=False,
+                line_width=3.0,
+            )
+        
         if k0 is None:
             if isinstance(port, ModalPort):
                 k0 = port.get_mode(0).k0
@@ -575,10 +541,10 @@ class PVDisplay(BaseDisplay):
                  z: np.ndarray,
                  field: np.ndarray,
                  scale: Literal['lin','log','symlog'] = 'lin',
-                 cmap: cmap_names = 'viridis',
+                 cmap: cmap_names = 'coolwarm',
                  clim: tuple[float, float] | None = None,
                  opacity: float = 1.0,
-                 symmetrize: bool = False,
+                 symmetrize: bool = True,
                  _fieldname: str | None = None,
                  **kwargs,):
         """Add a surface plot to the display
@@ -603,7 +569,7 @@ class PVDisplay(BaseDisplay):
 
 
         if scale=='log':
-            T = lambda x: np.log10(np.abs(x+1e-12))
+            T = lambda x: np.log10(np.abs(x))
         elif scale=='symlog':
             T = lambda x: np.sign(x) * np.log10(1 + np.abs(x*np.log(10)))
         else:
@@ -617,8 +583,8 @@ class PVDisplay(BaseDisplay):
         self._ctr += 1
         grid[name] = static_field
 
-        grid_no_nan = grid.threshold(scalars=name)
-
+        grid_no_nan = grid.ptc().threshold(scalars=name)
+        print("I am on MAIN")
         # Determine color limits
         if clim is None:
             fmin = np.nanmin(static_field)
@@ -690,11 +656,6 @@ class PVDisplay(BaseDisplay):
         dx = dx.flatten().real
         dy = dy.flatten().real
         dz = dz.flatten().real
-        
-        ids = np.invert(np.isnan(dx))
-        
-        x, y, z, dx, dy, dz = x[ids], y[ids], z[ids], dx[ids], dy[ids], dz[ids]
-        
         dmin = _min_distance(x,y,z)
 
         dmax = np.max(_norm(dx,dy,dz))
@@ -710,10 +671,8 @@ class PVDisplay(BaseDisplay):
         kwargs = dict()
         if color is not None:
             kwargs['color'] = color
-            
         pl = self._plot.add_arrows(Coo, Vec, scalars=None, clim=None, cmap=None, **kwargs)
 
-        
     def add_contour(self,
                      X: np.ndarray,
                      Y: np.ndarray,
