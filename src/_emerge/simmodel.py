@@ -341,23 +341,24 @@ class Simulation3D:
         dims = np.meshgrid(*[parameters[key] for key in paramlist], indexing='ij')
         dims_flat = [dim.flatten() for dim in dims]
         self.mw.cache_matrices = False
-        for iter in range(dims_flat[0].shape[0]):
+        for i_iter in range(dims_flat[0].shape[0]):
             if clear_mesh:
                 logger.info('Cleaning up mesh.')
                 gmsh.clear()
-                self.mesh = Mesh3D(self.mesher)
+                mesh = Mesh3D(self.mesher)
+                self.set_mesh(mesh)
                 self.mw.reset()
             
-            params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            params = {key: dim[i_iter] for key,dim in zip(paramlist, dims_flat)}
             self.mw._params = params
             #self._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
             self.data.sim.new(**params)
 
             logger.info(f'Iterating: {params}')
             if len(dims_flat)==1:
-                yield dims_flat[0][iter]
+                yield dims_flat[0][i_iter]
             else:
-                yield (dim[iter] for dim in dims_flat)
+                yield (dim[i_iter] for dim in dims_flat)
         self.mw.cache_matrices = True
 
     def __enter__(self) -> Simulation3D:
