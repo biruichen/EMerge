@@ -68,7 +68,7 @@ class Simulation:
                  loglevel: Literal['TRACE','DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
                  save_file: bool = False,
-                 logfile: bool = False,
+                 write_log: bool = False,
                  path_suffix: str = ".EMResults"):
         """Generate a Simulation class object.
 
@@ -80,7 +80,7 @@ class Simulation:
             loglevel ("DEBUG","INFO","WARNING","ERROR", optional): The loglevel to use for loguru. Defaults to 'INFO'.
             load_file (bool, optional): If the simulatio model should be loaded from a file. Defaults to False.
             save_file (bool, optional): if the simulation file should be stored to a file. Defaults to False.
-            logfile (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
+            write_log (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
             path_suffix (str, optional): The suffix that will be added to the results directory. Defaults to ".EMResults".
         """
 
@@ -113,9 +113,10 @@ class Simulation:
         self._initialize_simulation()
 
         self.set_loglevel(loglevel)
-        if logfile:
-            self.set_logfile()
+        if write_log:
+            self.set_write_log()
 
+        LOG_CONTROLLER._flush_log_buffer()
         self._update_data()
     
 
@@ -324,7 +325,7 @@ class Simulation:
         if loglevel not in ('TRACE','DEBUG'):
             gmsh.option.setNumber("General.Terminal", 0)
 
-    def set_logfile(self) -> None:
+    def set_write_log(self) -> None:
         """Adds a file output for the logger."""
         LOG_CONTROLLER.set_write_file(self.modelpath)
         

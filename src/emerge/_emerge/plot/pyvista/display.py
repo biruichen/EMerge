@@ -596,7 +596,7 @@ class PVDisplay(BaseDisplay):
 
 
         if scale=='log':
-            T = lambda x: np.log10(np.abs(x))
+            T = lambda x: np.log10(np.abs(x+1e-12))
         elif scale=='symlog':
             T = lambda x: np.sign(x) * np.log10(1 + np.abs(x*np.log(10)))
         else:

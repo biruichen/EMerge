@@ -544,12 +544,20 @@ class Mesh3D(Mesh):
         #arry = np.zeros((3,3,self.n_tets,), dtype=np.complex128)
         for vol in volumes:
             vol.material.reset()
-            
+        
         materials = []
+        i = 0
+        for vol in volumes:
+            if vol.material not in materials:
+                materials.append(vol.material)
+                vol.material._hash_key = i
+                i += 1
         
         xs = self.centers[0,:]
         ys = self.centers[1,:]
         zs = self.centers[2,:]
+        
+        matassign = -1*np.ones((self.n_tets,), dtype=np.int64)
         
         for volume in sorted(volumes, key=lambda x: x._priority):
         
@@ -557,9 +565,12 @@ class Mesh3D(Mesh):
                 etype, etag_list, ntags = gmsh.model.mesh.get_elements(*dimtag)
                 for etags in etag_list:
                     tet_ids = np.array([self.tet_t2i[t] for t in etags])
-                    volume.material.initialize(xs[tet_ids], ys[tet_ids], zs[tet_ids], tet_ids)
-                    if volume.material not in materials:
-                        materials.append(volume.material)
+                    matassign[tet_ids] = volume.material._hash_key
+        
+        for mat in materials:
+            ids = np.argwhere(matassign==mat._hash_key).flatten()
+            mat.initialize(xs[ids], ys[ids], zs[ids], ids)
+                    
         
         return materials
     

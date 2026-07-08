@@ -18,11 +18,14 @@
 from loguru import logger
 import sys
 from typing import Literal
-from enum import Enum
 from pathlib import Path
 import os
-import gmsh
+from collections import deque
 
+_LOG_BUFFER = deque()
+
+def _log_sink(message):
+    _LOG_BUFFER.append(message)
 ############################################################
 #                          FORMATS                         #
 ############################################################
@@ -82,6 +85,14 @@ class LogController:
                 format=FORMAT_DICT.get(loglevel, INFO_FORMAT))
         self.std_handlers.append(handle_id)
 
+    def _set_log_buffer(self):
+        logger.add(_log_sink)
+        
+    def _flush_log_buffer(self):
+        for msg in list(_LOG_BUFFER):
+            logger.opt(depth=6).log(msg.record["level"].name, msg.record["message"])
+        _LOG_BUFFER.clear()
+        
     def set_std_loglevel(self, loglevel: str):
         handler = {"sink": sys.stdout, 
                    "level": loglevel, 

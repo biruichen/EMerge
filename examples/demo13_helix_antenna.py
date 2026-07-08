@@ -45,7 +45,7 @@ cross_section = em.geo.XYPolygon.circle(radw, Nsections=6)
 helix = h_curve.pipe(cross_section).set_material(em.lib.MET_COPPER)
 
 # We add a block to make attachment of ports easier.
-block = em.geo.Box(dfeed, dfeed, dfeed, position=h_curve.p0, alignment=em.geo.Alignment.CENTER).set_material(em.lib.MET_COPPER)
+block = em.geo.Box(dfeed, dfeed, dfeed, position=h_curve.p0, alignment=em.CENTER).set_material(em.lib.MET_COPPER)
 
 # Optional preview of current scene (geometry only at this point)
 model.view()
