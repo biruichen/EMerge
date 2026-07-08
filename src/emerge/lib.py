@@ -280,6 +280,7 @@ DIEL_XT_Duroid_8100              = Material(er=3.54, tand=0.0049, color="#21912b
 DIEL_XT_Duroid_81000_004IN_Thick = Material(er=3.32, tand=0.0038, color="#21912b", opacity=0.3, name="Rogers XT/duroid 81000 0.004in")
 DIEL_TEFLON = Material(er=2.1, tand=0.0003, color='#eeeeee', opacity=0.3, name="Teflon")
 
+DIEL_IS420_approx   = Material(er=4.5, tand=0.018, color="#CCDE30", opacity=0.3, name="ISOLA420 approximate")
 
 # Legacy FR Materials
 DIEL_FR1 = Material(er=4.8,  tand=0.025, color="#3c9747", opacity=0.3, name="FR-1 (Paper Phenolic)")

@@ -317,6 +317,7 @@ and sparse frequency annotations (e.g., labeled by frequency).
     colors_list  = _broadcast(colors, None, 'colors')
     lw_list      = _broadcast(linewidth, None, 'linewidth')
     labels_list: Optional[List[Optional[str]]]
+    
     if labels is None:
         labels_list = None
     else:
@@ -377,7 +378,9 @@ and sparse frequency annotations (e.g., labeled by frequency).
 
         # frequency labels (sparse)
         fi = fs_list[i]
-        if fi[0] is not None and n_flabels > 0 and len(s) > 0 and len(fi) > 0:
+        if fi is None:
+            continue
+        if n_flabels > 0 and len(s) > 0 and len(fi) > 0:
             n = min(len(s), len(fi))
             step = max(1, int(round(n / n_flabels))) if n_flabels > 0 else n  # avoid step=0
             idx = np.arange(0, n, step)

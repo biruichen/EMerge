@@ -15,8 +15,8 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-
 from __future__ import annotations
+
 from scipy.sparse import csr_matrix # type: ignore
 from scipy.sparse.csgraph import reverse_cuthill_mckee # type: ignore
 from scipy.sparse.linalg import bicgstab, gmres, gcrotmk, eigs, splu # type: ignore
@@ -286,6 +286,7 @@ class Solver:
     """
     real_only: bool = False
     req_sorter: bool = False
+    released_gil: bool = False
 
     def __init__(self):
         self.own_preconditioner: bool = False
@@ -479,7 +480,8 @@ class SolverSuperLU(Solver):
     """ Implements Scipi's direct SuperLU solver."""
     req_sorter: bool = False
     real_only: bool = False
-    
+    released_gil: bool = True
+
     def __init__(self):
         super().__init__()
         self.atol = 1e-5
@@ -502,6 +504,7 @@ class SolverSuperLU(Solver):
     
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, SolveReport]:
         logger.info(f'[ID={id}] Calling SuperLU Solver.')
+
         self.single = True
         if not reuse_factorization:
             logger.trace('Computing LU-Decomposition')
@@ -903,6 +906,10 @@ class SolveRoutine:
             bool: If the solver is legal
         """
         if any(isinstance(solver, solvertype) for solvertype in self.disabled_solver):
+            logger.warning(f'The selected solver {solver} cannot be used as it is disabled.')
+            return False
+        if self.parallel=='MT' and not solver.released_gil:
+            logger.warning(f'The selected solver {solver} cannot be used in MultiThreading as it does not release the GIL')
             return False
         return True
     

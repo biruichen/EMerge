@@ -84,9 +84,9 @@ m.generate_mesh()
 
 # --- Boundary conditions ------------------------------------------------
 p1 = m.mw.bc.ModalPort(feed.face('left'), 1)     # excite TE10 in feed
-PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, 0, 1, 0))  # perfect magnetic on symmetry
+PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, plane=em.XZPLANE))  # perfect magnetic on symmetry
 radiation_boundary = air2.faces('back','top','right', tool=air)  # open faces
-abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
+abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,plane=em.YZPLANE))
 
 # View mesh and BC selections
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])

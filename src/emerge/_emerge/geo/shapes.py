@@ -50,14 +50,15 @@ class Box(GeoVolume):
             alignment (Alignment, optional): Which point of the box is placed at the position. 
                 Defaults to Alignment.CORNER.
         """
-
+    _default_name: str = 'Box'
     def __init__(self, 
                  width: float, 
                  depth: float, 
                  height: float, 
                  position: tuple = (0,0,0),
                  alignment: Alignment = Alignment.CORNER,
-                 cs: CoordinateSystem = GCS):
+                 cs: CoordinateSystem = GCS,
+                 name: str | None = None):
         """Creates a box volume object.
         Specify the alignment of the box with the provided position. The options are CORNER (default)
         for the front-left-bottom node of the box or CENTER for the center of the box.
@@ -76,7 +77,7 @@ class Box(GeoVolume):
         x,y,z = position
 
         tag = gmsh.model.occ.addBox(x,y,z,width,depth,height)
-        super().__init__(tag)
+        super().__init__(tag, name=name)
 
         self.center = (x+width/2, y+depth/2, z+height/2)
         self.width = width
@@ -116,6 +117,7 @@ class Sphere(GeoVolume):
         radius (float): The sphere radius
         position (tuple, optional): The center position. Defaults to (0,0,0).
     """
+    _default_name: str = 'Sphere'
     def __init__(self, 
                  radius: float,
                  position: tuple = (0,0,0)):
@@ -142,11 +144,13 @@ class XYPlate(GeoSurface):
             position (tuple, optional): The position of the alignment node. Defaults to (0,0,0).
             alignment (Alignment, optional): Which node to align to. Defaults to Alignment.CORNER.
         """
+    _default_name: str = 'XYPlate'
     def __init__(self, 
                  width: float, 
                  depth: float, 
                  position: tuple = (0,0,0),
-                 alignment: Alignment = Alignment.CORNER):
+                 alignment: Alignment = Alignment.CORNER,
+                 name: str | None = None):
         """Generates and XY-plane oriented plate
         
         Specify the alignment of the plate with the provided position. The options are CORNER (default)
@@ -158,7 +162,7 @@ class XYPlate(GeoSurface):
             position (tuple, optional): The position of the alignment node. Defaults to (0,0,0).
             alignment (Alignment, optional): Which node to align to. Defaults to Alignment.CORNER.
         """
-        super().__init__([])
+        super().__init__([], name=name)
         if alignment is Alignment.CENTER:
             position = (position[0]-width/2, position[1]-depth/2, position[2])
         
@@ -180,10 +184,12 @@ class Plate(GeoSurface):
             u (tuple[float, float, float]): The u-axis of the plate
             v (tuple[float, float, float]): The v-axis of the plate
         """
+    _default_name: str = 'Plate'
     def __init__(self,
                 origin: tuple[float, float, float],
                 u: tuple[float, float, float],
-                v: tuple[float, float, float]):
+                v: tuple[float, float, float],
+                name: str | None = None):
         """A generalized 2D rectangular plate in XYZ-space.
 
         The plate is specified by an origin (o) in meters coordinate plus two vectors (u,v) in meters
@@ -215,7 +221,7 @@ class Plate(GeoSurface):
         tag_wire = gmsh.model.occ.addWire([tagl1,tagl2, tagl3, tagl4])
 
         tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
-        super().__init__(tags)
+        super().__init__(tags, name=name)
 
 
 class Cylinder(GeoVolume):
@@ -235,11 +241,13 @@ class Cylinder(GeoVolume):
             cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
+    _default_name: str = 'Cylinder'
     def __init__(self, 
                  radius: float,
                  height: float,
                  cs: CoordinateSystem = GCS,
-                 Nsections: int | None = None):
+                 Nsections: int | None = None,
+                 name: str | None = None):
         """Generates a Cylinder object in 3D space.
         The cylinder will always be placed in the origin of the provided CoordinateSystem.
         The bottom cylinder plane is always placed in the XY-plane. The length of the cylinder is
@@ -263,12 +271,12 @@ class Cylinder(GeoVolume):
             cyl = XYPolygon.circle(radius, Nsections=Nsections).extrude(height, cs)
             cyl._exists = False
             self._face_pointers = cyl._face_pointers
-            super().__init__(cyl.tags)
+            super().__init__(cyl.tags, name=name)
         else:
             cyl = gmsh.model.occ.addCylinder(cs.origin[0], cs.origin[1], cs.origin[2],
                                          height*ax[0], height*ax[1], height*ax[2],
                                          radius)
-            super().__init__(cyl)
+            super().__init__(cyl, name=name)
         self._add_face_pointer('front', cs.origin, -cs.zax.np)
         self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
         self._add_face_pointer('bottom', cs.origin, -cs.zax.np)
@@ -312,12 +320,14 @@ class CoaxCylinder(GeoVolume):
             cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
+    _default_name: str = 'CoaxCylinder'
     def __init__(self, 
                  rout: float,
                  rin: float,
                  height: float,
                  cs: CoordinateSystem = GCS,
-                 Nsections: int | None = None):
+                 Nsections: int | None = None,
+                 name: str | None = None):
         """Generates a Coaxial cylinder object in 3D space.
         The coaxial cylinder will always be placed in the origin of the provided CoordinateSystem.
         The bottom coax plane is always placed in the XY-plane. The lenth of the coax is
@@ -347,7 +357,7 @@ class CoaxCylinder(GeoVolume):
         self.cyl_out._exists = False
         cyltags, _ = gmsh.model.occ.cut(self.cyl_out.dimtags, self.cyl_in.dimtags)
         
-        super().__init__([dt[1] for dt in cyltags])
+        super().__init__([dt[1] for dt in cyltags], name=name)
 
         self._add_face_pointer('front', cs.origin, -cs.zax.np)
         self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
@@ -374,10 +384,12 @@ class CoaxCylinder(GeoVolume):
     
 class HalfSphere(GeoVolume):
     """A half sphere volume."""
+    _default_name: str = 'HalfSphere'
     def __init__(self,
                  radius: float,
                  position: tuple = (0,0,0),
-                 direction: tuple = (1,0,0)):
+                 direction: tuple = (1,0,0),
+                 name: str | None = None):
         
         sphere = Sphere(radius, position=position)
         cx, cy, cz = position
@@ -393,7 +405,7 @@ class HalfSphere(GeoVolume):
         sphere._exists = False
         box._exists = False
 
-        super().__init__([dt[1] for dt in dimtags])
+        super().__init__([dt[1] for dt in dimtags], name=name)
         
         self._add_face_pointer('front',np.array(position), np.array(direction))
         self._add_face_pointer('back',np.array(position), np.array(direction))
@@ -528,10 +540,13 @@ class Cone(GeoVolume):
             r1 (float): _description_
             r2 (float): _description_
         """
+    _default_name: str = 'Cone'
+    
     def __init__(self, p0: tuple[float, float, float],
                  direction: tuple[float, float, float],
                  r1: float,
-                 r2: float):
+                 r2: float,
+                 name: str | None = None):
         """Constructis a cone that starts at position p0 and is aimed in the given direction.
         r1 is the start radius and r2 the end radius. The magnitude of direction determines its length.
 
@@ -542,7 +557,7 @@ class Cone(GeoVolume):
             r2 (float): _description_
         """
         tag = gmsh.model.occ.add_cone(*p0, *direction, r1, r2)
-        super().__init__(tag)
+        super().__init__(tag, name=name)
         
         p0 = np.array(p0)
         ds = np.array(direction)

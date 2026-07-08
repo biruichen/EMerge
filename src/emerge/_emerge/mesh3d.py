@@ -122,7 +122,6 @@ class Mesh3D(Mesh):
         self.inv_tets: dict = dict()
 
         # Mappings
-
         self.tet_to_edge: np.ndarray = np.array([])
         self.tet_to_edge_sign: np.ndarray = np.array([])
         self.tet_to_tri: np.ndarray = np.array([])
@@ -133,7 +132,6 @@ class Mesh3D(Mesh):
         self.node_to_edge: defaultdict | dict = defaultdict()
 
         # Physics mappings
-
         self.tet_to_field: np.ndarray = np.array([])
         self.edge_to_field: np.ndarray = np.array([])
         self.tri_to_field: np.ndarray = np.array([])
@@ -148,6 +146,10 @@ class Mesh3D(Mesh):
         self.ftag_to_edge: dict[int, list[int]] = dict()
         self.vtag_to_tet:  dict[int, list[int]] = dict()
         self.etag_to_edge: dict[int, list[int]] = dict()
+        
+        ## Dervied
+        self.dimtag_to_center: dict[tuple[int, int], tuple[float, float, float]] = dict()
+        self.dimtag_to_edges: dict[tuple[int, int], np.ndarray] = dict()
         
         self.exterior_face_tags: list[int] = []
     
@@ -242,7 +244,7 @@ class Mesh3D(Mesh):
 
         return np.array(indices)
     
-    def domain_edges(self, dimtags: list[tuple[int,int]]) -> np.ndarray:
+    def _domain_edge(self, dimtag: tuple[int,int]) -> np.ndarray:
         """Returns a np.ndarray of all edge indices corresponding to a set of dimension tags.
 
         Args:
@@ -252,21 +254,39 @@ class Mesh3D(Mesh):
             np.ndarray: The list of mesh edge element indices.
         """
         dimtags_edge = []
-        for (d,t) in dimtags:
-            if d==1:
-                dimtags_edge.append(t)
-            if d==2:
-                dimtags_edge.extend(gmsh.model.getBoundary([(d,t),], False, False))
-            if d==3:
-                dts = gmsh.model.getBoundary([(d,t),], False, False)
-                dimtags_edge.extend(gmsh.model.getBoundary(dts, False, False))
-        
+        d,t = dimtag
+        if d==0:
+            return np.ndarray([], dtype=np.int64)
+        if d==1:
+            dimtags_edge.append((1,t))
+        if d==2:
+            dimtags_edge.extend(gmsh.model.getBoundary([(d,t),], False, False))
+        if d==3:
+            dts = gmsh.model.getBoundary([(d,t),], False, False)
+            dimtags_edge.extend(gmsh.model.getBoundary(dts, False, False))
+    
         edge_ids = []
         for tag in dimtags_edge:
             edge_ids.extend(self.etag_to_edge[tag[1]])
         edge_ids = np.array(edge_ids)
         return edge_ids
+    
+    def domain_edges(self, dimtags: list[tuple[int,int]]) -> np.ndarray:
+        """Returns a np.ndarray of all edge indices corresponding to a set of dimension tags.
+
+        Args:
+            dimtags (list[tuple[int,int]]): A list of dimtags.
+
+        Returns:
+            np.ndarray: The list of mesh edge element indices.
+        """
         
+        edge_ids = []
+        for dt in dimtags:
+            edge_ids.extend(self.dimtag_to_edges[dt])
+        edge_ids = np.array(edge_ids)
+        return edge_ids
+    
     def get_face_tets(self, *taglist: list[int]) -> np.ndarray:
         ''' Return a list of a tetrahedrons that share a node with any of the nodes in the provided face.'''
         nodes: set = set()
@@ -487,6 +507,13 @@ class Mesh3D(Mesh):
             self.vtag_to_tet[t] = [self.get_tet(node_tags[0,i], node_tags[1,i], node_tags[2,i], node_tags[3,i]) for i in range(node_tags.shape[1])]
 
         self.defined = True
+        
+        for dim in (0,1,2,3):
+            dts= gmsh.model.get_entities(dim)
+            for dt in dts:
+                self.dimtag_to_center[dt] = gmsh.model.occ.get_center_of_mass(*dt)
+                self.dimtag_to_edges[dt] = self._domain_edge(dt)
+                
         logger.trace('Done analyzing mesh.')
 
 

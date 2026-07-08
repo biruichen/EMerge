@@ -537,9 +537,8 @@ class Selector:
                 x: float,
                 y: float,
                 z: float,
-                nx: float,
-                ny: float,
-                nz: float,
+                normal_axis: Axis | tuple[float, float, float] | None = None,
+                plane: Plane | None = None,
                 tolerance: float = 1e-8) -> FaceSelection:
         """Returns a FaceSelection for all faces that lie in a provided infinite plane
         specified by an origin plus a plane normal vector.
@@ -548,17 +547,20 @@ class Selector:
             x (float): The plane origin X-coordinate
             y (float): The plane origin Y-coordinate
             z (float): The plane origin Z-coordinate
-            nx (float): The plane normal X-component
-            ny (float): The plane normal Y-component
-            nz (float): The plane normal Z-component
+            normal_axis (Axis, tuple): The plane normal vector
             tolerance (float, optional): An in plane tolerance (displacement and normal dot product). Defaults to 1e-6.
 
         Returns:
             FaceSelection: All faces that lie in the specified plane
         """
         orig = np.array([x,y,z])
-        norm = np.array([nx,ny,nz])
-        norm = norm/np.linalg.norm(norm)
+        if plane is not None:
+            norm = plane.normal.np
+        elif normal_axis is not None:
+            norm = _parse_vector(normal_axis)
+            norm = norm/np.linalg.norm(norm)
+        else:
+            raise RuntimeError('No plane or axis defined for selection.')
         
         dimtags = gmsh.model.getEntities(2)
         coords = [gmsh.model.occ.getCenterOfMass(*tag) for tag in dimtags]

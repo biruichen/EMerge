@@ -219,8 +219,9 @@ class GeoPrism(GeoVolume):
                  volume_tag: int,
                  front_tag: int | None = None,
                  side_tags: list[int] | None = None,
-                 _axis: Axis | None = None):
-        super().__init__(volume_tag)
+                 _axis: Axis | None = None,
+                 name: str | None = None):
+        super().__init__(volume_tag, name=name)
         
         
         
@@ -420,7 +421,7 @@ class XYPolygon:
         wiretag = gmsh.model.occ.add_wire(lines)
         return ptags, lines, wiretag
         
-    def _finalize(self, cs: CoordinateSystem) -> GeoPolygon:
+    def _finalize(self, cs: CoordinateSystem, name: str | None = 'GeoPolygon') -> GeoPolygon:
         """Turns the XYPolygon object into a GeoPolygon that is embedded in 3D space.
 
         The polygon will be placed in the XY-plane of the provided coordinate center.
@@ -433,12 +434,12 @@ class XYPolygon:
         """
         ptags, lines, wiretag = self._make_wire(cs)
         surftag = gmsh.model.occ.add_plane_surface([wiretag,])
-        poly = GeoPolygon([surftag,])
+        poly = GeoPolygon([surftag,], name=name)
         poly.points = ptags
         poly.lines = lines
         return poly
     
-    def extrude(self, length: float, cs: CoordinateSystem | None = None) -> GeoPrism:
+    def extrude(self, length: float, cs: CoordinateSystem | None = None, name: str = 'Extrusion') -> GeoPrism:
         """Extrues the polygon along the Z-axis.
         The z-coordinates go from z1 to z2 (in meters). Then the extrusion
         is either provided by a maximum dz distance (in meters) or a number
@@ -458,9 +459,9 @@ class XYPolygon:
         volume = gmsh.model.occ.extrude(poly_fin.dimtags, zax[0], zax[1], zax[2])
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]
-        return GeoPrism(tags, surftags[0], surftags)
+        return GeoPrism(tags, surftags[0], surftags, name=name)
     
-    def geo(self, cs: CoordinateSystem | None = None) -> GeoPolygon:
+    def geo(self, cs: CoordinateSystem | None = None, name: str = 'GeoPolygon') -> GeoPolygon:
         """Returns a GeoPolygon object for the current polygon.
 
         Args:
@@ -475,7 +476,7 @@ class XYPolygon:
             cs = GCS
         return self._finalize(cs) 
     
-    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> GeoPrism:
+    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0, name: str = 'Revolution') -> GeoPrism:
         """Applies a revolution to the XYPolygon along the provided rotation ais
 
         Args:
@@ -496,7 +497,7 @@ class XYPolygon:
         
         tags = [t for d,t in volume if d==3]
         poly_fin.remove()
-        return GeoPrism(tags, _axis=axis)
+        return GeoPrism(tags, _axis=axis, name=name)
 
     @staticmethod
     def circle(radius: float, 
@@ -588,7 +589,7 @@ class XYPolygon:
         self.extend(xs, ys)
         return self
     
-    def connect(self, other: XYPolygon) -> GeoVolume:
+    def connect(self, other: XYPolygon, name: str = 'Connection') -> GeoVolume:
         """Connect two XYPolygons with a defined coordinate system
 
         The coordinate system must be defined before this function can be used. To add a coordinate systme without
@@ -610,17 +611,19 @@ class XYPolygon:
         o1 = np.array(self._cs.in_global_cs(*self.center, 0)).flatten()
         o2 = np.array(other._cs.in_global_cs(*other.center, 0)).flatten()
         dts = gmsh.model.occ.addThruSections([w1, w2], True, parametrization="IsoParametric")
-        vol = GeoVolume([t for d,t in dts if d==3])
+        vol = GeoVolume([t for d,t in dts if d==3], name=name)
         
         vol._add_face_pointer('front',o1, self._cs.zax.np)
         vol._add_face_pointer('back', o2, other._cs.zax.np)
         return vol
             
 class Disc(GeoSurface):
+    _default_name: str = 'Disc'
     
     def __init__(self, origin: tuple[float, float, float],
                  radius: float,
-                 axis: tuple[float, float, float] = (0,0,1.0)):
+                 axis: tuple[float, float, float] = (0,0,1.0),
+                 name: str | None = None):
         """Creates a circular Disc surface.
 
         Args:
@@ -629,10 +632,12 @@ class Disc(GeoSurface):
             axis (tuple[float, float, float], optional): The disc normal axis. Defaults to (0,0,1.0).
         """
         disc = gmsh.model.occ.addDisk(*origin, radius, radius, zAxis=axis)
-        super().__init__(disc)
+        super().__init__(disc, name=name)
     
     
 class Curve(GeoEdge):
+    _default_name: str = 'Curve'
+    
     def __init__(self, 
                  xpts: np.ndarray, 
                  ypts: np.ndarray, 
@@ -640,7 +645,8 @@ class Curve(GeoEdge):
                  degree: int = 3,
                  weights: list[float] | None = None,
                  knots: list[float] | None = None,
-                 ctype: Literal['Spline','BSpline','Bezier'] = 'Spline'):
+                 ctype: Literal['Spline','BSpline','Bezier'] = 'Spline',
+                 name: str | None = None):
         """Generate a Spline/Bspline or Bezier curve based on a series of points
 
         This calls the different curve features in OpenCASCADE.
@@ -678,7 +684,7 @@ class Curve(GeoEdge):
         
         tags = gmsh.model.occ.addWire([tags,])
         gmsh.model.occ.remove([(0,tag) for tag in points])
-        super().__init__(tags)
+        super().__init__(tags, name=name)
     
         gmsh.model.occ.synchronize()
         p1 = gmsh.model.getValue(self.dim, self.tags[0], [0,])

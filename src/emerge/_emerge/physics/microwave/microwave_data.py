@@ -1137,6 +1137,9 @@ class MWScalarNdim:
         self._portmap: dict[int, float|int] = dict()
         self._portnumbers: list[int | float] = []
 
+    def dense_f(self, N: int) -> np.ndarray:
+        return np.linspace(np.min(self.freq), np.max(self.freq), N)
+    
     def S(self, i1: int, i2: int) -> np.ndarray:
         return self.Sp[...,self._portmap[i1], self._portmap[i2]]
     
