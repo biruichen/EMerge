@@ -317,7 +317,6 @@ and sparse frequency annotations (e.g., labeled by frequency).
     colors_list  = _broadcast(colors, None, 'colors')
     lw_list      = _broadcast(linewidth, None, 'linewidth')
     labels_list: Optional[List[Optional[str]]]
-    
     if labels is None:
         labels_list = None
     else:
@@ -378,9 +377,7 @@ and sparse frequency annotations (e.g., labeled by frequency).
 
         # frequency labels (sparse)
         fi = fs_list[i]
-        if fi is None:
-            continue
-        if n_flabels > 0 and len(s) > 0 and len(fi) > 0:
+        if fi[0] is not None and n_flabels > 0 and len(s) > 0 and len(fi) > 0:
             n = min(len(s), len(fi))
             step = max(1, int(round(n / n_flabels))) if n_flabels > 0 else n  # avoid step=0
             idx = np.arange(0, n, step)
@@ -425,14 +422,9 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
             show_plot: bool = True,
             figdata: tuple | None = None) -> tuple[plt.Figure, plt.Axes, plt.Axes]:
     """Plot S-parameters in dB and phase
-    
-    One may provide:
-     - A single frequency with a single S-parameter
-     - A single frequency with a list of S-parameters
-     - A list of frequencies with a list of S-parameters
 
     Args:
-        f (np.ndarray | list[np.ndarray]): Frequency vector or list of frequencies
+        f (np.ndarray): Frequency vector
         S (list[np.ndarray] | np.ndarray): S-parameters to plot (list or single array)
         dblim (list, optional): Decibel y-axis limit. Defaults to [-80, 5].
         xunit (str, optional): Frequency unit. Defaults to "GHz".
@@ -543,7 +535,7 @@ def plot_sp(f: np.ndarray | list[np.ndarray], S: list[np.ndarray] | np.ndarray,
 
     
 def plot_ff(
-    theta: np.ndarray | list[np.ndarray],
+    theta: np.ndarray,
     E: Union[np.ndarray, Sequence[np.ndarray]],
     grid: bool = True,
     dB: bool = False,
@@ -562,7 +554,7 @@ def plot_ff(
 
     Parameters
     ----------
-    theta : np.ndarray | list[np.ndarray]
+    theta : np.ndarray
         Angle array (radians).
     E : np.ndarray or sequence of np.ndarray
         Complex E-field samples; magnitude will be plotted.
@@ -583,12 +575,6 @@ def plot_ff(
         E_list = [E]
     else:
         E_list = list(E)
-        
-    if not isinstance(theta, list):
-        thetas = [theta for _ in E_list]
-    else:
-        thetas = theta
-        
     n_series = len(E_list)
 
     # Style broadcasting
@@ -605,7 +591,6 @@ def plot_ff(
 
     fig, ax = plt.subplots()
     for i, Ei in enumerate(E_list):
-        theta = thetas[i]
         mag = np.abs(Ei)
         if dB:
             mag = 20*np.log10(mag)

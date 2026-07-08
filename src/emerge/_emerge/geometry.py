@@ -33,7 +33,6 @@ def _map_tags(tags: list[int], mapping: dict[int, list[int]]):
 
 def _bbcenter(x1, y1, z1, x2, y2, z2):
     return np.array([(x1+x2)/2, (y1+y2)/2, (z1+z2)/2])
-
 FaceNames = Literal['back','front','left','right','top','bottom']
 
 class _KEY_GENERATOR:
@@ -48,50 +47,29 @@ class _KEY_GENERATOR:
 class _GeometryManager:
 
     def __init__(self):
-        self.geometry_list: dict[str, dict[str, GeoObject]] = dict()
+        self.geometry_list: dict[str, list[GeoObject]] = dict()
         self.active: str = ''
-        self.geometry_names: dict[str, set[str]] = dict()
 
-    def get_surfaces(self) -> list[GeoSurface]:
-        return [geo for geo in self.all_geometries() if geo.dim==2]
-    
     def all_geometries(self, model: str | None = None) -> list[GeoObject]:
         if model is None:
             model = self.active
-        return [geo for geo in self.geometry_list[model].values() if geo._exists]
+        return [geo for geo in self.geometry_list[model] if geo._exists]
 
-    def all_names(self, model: str | None = None) -> set[str]:
-        if model is None:
-            model = self.active
-        return self.geometry_names[model]
-    
-    def get_name(self, suggestion: str, model: str | None = None) -> str:
-        names = self.all_names(model)
-        if suggestion not in names:
-            return suggestion
-        for i in range(1_000_000):
-            if f'{suggestion}_{i}' not in names:
-                return f'{suggestion}_{i}'
-        raise RuntimeError('Cannot generate a unique name.')
-        
     def submit_geometry(self, geo: GeoObject, model: str | None = None) -> None:
         if model is None:
             model = self.active
-        self.geometry_list[model][geo.name] = geo
-        self.geometry_names[model].add(geo.name)
+        self.geometry_list[model].append(geo)
 
     def sign_in(self, modelname: str) -> None:
         # if modelname not in self.geometry_list:
         #     self.geometry_list[modelname] = []
         if modelname is self.geometry_list:
             logger.warning(f'{modelname} already exist, Geometries will be reset.')
-        self.geometry_list[modelname] = dict()
-        self.geometry_names[modelname] = set()
+        self.geometry_list[modelname] = []
         self.active = modelname
 
     def reset(self, modelname: str) -> None:
-        self.geometry_list[modelname] = dict()
-        self.geometry_names[modelname] = set()
+        self.geometry_list[modelname] = []
     
     def lowest_priority(self) -> int:
         return min([geo._priority for geo in self.all_geometries()])
@@ -238,8 +216,7 @@ class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
     dim: int = -1
-    _default_name: str = 'GeoObject'
-    def __init__(self, tags: list[int] | None = None, name: str | None = None):
+    def __init__(self, tags: list[int] | None = None):
         if tags is None:
             tags = []
         self.old_tags: list[int] = []
@@ -258,15 +235,8 @@ class GeoObject:
         self._priority: int = 10
 
         self._exists: bool = True
-        
-        self.give_name(name)
         _GEOMANAGER.submit_geometry(self)
 
-    def give_name(self, name: str | None = None):
-        if name is None:
-            name = self._default_name
-        self.name: str = _GEOMANAGER.get_name(name)
-        
     @property
     def color_rgb(self) -> tuple[float, float, float]:
         return self.material.color_rgb
@@ -280,7 +250,7 @@ class GeoObject:
         return self.material._metal
     
     @property
-    def selection(self) -> Selection:
+    def select(self) -> Selection:
         '''Returns a corresponding Face/Domain or Edge Selection object'''
         if self.dim==1:
             return EdgeSelection(self.tags)
@@ -315,18 +285,9 @@ class GeoObject:
     
     def _add_face_pointer(self, 
                           name: str,
-                          origin: np.ndarray | None = None,
-                          normal: np.ndarray | None = None,
-                          tag: int | None = None):
-        if tag is not None:
-            o = gmsh.model.occ.get_center_of_mass(2, tag)
-            n = gmsh.model.get_normal(tag, (0,0))
-            self._face_pointers[name] = _FacePointer(o, n)
-            return
-        if origin is not None and normal is not None:
-            self._face_pointers[name] = _FacePointer(origin, normal)
-            return
-        raise ValueError('Eitehr a tag or an origin + normal must be provided!')
+                          origin: np.ndarray,
+                          normal: np.ndarray):
+        self._face_pointers[name] = _FacePointer(origin, normal)
     
     def make_copy(self) -> GeoObject:
         new_dimtags = gmsh.model.occ.copy(self.dimtags)
@@ -421,30 +382,6 @@ class GeoObject:
         self._priority = level
         return self
     
-    def above(self, other: GeoObject) -> GeoObject:
-        """Puts the priority of this object one higher than the other, then returns this object
-
-        Args:
-            other (GeoObject): The other object to put below this object
-
-        Returns:
-            GeoObject: This object
-        """
-        self._priority = other._priority + 1
-        return self
-    
-    def below(self, other: GeoObject) -> GeoObject:
-        """Puts the priority of this object one lower than the other, then returns this object
-
-        Args:
-            other (GeoObject): The other object to put above this object
-
-        Returns:
-            GeoObject: This object
-        """
-        self._priority = other._priority -1
-        return self
-        
     def prio_up(self) -> GeoObject:
         """Increases the material selection priority by 1
 
@@ -481,9 +418,7 @@ class GeoObject:
         self._priority = _GEOMANAGER.highest_priority()+10
         return self
     
-    def boundary(self, exclude: tuple[FaceNames,...] | None = None, 
-                 tags: list[int] | None = None,
-                 tool: GeoObject | None = None) -> FaceSelection:
+    def boundary(self, exclude: tuple[FaceNames,...] | None = None, tags: list[int] | None = None) -> FaceSelection:
         """Returns the complete set of boundary faces.
 
         If implemented, it is possible to exclude a set of faces based on their name
@@ -500,7 +435,7 @@ class GeoObject:
         
         
         for name in exclude:
-            tags.extend(self.face(name, tool=tool).tags)
+            tags.extend(self.face(name).tags)
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
         return FaceSelection([t for d,t in dimtags if t not in tags])
     
@@ -564,10 +499,8 @@ class GeoVolume(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
     specific geometry data.'''
     dim = 3
-    _default_name: str = 'GeoVolume'
-    def __init__(self, tag: int | Iterable[int], name: str | None = None):
-        super().__init__(name=name)
-        
+    def __init__(self, tag: int | Iterable[int]):
+        super().__init__()
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
             self.tags = list(tag)
@@ -575,19 +508,18 @@ class GeoVolume(GeoObject):
             self.tags = [tag,]
 
     @property
-    def selection(self) -> DomainSelection:
+    def select(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
 class GeoPoint(GeoObject):
     dim = 0
-    _default_name: str = 'GeoPoint'
-    
+
     @property
-    def selection(self) -> PointSelection:
+    def select(self) -> PointSelection:
         return PointSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int]):
+        super().__init__()
 
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
@@ -597,14 +529,13 @@ class GeoPoint(GeoObject):
 
 class GeoEdge(GeoObject):
     dim = 1
-    _default_name: str = 'GeoEdge'
-    
+
     @property
-    def selection(self) -> EdgeSelection:
+    def select(self) -> EdgeSelection:
         return EdgeSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int]):
+        super().__init__()
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
             self.tags = list(tag)
@@ -616,14 +547,13 @@ class GeoSurface(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not reprsent Emerge
     specific geometry data.'''
     dim = 2
-    _default_name: str = 'GeoSurface'
-    
+
     @property
-    def selection(self) -> FaceSelection:
+    def select(self) -> FaceSelection:
         return FaceSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int]):
+        super().__init__()
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
             self.tags = list(tag)
@@ -631,12 +561,10 @@ class GeoSurface(GeoObject):
             self.tags = [tag,]
 
 class GeoPolygon(GeoSurface):
-    _default_name: str = 'GeoPolygon'
     
     def __init__(self,
-                 tags: list[int],
-                 name: str | None = None):
-        super().__init__(tags, name=name)
+                 tags: list[int]):
+        super().__init__(tags)
         self.points: list[int] = []
         self.lines: list[int] = []
 
