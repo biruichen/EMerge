@@ -18,7 +18,7 @@
 from __future__ import annotations
 import gmsh
 from .material import Material, AIR
-from .selection import FaceSelection, DomainSelection, EdgeSelection
+from .selection import FaceSelection, DomainSelection, EdgeSelection, PointSelection
 from loguru import logger
 from typing import Literal, Any
 import numpy as np
@@ -377,6 +377,35 @@ class GeoVolume(GeoObject):
     def select(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
+class GeoPoint(GeoObject):
+    dim = 0
+
+    @property
+    def select(self) -> PointSelection:
+        return PointSelection(self.tags)
+    
+    def __init__(self, tag: int | list[int]):
+        super().__init__()
+        if isinstance(tag, list):
+            self.tags: list[int] = tag
+        else:
+            self.tags: list[int] = [tag,]
+
+class GeoEdge(GeoObject):
+    dim = 1
+
+    @property
+    def select(self) -> EdgeSelection:
+        return EdgeSelection(self.tags)
+    
+    def __init__(self, tag: int | list[int]):
+        super().__init__()
+        if isinstance(tag, list):
+            self.tags: list[int] = tag
+        else:
+            self.tags: list[int] = [tag,]
+        
+
 class GeoSurface(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not reprsent Emerge
     specific geometry data.'''

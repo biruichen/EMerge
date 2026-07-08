@@ -25,6 +25,7 @@ from .cs import CoordinateSystem, Axis, GCS
 from .coord import Line
 from .geometry import GeoSurface, GeoObject
 from dataclasses import dataclass
+from collections import defaultdict
 
 class BCDimension(Enum):
     ANY = -1
@@ -200,23 +201,29 @@ class PortBC(RobinBC):
     def get_inv_basis(self) -> np.ndarray:
         return self.cs._basis_inv
     
-    @property
-    def portZ0(self) -> complex:
+    def portZ0(self, k0: float = None) -> complex:
+        """Returns the port characteristic impedance given a phase constant
+
+        Args:
+            k0 (float): The phase constant
+
+        Returns:
+            complex: The port impedance
+        """
         return self.Z0
 
-    @property
-    def modetype(self) -> Literal['TEM','TE','TM']:
+    def modetype(self, k0: float) -> Literal['TEM','TE','TM']:
         return 'TEM'
     
     def Zmode(self, k0: float) -> float:
-        if self.modetype=='TEM':
+        if self.modetype(k0)=='TEM':
             return self.Zvac
-        elif self.modetype=='TE':
+        elif self.modetype(k0)=='TE':
             return k0*299792458/self.get_beta(k0) * 4*np.pi*1e-7
-        elif self.modetype=='TM':
+        elif self.modetype(k0)=='TM':
             return self.get_beta(k0)/(k0*299792458*8.854187818814*1e-12)
         else:
-            return ValueError(f'Port mode type should be TEM, TE or TM but instead is {self.type}')
+            return ValueError(f'Port mode type should be TEM, TE or TM but instead is {self.modetype(k0)}')
     
     @property
     def mode_number(self) -> int:
@@ -317,6 +324,7 @@ class PortMode:
     neff: float = None
     TEM: bool = None
     Z0: float = None
+    polarity: float = 1
     modetype: Literal['TEM','TE','TM'] = 'TEM'
 
     def __post_init__(self):
@@ -341,7 +349,9 @@ class ModalPort(PortBC):
                  port_number: int, 
                  active: bool = False,
                  cs: CoordinateSystem = None,
-                 power: float = 1):
+                 power: float = 1,
+                 TEM: bool = False,
+                 mixed_materials: bool = False):
         """Generes a ModalPort boundary condition for a port that requires eigenmode solutions for the mode.
 
         The boundary condition requires a FaceSelection (or GeoSurface related) object for the face and a port
@@ -358,6 +368,9 @@ class ModalPort(PortBC):
             active (bool, optional): Whether the port is set active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system of the port face. Defaults to None.
             power (float, optional): The radiated power. Defaults to 1.
+            TEM (bool, optional): Wether the mode should be considered as a TEM mode. Defaults to False
+            mixed_materials (bool, optional): Wether the port consists of multiple different dielectrics. This requires
+                A recalculation of the port mode at every frequency
         """
         super().__init__(face)
 
@@ -365,8 +378,15 @@ class ModalPort(PortBC):
         self.active: bool = active
         self.power: float = power
         self.cs: CoordinateSystem = cs
+
         self.selected_mode: int = 0
-        self.modes: list[PortMode] = []
+        self.modes: dict[float, list[PortMode]] = defaultdict(list)
+
+        self.TEM: bool = TEM
+        self.mixed_materials: bool = mixed_materials
+        self.initialized: bool = False
+        self._first_k0: float = None
+        self._last_k0: float = None
 
         if self.cs is None:
             logger.info('Constructing coordinate system from normal port')
@@ -375,24 +395,23 @@ class ModalPort(PortBC):
         self._er: np.ndarray = None
         self._ur: np.ndarray = None
     
-    @property
-    def portZ0(self) -> complex:
-        return self.get_mode().Z0
+    def portZ0(self, k0: float) -> complex:
+        return self.get_mode(k0).Z0
     
-    @property
-    def modetype(self) -> Literal['TEM','TE','TM']:
-        return self.get_mode().modetype
+    def modetype(self, k0: float) -> Literal['TEM','TE','TM']:
+        return self.get_mode(k0).modetype
     
     @property
     def nmodes(self) -> int:
-        return len(self.modes)
+        return len(self.modes[self._last_k0])
     
     def sort_modes(self) -> None:
         """Sorts the port modes based on total energy
         """
-        self.modes = sorted(self.modes, key=lambda m: m.energy, reverse=True)
+        for k0, modes in self.modes.items():
+            self.modes[k0] = sorted(modes, key=lambda m: m.energy, reverse=True)
 
-    def get_mode(self, i=None) -> PortMode:
+    def get_mode(self, k0: float, i=None) -> PortMode:
         """Returns a given mode solution in the form of a PortMode object.
 
         Args:
@@ -403,17 +422,22 @@ class ModalPort(PortBC):
         """
         if i is None:
             i = self.selected_mode
-        return self.modes[i]
+        return self.modes[min(self.modes.keys(), key=lambda k: abs(k - k0))][i]
     
-    def global_field_function(self, which: Literal['E','H'] = 'E') -> Callable:
+    def global_field_function(self, k0: float = 0, which: Literal['E','H'] = 'E') -> Callable:
         ''' The field function used to compute the E-field. 
         This field-function is defined in global coordinates (not local coordinates).'''
-        mode = self.get_mode()
+        mode = self.get_mode(k0)
         if which == 'E':
-            return lambda x,y,z: mode.norm_factor*mode.E_function(x,y,z)
+            return lambda x,y,z: mode.norm_factor*mode.E_function(x,y,z)*mode.polarity
         else:
-            return lambda x,y,z: mode.norm_factor*mode.H_function(x,y,z)
+            return lambda x,y,z: mode.norm_factor*mode.H_function(x,y,z)*mode.polarity
     
+    def clear_modes(self) -> None:
+        """Clear all port mode data"""
+        self.modes: dict[float, list[PortMode]] = defaultdict(list)
+        self.initialized = False
+
     def add_mode(self, 
                  field: np.ndarray,
                  E_function: Callable,
@@ -442,14 +466,25 @@ class ModalPort(PortBC):
         if mode.energy < 1e-4:
             logger.debug(f'Ignoring mode due to a low mode energy: {mode.energy}')
             return None
-        self.modes.append(mode)
+        self.modes[k0].append(mode)
+        self.initialized = True
+
+        self._last_k0 = k0
+        if self._first_k0 is None:
+            self._first_k0 = k0
+        else:
+            ref_field = self.get_mode(self._first_k0, -1).modefield
+            polarity = np.sign(np.sum(field*ref_field).real)
+            logger.debug(f'Mode polarity = {polarity}')
+            mode.polarity = polarity
+
         return mode
 
     def get_basis(self) -> np.ndarray:
         return self.cs._basis
     
-    def get_beta(self, k0) -> float:
-        mode = self.get_mode()
+    def get_beta(self, k0: float) -> float:
+        mode = self.get_mode(k0)
         if mode.TEM:
             beta = mode.beta/mode.k0 * k0
         else:
@@ -458,7 +493,7 @@ class ModalPort(PortBC):
         logger.debug(f'    Derived kz={beta.real:.2f} (k0 = {k0:.2f}), neff = {np.sqrt(beta/k0).real:.2f}')
         return beta
 
-    def get_gamma(self, k0):
+    def get_gamma(self, k0: float):
         return 1j*self.get_beta(k0)
     
     def get_Uinc(self, x_local, y_local, k0) -> np.ndarray:
@@ -484,7 +519,7 @@ class ModalPort(PortBC):
                             z_global: np.ndarray,
                             k0: float,
                             which: Literal['E','H'] = 'E') -> np.ndarray:
-        Ex, Ey, Ez = np.sqrt(self.power) * self.global_field_function(which)(x_global,y_global,z_global)
+        Ex, Ey, Ez = np.sqrt(self.power) * self.global_field_function(k0, which)(x_global,y_global,z_global)
         Exyz = np.array([Ex, Ey, Ez])
         return Exyz
 
@@ -541,7 +576,7 @@ class RectangularWaveguide(PortBC):
         else:
             self.cs: CoordinateSystem = cs
 
-    def portZ0(self) -> complex:
+    def portZ0(self, k0: float = None) -> complex:
         raise NotImplementedError('Rectangular waveguide port impedance computation is currently not yet implemented.')
 
     def get_amplitude(self, k0: float) -> float:

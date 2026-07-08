@@ -18,7 +18,7 @@
 from .pcb import PCBLayouter
 from .pmlbox import pmlbox
 from .horn import Horn
-from .shapes import Cyllinder, CoaxCyllinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox
+from .shapes import Cyllinder, CoaxCyllinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox, Alignment
 from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system
 from .extrude import XYPolygon, GeoPrism
-from .stl import STLObject
+from .step import STEPObject

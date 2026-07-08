@@ -23,3 +23,13 @@ version_update.txt
 
 # EMerge data files
 *.emerge
+*.stl
+*.step
+*.s1p
+*.s2p
+*.s3p
+*.s4p
+*.snp
+
+
+

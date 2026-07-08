@@ -29,7 +29,24 @@ import platform
 import time
 
 _PARDISO_AVAILABLE = False
-
+_PARDISO_ERROR_CODES = """
+   0 | No error.
+  -1 | Input inconsistent.
+  -2 | Not enough memory.
+  -3 | Reordering problem.
+  -4 | Zero pivot, numerical fac. or iterative refinement problem.
+  -5 | Unclassified (internal) error.
+  -6 | Preordering failed (matrix types 11(real and nonsymmetric), 13(complex and nonsymmetric) only).
+  -7 | Diagonal Matrix problem.
+  -8 | 32-bit integer overflow problem.
+ -10 | No license file pardiso.lic found.
+ -11 | License is expired.
+ -12 | Wrong username or hostname.
+-100 | Reached maximum number of Krylov-subspace iteration in iterative solver.
+-101 | No sufficient convergence in Krylov-subspace iteration within 25 iterations.
+-102 | Error in Krylov-subspace iteration.
+-103 | Bread-Down in Krylov-subspace iteration
+"""
 """ Check if the PC runs on a non-ARM architechture
 If so, attempt to import PyPardiso (if its installed)
 """
@@ -37,6 +54,7 @@ If so, attempt to import PyPardiso (if its installed)
 if 'arm' not in platform.processor():
     try:
         from pypardiso import spsolve as pardiso_solve
+        from pypardiso.pardiso_wrapper import PyPardisoError
         _PARDISO_AVAILABLE = True
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
@@ -295,7 +313,7 @@ class SolverSuperLU(Solver):
     def solve(self, A, b, precon, reuse_factorization: bool = False):
         logger.info('Calling SuperLU Solver')
         if not reuse_factorization:
-            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.01, options=self.options)
+            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
 
         return x, 0
@@ -318,7 +336,7 @@ class SolverUMFPACK(Solver):
         self.b = b
         x = spsolve(A, b)
         return x, 0
-    
+
 class SolverPardiso(Solver):
     """ Implements the PARDISO solver through PyPardiso. """
     real_only: bool = True
@@ -334,11 +352,14 @@ class SolverPardiso(Solver):
         logger.info('Calling Pardiso Solver')
         self.A = A
         self.b = b
-        x = pardiso_solve(A, b)
+        try:
+            x = pardiso_solve(A, b)
+        except PyPardisoError as e:
+            print('Error Codes:')
+            print(_PARDISO_ERROR_CODES)
         return x, 0
     
 ## Direct EIGENMODE solvers
-
 class SolverLAPACK(Solver):
 
     def __init__(self):
@@ -385,6 +406,55 @@ class SolverARPACK(Solver):
         logger.info(f'Searching around 	β = {target_k0:.2f} rad/m')
         sigma = -(target_k0**2)
         eigen_values, eigen_modes = eigs(A, k=nmodes, M=B, sigma=sigma, which=which)
+        return eigen_values, eigen_modes
+
+class SolverSmartARPACK(Solver):
+    """ Implements the Scipy ARPACK iterative eigenmode solver with automatic search.
+    
+    The Solver searches in a geometric range around the target wave constant.
+    """
+    def __init__(self):
+        super().__init__()
+        self.symmetric_steps: int = 41
+        self.search_range: float = 2.0
+        self.energy_limit: float = 1e-4
+
+    def eig(self, 
+            A: np.ndarray, 
+            B: np.ndarray,
+            nmodes: int = 6,
+            target_k0: float = 0,
+            which: str = 'LM'):
+        logger.info(f'Searching around 	β = {target_k0:.2f} rad/m')
+        qs = np.geomspace(1, self.search_range, self.symmetric_steps)
+        tot_eigen_values = []
+        tot_eigen_modes = []
+        energies = []
+        for i, q in enumerate(qs):
+            # Above target k0
+            sigma = -((q*target_k0)**2)
+            eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
+            energy = np.mean(np.abs(eigen_modes.flatten())**2)
+            if energy > self.energy_limit:
+                tot_eigen_values.append(eigen_values[0])
+                tot_eigen_modes.append(eigen_modes.flatten())
+                energies.append(energy)
+            if i==0:
+                continue
+            # Below target k0
+            sigma = -((target_k0/q)**2)
+            eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
+            energy = np.mean(np.abs(eigen_modes.flatten())**2)
+            if energy > self.energy_limit:
+                tot_eigen_values.append(eigen_values[0])
+                tot_eigen_modes.append(eigen_modes.flatten())
+                energies.append(energy)
+        
+        #Sort solutions on mode energy
+        val, mode, energy = zip(*sorted(zip(tot_eigen_values,tot_eigen_modes,energies), key=lambda x: x[2], reverse=True))
+        eigen_values = np.array(val[:nmodes])
+        eigen_modes = np.array(mode[:nmodes]).T
+
         return eigen_values, eigen_modes
 
 ### ROUTINE
@@ -449,7 +519,7 @@ class SolveRoutine:
             Solver: Returns the solver object
 
         """
-        if direct:
+        if direct or A.shape[0] < 1000:
             return self.direct_eig_solver
         else:
             return self.iterative_eig_solver
@@ -635,5 +705,5 @@ DEFAULT_ROUTINE = AutomaticRoutine(sorter=ReverseCuthillMckee(),
                                    precon=ILUPrecon(), 
                                    iterative_solver=SolverGMRES(), 
                                    direct_solver=direct_solver,
-                                   iterative_eig_solver=SolverARPACK(),
+                                   iterative_eig_solver=SolverSmartARPACK(),
                                    direct_eig_solver=SolverLAPACK(),)

@@ -26,7 +26,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF')
+m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -69,10 +69,10 @@ pcb = layouter.gen_pcb(True, merge=True)
 m.define_geometry(pcb, polies, p1, p2)
 
 # We set our desired resolution (fraction of the wavelength)
-m.physics.set_resolution(0.25)
+m.physics.set_resolution(0.15)
 
 # And we define our frequency range
-m.physics.set_frequency_range(0.2e9, 8e9, 51)
+m.physics.set_frequency_range(0.2e9, 8e9, 41)
 
 # EMerge also has a convenient interface to improve surface meshing quality. 
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
@@ -88,34 +88,40 @@ m.generate_mesh()
 m.view()
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
-port1 = em.bc.ModalPort(p1, 1)
-port2 = em.bc.ModalPort(p2, 2)
+port1 = em.bc.ModalPort(p1, 1, TEM=True)
+port2 = em.bc.ModalPort(p2, 2, TEM=True)
 pec = em.bc.PEC(polies)
 
 m.physics.assign(port1, port2, pec)
 
-# Next we execute our Modal analysis. Make sure to set the TEM property to True so that
-# EMerge knows to handle the port mode as a TEM boundary. This also includes the automatic
-# determination of a voltage integration line used for computing the port impedance.
-m.physics.modal_analysis(port1, 1, True, TEM=True)
-m.physics.modal_analysis(port2, 1, True, TEM=True)
 
-# Finally we import the display class to view the resultant modes
-m.display.add_object(pcb, opacity=0.1)
-m.display.add_object(polies)
-m.display.add_portmode(port1, 21)
-m.display.add_portmode(port2, 21)
-m.display.show()
+## OPTIONAL
+# If we want to view the port mode we have to first know it. The modes are computed using a modal analysis.
+# Since the latest version of EMerge. Modal analysis is executed automatically. Here we compute them manually
+# as the mode is only calculated during the frequency domain solution.
+if False:
+    # Make sure to set the TEM property to True so that
+    # EMerge knows to handle the port mode as a TEM boundary. This also includes the automatic
+    # determination of a voltage integration line used for computing the port impedance.
+    m.physics.modal_analysis(port1, 1, TEM=True)
+    m.physics.modal_analysis(port2, 1, TEM=True)
+
+    # Finally we import the display class to view the resultant modes
+    m.display.add_object(pcb, opacity=0.1)
+    m.display.add_object(polies)
+    m.display.add_portmode(port1, 21)
+    m.display.add_portmode(port2, 21)
+    m.display.show()
 
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-sol = m.physics.frequency_domain(parallel=True, njobs=2)
+sol = m.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
 f, S11 = sol.ax('freq').S(1,1)
 f, S21 = sol.ax('freq').S(2,1)
 f, S12 = sol.ax('freq').S(1,2)
 f, S22 = sol.ax('freq').S(2,2)
 
-f = np.linspace(1e9, 10e9, 2001)
+f = np.linspace(0.2e9, 10e9, 2001)
 S11 = sol.model_S(1,1,f)
 S21 = sol.model_S(2,1,f)
 

@@ -46,5 +46,6 @@ from _emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSel
 from _emerge.mth.common_functions import norm, coax_rout, coax_rin
 from _emerge.physics.edm.sc import stratton_chu
 from _emerge.periodic import RectCell, HexCell
+from _emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
 logger.debug('Importing complete!')
