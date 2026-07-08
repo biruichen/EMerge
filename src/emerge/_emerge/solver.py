@@ -783,12 +783,12 @@ class SolverAASDS(Solver):
     def initialize(self):
         if self.initalized:
             return
-        logger.trace(self.pre + 'Initializing Apple Accelerate Solver')
+        logger.trace(self.pre + ' Initializing Apple Accelerate Solver')
         self.aasds = AASDSInterface()
         self.initalized = True
         
     def reset(self) -> None:
-        logger.trace(self.pre + 'Resetting Apple Accelerate solver state')
+        logger.trace(self.pre + ' Resetting Apple Accelerate solver state')
         self.fact_symb = False
         self._csym = False
     

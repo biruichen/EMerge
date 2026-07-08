@@ -325,6 +325,19 @@ class Simulation:
     ############################################################
     #                       PUBLIC FUNCTIONS                  #
     ############################################################
+
+    def ping(self, message: str, channel: str = 'EMerge') -> None:
+        """Send a message to a ntfy app channel (Default is EMerge).
+        """
+        import urllib.request
+        import urllib.parse
+    
+        url = f"https://ntfy.sh/{channel}"
+        data = f'{self.modelname}: {message}'.encode('utf-8')
+        req = urllib.request.Request(url, data=data, method='POST')
+        with urllib.request.urlopen(req) as response:
+            return response.read()
+        
     def clean(self) -> None:
         """ Cleans up the simulation object references by deleting all major components.
         """

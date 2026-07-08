@@ -1284,6 +1284,7 @@ class Microwave3D:
                     continue
                 
                 port_tets = self.mesh.get_face_tets(active_port.tags)
+                
                 fielddata.add_port_properties(active_port.port_number,
                                          mode_number=mode_nr_j,
                                          smat_index=smat_index_j,
