@@ -37,105 +37,105 @@ wga = 22.86*mm
 wgb = 10.16*mm
 L = 50*mm
 
-with em.Simulation3D('Test Mode', PVDisplay) as m:
+model = em.Simulation3D('Test Mode')
 
-    # first lets define a WR90 waveguide
-    wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
-    # Then define a capacitive iris cutout
-    cutout = em.geo.Box(2*mm, wga, wgb/2, position=(-L/2, -wga/2, -wgb/2))
+# first lets define a WR90 waveguide
+wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
+# Then define a capacitive iris cutout
+cutout = em.geo.Box(2*mm, wga, wgb/2, position=(-L/2, -wga/2, -wgb/2))
 
-    # remove the cutout from the box. Notice that we use a different name.
-    # Geometry properties are not persistent after boolean operations so we 
-    # need the information of previous boxes.
-    wg_box_new = em.geo.remove(wg_box, cutout)
+# remove the cutout from the box. Notice that we use a different name.
+# Geometry properties are not persistent after boolean operations so we 
+# need the information of previous boxes.
+wg_box_new = em.geo.remove(wg_box, cutout)
 
-    # define an air-box to radiat in.
-    airbox = em.geo.Box(L/2, L, L, position=(0,-L/2, -L/2))
+# define an air-box to radiat in.
+airbox = em.geo.Box(L/2, L, L, position=(0,-L/2, -L/2))
 
-    # Now define the geometry
-    m.define_geometry(wg_box_new, airbox)
+# Now define the geometry
+model.define_geometry(wg_box_new, airbox)
 
-    # Lets define a frequency range for our simulation. This is needed
-    # If we want to mesh our model.
-    m.physics.set_frequency_range(8e9, 10e9, 11)
+# Lets define a frequency range for our simulation. This is needed
+# If we want to mesh our model.
+model.physics.set_frequency_range(8e9, 10e9, 11)
 
-    # Now lets mesh our geometry
-    m.generate_mesh()
+# Now lets mesh our geometry
+model.generate_mesh()
 
-    ## We can now select faces and show them using the .view() interface
+## We can now select faces and show them using the .view() interface
 
-    # The box is defined in XYZ space. The sides left/right correspond to the
-    # X-axis, The sides top/down to the Z-axis and front/back to the Y-axis.
-    # We have to provide which original object we want to pick the left side from.
-    feed_port = wg_box_new.face('left', tool=wg_box)
+# The box is defined in XYZ space. The sides left/right correspond to the
+# X-axis, The sides top/down to the Z-axis and front/back to the Y-axis.
+# We have to provide which original object we want to pick the left side from.
+feed_port = wg_box_new.face('left', tool=wg_box)
 
-    # We can also select the outside and exclude a given face. Because our airbox
-    # is not modified, we don't have to work with tools.
-    radiation_boundary = airbox.outside('left')
-    
-    # Lets view our result
-    m.view(selections=[feed_port, radiation_boundary])
+# We can also select the outside and exclude a given face. Because our airbox
+# is not modified, we don't have to work with tools.
+radiation_boundary = airbox.outside('left')
 
-    # As you can see, the appropriate faces have been selected.
-    # You can also see that the bottom side of the resultant box
-    # which has been split in two can still be selected because of the selection system.
-    m.view(selections=[wg_box_new.face('bottom', tool=wg_box),])
-    
-    # You can also access faces of the original tool objects.
-    m.view(selections=[wg_box_new.face('left', tool=cutout),])
+# Lets view our result
+model.view(selections=[feed_port, radiation_boundary])
 
-    # Another way to select the radiation boundary on the right is by using the 
-    # selction interface.
-    
-    # The interface works by a language like method-chaining philosophy.
-    # The .select attribute is a Selector class. The property .face returns
-    # The same selector class but with the 'face selection mode' turned on.
-    # Now we can call the 'inlayer' method which selects all faces of which the
-    # Center of mass is inside the layer ranging from the provided starting
-    # coordinate up to all coordinates that extend to the vector (L,0,0).
-    #
-    #            |                    |
-    #            |       ____\        |
-    #   (origin) + ---- vector ------>|
-    #            |                    |
-    #            |                    |
-    #            < inside is selected >
-    #
+# As you can see, the appropriate faces have been selected.
+# You can also see that the bottom side of the resultant box
+# which has been split in two can still be selected because of the selection system.
+model.view(selections=[wg_box_new.face('bottom', tool=wg_box),])
 
-    radiation_boundary_2 = m.select.face.inlayer(1*mm, 0,0, (L,0,0))
-    m.view(selections=[radiation_boundary_2,])
+# You can also access faces of the original tool objects.
+model.view(selections=[wg_box_new.face('left', tool=cutout),])
 
-    # Now lets define our simulation futher and do some farfield-computation!
+# Another way to select the radiation boundary on the right is by using the 
+# selction interface.
 
-    port = em.bc.ModalPort(feed_port, 1)
-    rad = em.bc.AbsorbingBoundary(radiation_boundary)
+# The interface works by a language like method-chaining philosophy.
+# The .select attribute is a Selector class. The property .face returns
+# The same selector class but with the 'face selection mode' turned on.
+# Now we can call the 'inlayer' method which selects all faces of which the
+# Center of mass is inside the layer ranging from the provided starting
+# coordinate up to all coordinates that extend to the vector (L,0,0).
+#
+#            |                    |
+#            |       ____\        |
+#   (origin) + ---- vector ------>|
+#            |                    |
+#            |                    |
+#            < inside is selected >
+#
 
-    m.physics.assign(port, rad)
+radiation_boundary_2 = model.select.face.inlayer(1*mm, 0,0, (L,0,0))
+model.view(selections=[radiation_boundary_2,])
 
-    m.physics.modal_analysis(port, 1)
+# Now lets define our simulation futher and do some farfield-computation!
 
-    # Run the simulation
-    data = m.physics.frequency_domain()
+port = em.bc.ModalPort(feed_port, 1)
+rad = em.bc.AbsorbingBoundary(radiation_boundary)
+
+model.physics.assign(port, rad)
+
+model.physics.modal_analysis(port, 1)
+
+# Run the simulation
+data = model.physics.frequency_domain()
 
 
-    # First the S11 plot
-    f, S11 = data.ax('freq').S(1,1)
+# First the S11 plot
+f, S11 = data.ax('freq').S(1,1)
 
-    from emerge.plot import plot_ff_polar, plot_sp
+from emerge.plot import plot_ff_polar, plot_sp
 
-    plot_sp(f/1e9, S11, labels=['S11'])
+plot_sp(f/1e9, S11, labels=['S11'])
 
-    # First we need to create a boundary mesh
-    rad_surf = m.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
-    # Then we need to compute the E-field on the edges.  We will pick the first frequency.
-    Ein, Hin = data.item(0).interpolate(*rad_surf.exyz).EH
+# First we need to create a boundary mesh
+rad_surf = model.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
+# Then we need to compute the E-field on the edges.  We will pick the first frequency.
+Ein, Hin = data.item(0).interpolate(*rad_surf.exyz).EH
 
-    # Then we define some angles for our plot
-    theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
-    phi = 0*theta
-    k0 =  data.item(0).k0
-    E, H = em.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
+# Then we define some angles for our plot
+theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
+phi = 0*theta
+k0 =  data.item(0).k0
+E, H = em.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
 
-    
-    # Finally we create the plot
-    plot_ff_polar(theta, em.norm(E))
+
+# Finally we create the plot
+plot_ff_polar(theta, em.norm(E))

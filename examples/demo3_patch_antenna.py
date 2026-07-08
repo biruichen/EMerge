@@ -25,67 +25,69 @@ er = 3.38
 f1 = 1.54e9
 f2 = 1.6e9
 
-with em.Simulation3D('MySimulation', PVDisplay) as model:
-    dielectric = em.geo.Box(wsub, hsub, th, position=(-wsub/2, -hsub/2, -th))
+model = em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG')
 
-    air = em.geo.Box(wsub, hsub, Hair, position=(-wsub/2, -hsub/2, 0))
-    
-    rpatch = em.geo.XYPlate(Wpatch, Lpatch, position=(-Wpatch/2, -Lpatch/2, 0))
-    
-    cutout1 = em.geo.XYPlate(wstub, lstub, position=(-wline/2-wstub, -Lpatch/2, 0))
-    cutout2 = em.geo.XYPlate(wstub, lstub, position=(wline/2, -Lpatch/2, 0))
+dielectric = em.geo.Box(wsub, hsub, th, position=(-wsub/2, -hsub/2, -th))
 
-    line = em.geo.XYPlate(wline, lstub, position=(-wline/2, -Lpatch/2, 0))
+air = em.geo.Box(wsub, hsub, Hair, position=(-wsub/2, -hsub/2, 0))
 
-    port = em.geo.Plate(np.array([-wline/2, -Lpatch/2, -th]), np.array([wline, 0, 0]), np.array([0, 0, th]))
+rpatch = em.geo.XYPlate(Wpatch, Lpatch, position=(-Wpatch/2, -Lpatch/2, 0))
 
-    rpatch = em.geo.remove(rpatch, cutout1)
-    rpatch = em.geo.remove(rpatch, cutout2)
-    rpatch = em.geo.add(rpatch, line)
-    
-    rpatch.material = em.COPPER # Only for viewing
+cutout1 = em.geo.XYPlate(wstub, lstub, position=(-wline/2-wstub, -Lpatch/2, 0))
+cutout2 = em.geo.XYPlate(wstub, lstub, position=(wline/2, -Lpatch/2, 0))
 
-    dielectric.material = em.Material(er, tand=0.0, color=(0.0, 0.5, 0.0), opacity=0.6)
-    model.physics.resolution = 0.2
-    
-    model.physics.set_frequency_range(1.5e9, 1.7e9, 21)
+line = em.geo.XYPlate(wline, lstub, position=(-wline/2, -Lpatch/2, 0))
 
-    model.define_geometry([dielectric, air, rpatch, port])
+port = em.geo.Plate(np.array([-wline/2, -Lpatch/2, -th]), np.array([wline, 0, 0]), np.array([0, 0, th]))
 
-    model.mesher.set_boundary_size(rpatch, 5*mm, 1.1)
-    model.mesher.set_boundary_size(port, 0.5*mm, 1.1)
+rpatch = em.geo.remove(rpatch, cutout1)
+rpatch = em.geo.remove(rpatch, cutout2)
+rpatch = em.geo.add(rpatch, line)
 
-    model.generate_mesh()
-    
-    #model.view(selections=[port,], use_gmsh=False)
+rpatch.material = em.lib.COPPER # Only for viewing
 
-    port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, active=True, Z0=50)
+dielectric.material = em.Material(er, tand=0.0, color=(0.0, 0.5, 0.0), opacity=0.6)
+model.physics.resolution = 0.2
 
-    boundary_selection = air.outside('bottom')
-    
-    abc = em.bc.AbsorbingBoundary(boundary_selection)
-    
-    pec = em.bc.PEC(rpatch)
+model.physics.set_frequency_range(1.5e9, 1.7e9, 11)
 
-    model.physics.assign(port, pec, abc)
-    data = model.physics.frequency_domain()
+model.define_geometry([dielectric, air, rpatch, port])
 
-    xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))
+model.mesher.set_boundary_size(rpatch, 5*mm, 1.1)
+model.mesher.set_boundary_size(port, 0.5*mm, 1.1)
 
-    freqs, S11 = data.ax('freq').S(1,1)
-    
-    from emerge.plot import plot_sp, smith, plot_ff_polar, plot_ff
+model.generate_mesh()
 
-    plot_sp(freqs/1e9, S11)
-    smith(freqs, S11)
-    
-    topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
+#model.view(selections=[port,], use_gmsh=False)
 
-    Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
-    
-    theta = np.linspace(-np.pi, 1*np.pi, 201)
-    phi = 0*theta
-    E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
-    
-    plot_ff(theta, em.norm(E))
-    plot_ff_polar(theta, em.norm(E))
+port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, active=True, Z0=50)
+
+boundary_selection = air.outside('bottom')
+
+abc = em.bc.AbsorbingBoundary(boundary_selection)
+
+pec = em.bc.PEC(rpatch)
+
+model.physics.assign(port, pec, abc)
+
+data = model.physics.frequency_domain(parallel=True, njobs=4)
+
+xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))
+
+freqs, S11 = data.ax('freq').S(1,1)
+
+from emerge.plot import plot_sp, smith, plot_ff_polar, plot_ff
+
+plot_sp(freqs/1e9, S11)
+smith(freqs, S11)
+
+topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
+
+Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
+
+theta = np.linspace(-np.pi, 1*np.pi, 201)
+phi = 0*theta
+E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
+
+plot_ff(theta, em.norm(E))
+plot_ff_polar(theta, em.norm(E))

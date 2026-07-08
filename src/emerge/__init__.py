@@ -18,9 +18,12 @@ along with this program; if not, see
 """
 import os
 
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
+NTHREADS = "1"
+os.environ["OMP_NUM_THREADS"] = NTHREADS
+os.environ["MKL_NUM_THREADS"] = NTHREADS
+os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS
+os.environ["VECLIB_MAXIMUM_THREADS"] = NTHREADS
+os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS
 
 from loguru import logger
 from _emerge.logsettings import logger_format
