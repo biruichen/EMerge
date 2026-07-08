@@ -49,7 +49,7 @@ Modification history
 
 """
 
-# type: ignore
+# ty: ignore
 
 import numpy as np
 from typing import Literal
@@ -169,12 +169,12 @@ def calculate_residues(f: np.ndarray, s: np.ndarray, poles: np.ndarray, rcond=-1
     b = np.concatenate((b.real, b.imag))
     cA = np.linalg.cond(A)
     if cA > 1e13:
-        print('Warning!: Ill Conditioned Matrix. Consider scaling the problem down')
-        print('Cond(A)', cA)
+        logger.warning('Warning!: Ill Conditioned Matrix. Consider scaling the problem down')
+        logger.warning('Cond(A)', cA)
     x, residuals, rnk, s = np.linalg.lstsq(A, b, rcond=rcond)
 
     # Recover complex values
-    x = np.complex128(x)
+    x = x.astype(np.complex128)
     for i, ci in enumerate(cindex):
        if ci == 1:
            r1, r2 = x[i:i+2]
@@ -193,7 +193,7 @@ def vectfit_auto(f: np.ndarray,
                  inc_real: bool = False, 
                  loss_ratio: float = 1e-2, 
                  rcond: int = -1, 
-                 track_poles: bool = False) -> tuple[np.ndarray, np.ndarray, float, float]:
+                 track_poles: bool = False) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
     w = s.imag
     pole_locs = np.linspace(w[0], w[-1], n_poles+2)[1:-1]
     lr = loss_ratio
@@ -211,7 +211,7 @@ def vectfit_auto(f: np.ndarray,
 
     if track_poles:
         return poles, residues, d, h, np.array(poles_list)
-    return poles, residues, d, h
+    return poles, residues, d, h, np.array([])
 
 def vectfit_auto_rescale(f: np.ndarray, s: np.ndarray, 
                          n_poles: int = 10, 
@@ -219,10 +219,10 @@ def vectfit_auto_rescale(f: np.ndarray, s: np.ndarray,
                          inc_real: bool = False, 
                          loss_ratio: float = 1e-2, 
                          rcond: int = -1, 
-                         track_poles: bool = False) -> tuple[np.ndarray, np.ndarray, float, float]:
+                         track_poles: bool = False) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
     s_scale = abs(s[-1])
     f_scale = abs(f[-1])
-    poles_s, residues_s, d_s, h_s = vectfit_auto(f / f_scale, 
+    poles_s, residues_s, d_s, h_s, tracked_poles = vectfit_auto(f / f_scale, 
                                                  s / s_scale,
                                                   n_poles=n_poles,
                                                   n_iter = n_iter,
@@ -234,7 +234,7 @@ def vectfit_auto_rescale(f: np.ndarray, s: np.ndarray,
     residues = residues_s * f_scale * s_scale
     d = d_s * f_scale
     h = h_s * f_scale / s_scale
-    return poles, residues, d, h
+    return poles, residues, d, h, tracked_poles
 
 
 class SparamModel:
@@ -254,7 +254,7 @@ class SparamModel:
             fdense = np.linspace(min(self.f), max(self.f), max(201, 10*self.f.shape[0]))
             success = False
             for nps in range(1,maxpoles):
-                poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=nps, inc_real=inc_real)
+                poles, residues, d, h, _ = vectfit_auto_rescale(Sparam, s, n_poles=nps, inc_real=inc_real)
                 self.poles: np.ndarray = poles
                 self.residues: np.ndarray = residues
                 self.d = d
@@ -271,7 +271,7 @@ class SparamModel:
                 logger.warning('Could not model S-parameters. Try a denser grid')
 
         else:
-            poles, residues, d, h = vectfit_auto_rescale(Sparam, s, n_poles=n_poles, inc_real=inc_real)
+            poles, residues, d, h, _ = vectfit_auto_rescale(Sparam, s, n_poles=n_poles, inc_real=inc_real)
             self.poles: np.ndarray = poles
             self.residues: np.ndarray = residues
             self.d = d

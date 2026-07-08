@@ -310,16 +310,14 @@ class Simulation3D:
             gmsh.model.occ.synchronize()
             gmsh.fltk.run()
             return
-        try:
-            for geo in _GEOMANAGER.all_geometries():
-                self.display.add_object(geo)
-            if selections:
-                [self.display.add_object(sel, color='red', opacity=0.7) for sel in selections]
-            self.display.show()
-            return
-        except NotImplementedError as e:
-            logger.warning('The provided BaseDisplay class does not support object display. Please make' \
-            'sure that this method is properly implemented.')
+        for geo in _GEOMANAGER.all_geometries():
+            self.display.add_object(geo)
+        if selections:
+            [self.display.add_object(sel, color='red', opacity=0.7) for sel in selections]
+        self.display.show()
+
+        return None
+        
     
     def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] | None = None):
         """Set the given periodic cell object as the simulations peridicity.
