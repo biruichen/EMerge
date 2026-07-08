@@ -1,6 +1,6 @@
 import emerge as em
 import numpy as np
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 mm = 0.001
 mil = 0.0254*mm
@@ -78,7 +78,7 @@ with em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG') as m:
     d.add_portmode(port2, port2.modes[0].k0, 21)
     d.show()
 
-    data = m.physics.frequency_domain_par(8)
+    data = m.physics.frequency_domain()
     
     f, S11 = data.ax('freq').S(1,1)
     f, S21 = data.ax('freq').S(2,1)

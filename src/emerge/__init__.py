@@ -23,20 +23,21 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 from loguru import logger
-from .logsettings import logger_format
+from _emerge.logsettings import logger_format
 import sys
 
 logger.remove()
 logger.add(sys.stderr, format=logger_format)
 
 logger.debug('Importing modules')
-from .simmodel import Simulation3D
-from .material import Material, FR4, AIR, VACUUM, COPPER
-from . import bc
-from .solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
-from .cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
-from .coord import Line
-from . import geo
-from .selection import Selection, FaceSelection, DomainSelection, EdgeSelection
-from .mth.common_functions import norm
+
+from _emerge.simmodel import Simulation3D
+from _emerge.material import Material, FR4, AIR, VACUUM, COPPER
+from _emerge import bc
+from _emerge.solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
+from _emerge.cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
+from _emerge.coord import Line
+from _emerge import geo
+from _emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
+from _emerge.mth.common_functions import norm
 logger.debug('Importing complete!')

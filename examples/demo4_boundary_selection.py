@@ -1,5 +1,5 @@
 import emerge as em
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 import matplotlib.pyplot as plt
 import numpy as np
 

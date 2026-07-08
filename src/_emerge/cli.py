@@ -1,6 +1,6 @@
 import sys
 import argparse
-from emerge.projects.generate_project import generate_project
+from _emerge.projects.generate_project import generate_project
 
 def main():
     parser = argparse.ArgumentParser(description="Emerge Project Generator CLI")

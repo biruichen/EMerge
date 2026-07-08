@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-emerge = "emerge.cli:main"
+emerge = "_emerge.cli:main"
 
 [project.optional-dependencies]
 pypardiso = [

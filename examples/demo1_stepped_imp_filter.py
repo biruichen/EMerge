@@ -102,7 +102,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     m.physics.modal_analysis(port2, 1, True, TEM=True)
 
     # Finally we import the display class to view the resultant modes
-    from emerge.plot.pyvista import PVDisplay
+    from _emerge.plot.pyvista import PVDisplay
 
     d = PVDisplay(m.mesh)
     d.add_object(pcb)
@@ -119,7 +119,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     f, S12 = sol.ax('freq').S(1,2)
     f, S22 = sol.ax('freq').S(2,2)
     
-    from emerge.plot import smith
+    from _emerge.plot import smith
 
     smith(f,S11)
 

@@ -1,5 +1,5 @@
 import emerge as em
-from emerge.plot.pyvista import PVDisplay
+from emerge.pyvista import PVDisplay
 import numpy as np
 
 mm = 0.001
@@ -13,7 +13,7 @@ fl = 25*mm
 write = False
 
 
-with em.Simulation3D('Periodic', PVDisplay, loglevel='DEBUG', save_file=True) as m:
+with em.Simulation3D('Periodic', PVDisplay, loglevel='DEBUG') as m:
     m['box'] = em.geo.Box(a,b,H,(-a/2,-b/2,0))
     m['wg'] = em.geo.Box(wga,wgb,fl, (-wga/2, -wgb/2,-fl) )
     
