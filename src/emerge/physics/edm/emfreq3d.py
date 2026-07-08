@@ -22,16 +22,13 @@ from ...bc import BoundaryCondition, PEC, ModalPort, LumpedPort, PortBC
 from .emdata import EMSimData
 from ...elements.femdata import FEMBasis
 from .assembler import Assembler
-from ...solver import DEFAULT_ROUTINE, SolveRoutine
+from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
 from ...selection import FaceSelection
 from ...mth.sparam import sparam_field_power, sparam_mode_power
 from ...coord import Line
 from .port_functions import compute_avg_power_flux
 from typing import Callable
 import numpy as np
-
-from scipy.sparse import identity
-from scipy import sparse
 from loguru import logger
 
 class SimulationError(Exception):
@@ -40,10 +37,6 @@ class SimulationError(Exception):
 from .simjob import SimJob
 from concurrent.futures import ThreadPoolExecutor
 import time
-
-def run_job(job: SimJob):
-    job.solve()
-    return job  
 
 def _dimstring(data: list[float]):
     return '(' + ', '.join([f'{x*1000:.1f}mm' for x in data]) + ')'
@@ -95,12 +88,23 @@ class Electrodynamics3D:
         self.assembler: Assembler = Assembler()
         self.boundary_conditions: list[BoundaryCondition] = []
         self.basis: FEMBasis = None
-        self.data: EMSimData = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
         self.set_order(order)
 
         ## States
         self._bc_initialized: bool = False
+
+        self.freq_data: EMSimData = None
+        self.mode_data: dict[int, EMSimData] = dict()
+
+    def pack_data(self) -> dict:
+        datapack = dict(freq_data = self.freq_data,
+                        mode_data = self.mode_data)
+        return datapack
+    
+    def load_data(self, datapack: dict) -> None:
+        self.freq_data = datapack['freq_data']
+        self.mode_data = datapack['mode_data']
 
     def set_order(self, order: int) -> None:
         """Sets the order of the basis functions used. Currently only supports second order.
@@ -225,9 +229,6 @@ class Electrodynamics3D:
                        direct: bool = True,
                        TEM: bool = False,
                        target_kz=None,
-                       diagonal_scaling=False,
-                       static_condendsation=False,
-                       kz_range: bool=False,
                        freq: float = None) -> EMSimData:
         ''' Execute a modal analysis on a given ModalPort boundary condition.
         
@@ -253,6 +254,7 @@ class Electrodynamics3D:
         T0 = time.time()
         if self._bc_initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
         self._initialize_field()
         
         logger.debug('Retreiving material properties.')
@@ -273,6 +275,7 @@ class Electrodynamics3D:
         urmax = np.max(ur.flatten())
 
         mode_data = EMSimData(self.basis)
+        self.mode_data[port.port_number] = mode_data
 
         if freq is None:
             freq = self.frequencies[0]
@@ -294,44 +297,6 @@ class Electrodynamics3D:
                 target_kz = ermean*urmean*1.1*k0
             else:
                 target_kz = ermean*urmean*0.65*k0
-
-        if diagonal_scaling:
-            logger.debug('Applying diagonal scaling')
-            diagBtt = Bmatrix.diagonal()[:nlf.n_xy]
-            diagBzz = Bmatrix.diagonal()[nlf.n_xy:]
-
-            logger.debug('Diagnoal means:')
-            logger.debug(f'Btt = {np.sqrt(np.mean(diagBtt))}')
-            logger.debug(f'Bzz = {np.sqrt(np.mean(diagBzz))}')
-
-            s_Et = 1.0/(np.sqrt(np.mean(diagBtt)))
-            s_Ez = 1.0/(np.sqrt(np.mean(diagBzz)))
-
-            Sdiag = identity(nlf.n_field, dtype=np.complex128).tocsc()
-            Sdiag[:nlf.n_xy,:nlf.n_xy] *= s_Et
-            Sdiag[nlf.n_xy:, nlf.n_xy:] *= s_Ez
-
-            Ascaled = Sdiag @ Amatrix @ Sdiag
-            Bscaled = Sdiag @ Bmatrix @ Sdiag
-
-            diagBtt = Bscaled.diagonal()[:nlf.n_xy]
-            diagBzz = Bscaled.diagonal()[nlf.n_xy:]
-            
-            Amatrix = Ascaled
-            Bmatrix = Bscaled
-        
-        if static_condendsation:
-            logger.debug('Implementing static condensation')
-            N = nlf.n_xy
-            Dtt = Bmatrix[:N,:N]
-            Dtz = Bmatrix[:N,N:]
-            Dzt = Bmatrix[N:,:N]
-            Dzz = Bmatrix[N:,N:]
-
-            Dzzinv = sparse.linalg.inv(Dzz.tocsc())
-            Amatrix = -Amatrix[:N,:N]
-            Bmatrix =  (Dtz @ Dzzinv) @ Dzt - Dtt
-            solve_ids = solve_ids[solve_ids<N]
 
         logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
@@ -490,7 +455,10 @@ class Electrodynamics3D:
 
         return group1, group2
     
-    def frequency_domain_par(self, njobs: int = 2) -> EMSimData:
+    def frequency_domain_par(self, 
+                             njobs: int = 2, 
+                             harddisc_threshold: int = None,
+                             harddisc_path: str = 'EMergeSparse') -> EMSimData:
         ''' Executes the frequency domain study.'''
         T0 = time.time()
         mesh = self.mesh
@@ -513,7 +481,7 @@ class Electrodynamics3D:
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
         
-        self.data = EMSimData(self.basis)
+        self.freq_data = EMSimData(self.basis)
         
         #### Port settings
 
@@ -542,23 +510,26 @@ class Electrodynamics3D:
         logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
 
         jobs = []
+
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
             logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
-            job = SimJob(self.basis, self.boundary_conditions, freq, True)
             
             # Assembling matrix problem
-            K, b, solve_ids, port_vectors = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
-
-            job = SimJob(K, b, freq, True)
-            job.port_vectors = port_vectors
-            job.solve_ids = solve_ids
-            job.erttri = ertri.copy()
-            job.urtri = urtri.copy()
+            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+            job.store_limit = harddisc_threshold
+            job.relative_path = harddisc_path
             jobs.append(job)
         
         
         logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
+        
+        def run_job(job: SimJob):
+            routine = ParallelRoutine()
+            for A, b, ids, reuse in job.iter_Ab():
+                solution = routine.solve(A, b, ids, reuse)
+                job.submit_solution(solution)
+            return job  
 
         with ThreadPoolExecutor(max_workers=njobs) as executor:
            results: list[SimJob] = list(executor.map(run_job, jobs))
@@ -570,7 +541,7 @@ class Electrodynamics3D:
         for freq, job in zip(self.frequencies, results):
 
             k0 = 2*np.pi*freq/299792458
-            data = self.data.new(freq=freq,
+            data = self.freq_data.new(freq=freq,
                                  k0=k0)
             
             data.init_sp(port_numbers)
@@ -628,7 +599,8 @@ class Electrodynamics3D:
         logger.info('Simulation Complete!')
         T2 = time.time()    
         logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
-        return self.data
+
+        return self.freq_data
     
     def frequency_domain(self) -> EMSimData:
         ''' Executes the frequency domain study.'''
@@ -653,7 +625,7 @@ class Electrodynamics3D:
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
         
-        self.data = EMSimData(self.basis)
+        self.freq_data = EMSimData(self.basis)
         
         #### Port settings
 
@@ -683,18 +655,22 @@ class Electrodynamics3D:
 
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
+            logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
+            # Assembling matrix problem
+            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
             
-            
-            k0 = 2*np.pi*freq/299792458
-            data = self.data.new(freq=freq,
-                                 k0=k0)
-            
-            data.init_sp(port_numbers)
+            logger.debug(f'Routine: {self.solveroutine}')
 
+            for A, b, ids, reuse in job.iter_Ab():
+                solution = self.solveroutine.solve(A, b, ids, reuse)
+                job.submit_solution(solution)
+
+            k0 = 2*np.pi*freq/299792458
+
+            data = self.freq_data.new(freq=freq, k0=k0)
+            data.init_sp(port_numbers)
             data.er = np.squeeze(er[0,0,:])
             data.ur = np.squeeze(ur[0,0,:])
-
-            logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
 
             # Recording port information
             for i, port in enumerate(all_ports):
@@ -705,23 +681,10 @@ class Electrodynamics3D:
                                          Z0 = port.Z0,
                                          Pout= port.power)
             
-            # Assembling matrix problem
-            K, b, solve_ids, port_vectors = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
-        
-            logger.debug(f'Routine: {self.solveroutine}')
-            
-            reuse_factorization = False
-
             for active_port in all_ports:
-                # Set port as active and add the port mode to the forcing vector
+                
                 active_port.active = True
-                b_active = b + port_vectors[active_port.port_number]
-
-                # Solve the Ax=b problem
-                solution = self.solveroutine.solve(K,b_active,solve_ids, reuse=reuse_factorization)
-
-                # From now reuse the factorization
-                reuse_factorization = True
+                solution = job._fields[active_port.port_number]
 
                 data._fields[active_port.port_number] = solution # TODO: THIS IS VERY FRAIL
 
@@ -758,7 +721,7 @@ class Electrodynamics3D:
         logger.info('Simulation Complete!')
         T2 = time.time()    
         logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
-        return self.data
+        return self.freq_data
     
     def _compute_s_data(self, bc: PortBC, 
                        fieldfunction: Callable, 

@@ -147,6 +147,16 @@ class Mesher:
         
         gmsh.model.occ.synchronize()
 
+    def set_periodic(self, 
+                     face1: FaceSelection,
+                     face2: FaceSelection,
+                     lattice: tuple[float,float,float]):
+        translation = [1,0,0,lattice[0],
+                       0,1,0,lattice[1],
+                       0,0,1,lattice[2],
+                       0,0,0,1]
+        gmsh.model.mesh.set_periodic(2, face2.tags, face1.tags, translation)
+        
     def set_size_in_domain(self, tags: list[int], max_size: float) -> None:
         """Define the size of the mesh inside a domain
 

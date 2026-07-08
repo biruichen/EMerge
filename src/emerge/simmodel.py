@@ -18,18 +18,21 @@
 from __future__ import annotations
 from .mesher import Mesher, unpack_lists
 from .geometry import GeoObject
-import gmsh
 from .physics.edm.emfreq3d import Electrodynamics3D
 from .mesh3d import Mesh3D
+from .selection import Selector, FaceSelection, Selection
+from .logsettings import logger_format
+from .geo.modeler import Modeler
+from .plot.display import BaseDisplay
+
 from typing import Literal, Type
 from loguru import logger
 import numpy as np
-from .selection import Selector, FaceSelection, Selection
 import sys
-from .logsettings import logger_format
-from .geo.modeler import Modeler
-from .plotting.display import BaseDisplay
-
+import gmsh
+import inspect
+import joblib
+from pathlib import Path
 
 class SimulationError(Exception):
     pass
@@ -39,7 +42,9 @@ class Simulation3D:
     def __init__(self, 
                  modelname: str, 
                  display: Type[BaseDisplay] = None,
-                 loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO'):
+                 loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO',
+                 load_file: bool = False,
+                 save_file: bool = False):
         """Generate a Simulation3D class object.
 
         As a minimum a file name should be provided. Additionally you may provide it with any
@@ -51,7 +56,11 @@ class Simulation3D:
             loglevel ("DEBUG","INFO","WARNING","ERROR, optional): _description_. Defaults to 'INFO'.
         
         """
+        caller_file = Path(inspect.stack()[1].filename).resolve()
+        base_path = caller_file.parent
+
         self.modelname = modelname
+        self.modelpath = base_path / (modelname.lower()+'_data')
         self.mesher: Mesher = Mesher()
         self.physics: Electrodynamics3D = Electrodynamics3D(self.mesher)
         self.mesh: Mesh3D = Mesh3D(self.mesher)
@@ -66,7 +75,56 @@ class Simulation3D:
 
         if display is not None:
             self.display = display(self.mesh)
-        
+
+        self.save_file: bool = save_file
+        self.load_file: bool = load_file
+
+        self.obj: dict[str, GeoObject] = dict()
+
+    def __setitem__(self, name: str, value: GeoObject) -> None:
+        self.obj[name] = value
+
+    def __getitem__(self, name: str) -> GeoObject:
+        return self.obj[name]
+    
+    def save(self) -> None:
+        """Saves the current model in the provided project directory."""
+        # Ensure directory exists
+        if not self.modelpath.exists():
+            self.modelpath.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created directory: {self.modelpath}")
+
+        # Save mesh
+        mesh_path = self.modelpath / 'mesh.msh'
+        gmsh.write(str(mesh_path))
+        logger.info(f"Saved mesh to: {mesh_path}")
+
+        # Pack and save data
+        physics = self.physics.pack_data()
+        objects = self.obj
+        dataset = dict(physics=physics, objects=objects)
+        data_path = self.modelpath / 'simdata.emerge'
+        joblib.dump(dataset, str(data_path))
+        logger.info(f"Saved simulation data to: {data_path}")
+
+    def load(self) -> None:
+        """Loads the model from the project directory."""
+        mesh_path = self.modelpath / 'mesh.msh'
+        data_path = self.modelpath / 'simdata.emerge'
+
+        if not mesh_path.exists() or not data_path.exists():
+            raise FileNotFoundError("Missing required mesh or data file.")
+
+        # Load mesh
+        gmsh.open(str(mesh_path))
+        logger.info(f"Loaded mesh from: {mesh_path}")
+        self.mesh.update()
+
+        # Load data
+        datapack = joblib.load(str(data_path))
+        self.physics.load_data(datapack['physics'])
+        self.obj = datapack['objects']
+        logger.info(f"Loaded simulation data from: {data_path}")
 
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:
         handler = {"sink": sys.stdout, "level": loglevel, "format": logger_format}
@@ -104,13 +162,15 @@ class Simulation3D:
         system behaves if only a part of all geometries are included.
 
         """
+        if not geometries:
+            geometries = list(self.obj.values())
         self._geometries = unpack_lists(geometries)
         self.mesher.submit_objects(self._geometries)
         self.physics._initialize_bcs()
         self._defined_geometries = True
 
     
-    def generate_mesh(self, name: str = "meshname.msh"):
+    def generate_mesh(self):
         """Generate the mesh. 
         This can only be done after define_geometry(...) is called and if frequencies are defined.
 
@@ -124,14 +184,10 @@ class Simulation3D:
             raise SimulationError('No geometries are defined. Make sure to call .define_geometries(...) first.')
         if self.physics.frequencies is None:
             raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
-        if '.msh' not in name:
-            name = name + '.msh'
-            logger.warning(f'No .msh extension added, renamed to {name}')
 
         gmsh.model.occ.synchronize()
         self.mesher.set_mesh_size(self.physics.get_discretizer(), self.physics.resolution)
         gmsh.model.mesh.generate(3)
-        gmsh.write(name)
         self.mesh.update()
         gmsh.model.occ.synchronize()
         self.physics.mesh = self.mesh
@@ -204,12 +260,18 @@ class Simulation3D:
         >>> E, H = em.physics.edm.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).glob('k0')[0])
         '''
         pass
+
     def __enter__(self):
         gmsh.initialize()
-        gmsh.model.add(self.modelname)
+        if not self.load_file:
+            gmsh.model.add(self.modelname)
+        else:
+            self.load()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if self.save_file:
+            self.save()
         gmsh.finalize()
 
 

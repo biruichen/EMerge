@@ -267,8 +267,8 @@ class Mesh3D:
         # Edges are effectively Randomly sorted
         # It contains index pairs of vertices edge 1 = (ev1, ev2) etc.
         # Same for traingles
-        self.edges = np.array(list(edgeset)).T
-        self.tris = np.array(list(triset)).T
+        self.edges = np.array(sorted(list(edgeset))).T
+        self.tris = np.array(sorted(list(triset))).T
         
         self.tri_centers = (self.nodes[:,self.tris[0,:]] + self.nodes[:,self.tris[1,:]] + self.nodes[:,self.tris[2,:]]) / 3
         def _hash(ints):
@@ -362,8 +362,6 @@ class Mesh3D:
         xs = self.centers[0,:]
         ys = self.centers[1,:]
         zs = self.centers[2,:]
-
-        dimtags = []
         
         for volume in volumes:
         

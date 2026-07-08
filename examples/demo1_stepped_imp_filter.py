@@ -7,7 +7,6 @@ In this demo we will look at how we can construct a stepped impedance filter usi
 PCB Layouter interface in EMerge.
 
 """
-em.solver.superlu_info()
 # First we will define some constants/variables/parameters for our simulation.
 mm = 0.001
 mil = 0.0254*mm
@@ -74,18 +73,18 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     m.physics.set_resolution(0.05)
     
     # And we define our frequency range
-    m.physics.set_frequency_range(0.2e9, 2e9, 21)
+    m.physics.set_frequency_range(1e9, 2e9, 11)
 
     # EMerge also has a convenient interface to improve surface meshing quality. 
     # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
     # This is adviced for small stripline structures.
     # The growth_rate setting allows us to change how fast the mesh size will recover to the original size.
-    m.mesher.set_boundary_size(polies, 0.5*mm, growth_rate=1.2)
-    m.mesher.set_boundary_size(p1, 0.5*mm)
-    m.mesher.set_boundary_size(p2, 0.5*mm)
+    m.mesher.set_boundary_size(polies, 1*mm, growth_rate=1.2)
+    m.mesher.set_boundary_size(p1, 1*mm)
+    m.mesher.set_boundary_size(p2, 1*mm)
     
     # Finally we generate our mesh and view it
-    m.generate_mesh('Demo1_Mesh.msh')
+    m.generate_mesh()
 
     m.view()
 
@@ -103,7 +102,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     m.physics.modal_analysis(port2, 1, True, TEM=True)
 
     # Finally we import the display class to view the resultant modes
-    from emerge.plotting.pyvista import PVDisplay
+    from emerge.plot.pyvista import PVDisplay
 
     d = PVDisplay(m.mesh)
     d.add_object(pcb)
@@ -113,7 +112,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     d.show()
 
     # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
-    sol = m.physics.frequency_domain_par()
+    sol = m.physics.frequency_domain()
     
     f, S11 = sol.ax('freq').S(1,1)
     f, S21 = sol.ax('freq').S(2,1)

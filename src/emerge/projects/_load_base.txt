@@ -1,0 +1,18 @@
+import emerge as em
+from emerge.plotting.pyvista import PVDisplay
+import numpy as np
+
+# Constants
+cm = 0.01
+mm = 0.001
+mil = 0.0254
+um = 0.000001
+PI = np.pi
+
+with em.Simulation3D("myfile", PVDisplay, load_file=True) as m:
+    
+    fdata = m.physics.freq_data
+
+    m.display.add_object(m['box'])
+    m.display.add_surf(*fdata.item(1).cutplane(1*mm, z=5*mm).surf('Ez','real'))
+    m.display.show()

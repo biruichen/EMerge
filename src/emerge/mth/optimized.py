@@ -368,7 +368,7 @@ def tet_coefficients_bcd(xs, ys, zs):
 
     return bbs, ccs, dds, V
 
-@njit(f8[:,:](f8[:], f8[:], f8[:]), cache=True)
+@njit(f8[:,:](f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def orthonormal_basis(xs, ys, zs):
     """
     Returns an orthonormal basis for the tetrahedron defined by the points

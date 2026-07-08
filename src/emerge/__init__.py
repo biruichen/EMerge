@@ -16,17 +16,11 @@ along with this program; if not, see
 <https://www.gnu.org/licenses/>.
 
 """
-print("""        ___
-      _/   |
-   __/    _|     _____ __  __
- _/_|   _/  \   |  ___|  \/  |
-/ / |  /     \  | |_  | \  / | ___ _ __ __ _  ___
-| | | ||      | |  _| | |\/| |/ _ \ `__/ _` |/ _ \\
-| | |  \\      | | |___| |  | |  __/ | | (_| |  __/
-\_|  \ | |  _/  |_____|_|  |_|\___|_|  \__, |\___|
-     | | |_/   _______________________  __/ | ____
-     | |                               |___/
-      \|""")
+import os
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 from loguru import logger
 from .logsettings import logger_format
@@ -35,14 +29,14 @@ import sys
 logger.remove()
 logger.add(sys.stderr, format=logger_format)
 
+logger.debug('Importing modules')
 from .simmodel import Simulation3D
 from .material import Material, FR4, AIR, VACUUM, COPPER
-from . import physics
 from . import bc
 from .solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
 from .cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
 from .coord import Line
-from . import plot
 from . import geo
 from .selection import Selection, FaceSelection, DomainSelection, EdgeSelection
 from .mth.common_functions import norm
+logger.debug('Importing complete!')

@@ -163,25 +163,3 @@ class SimData(Generic[T]):
             ys = ys[idx]
 
         return xs, ys
-
-
-
-# class DataAxis(Generic[T]):
-#     """ I think this should be depricated."""
-#     def __init__(self, data: list[T], axis_name: str):
-#         self._data = sorted(data, key=lambda d: getattr(d, axis_name))
-#         self._axis_name = axis_name
-
-#     def __getattr__(self, name: str):
-#         try:
-#             values = [getattr(d, name) for d in self._data]
-#             # Convert to numpy array if all are scalars or arrays
-#             if all(isinstance(v, (int, float, complex, np.ndarray)) for v in values):
-#                 return np.array(values)
-#             return values
-#         except AttributeError:
-#             raise AttributeError(f"'DataAxis' object has no attribute '{name}'")
-
-#     def __repr__(self):
-#         return f"<DataAxis sorted by '{self._axis_name}' with {len(self._data)} entries>"
-    
