@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from __future__ import annotations
 from ...mesh3d import Mesh3D
 from ...simstate import SimState
@@ -295,7 +295,20 @@ class PVDisplay(EMergeDisplay):
                     pickable=False,
                     line_width=3.0,
                 )
-            
+        if port.iintline is not None:
+            for line in port.iintline:
+                xs, ys, zs = line.cpoint
+                for x1, x2, y1, y2, z1, z2 in zip(xs[:-1], xs[1:], ys[:-1], ys[1:], zs[:-1], zs[1:]):
+                    p_line = pv.Line(
+                        pointa=(x1, y1, z1),
+                        pointb=(x2, y2, z2),
+                    )
+                    self._plot.add_mesh(
+                        p_line,
+                        color='blue',
+                        pickable=False,
+                        line_width=3.0,
+                    )
         if k0 is None:
             if isinstance(port, ModalPort):
                 k0 = port.get_modes(0)[0].k0

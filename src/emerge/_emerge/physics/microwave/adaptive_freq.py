@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 """
 adaptive_frequency.py
 ---------------------

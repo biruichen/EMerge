@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from __future__ import annotations
 
 from ..cs import CoordinateSystem, GCS, Anchor, argparse_xyz, _parse_vector

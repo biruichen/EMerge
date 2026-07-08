@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 import numpy as np
 from numba import njit, f8, c16, i8, types, prange
 from ....mth.optimized import cross, matinv_r

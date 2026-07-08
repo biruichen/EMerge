@@ -18,7 +18,7 @@
 # Last Cleanup: 2026-03-04
 from ...mesher import Mesher
 from emsutil import Material
-from ...mesh3d import Mesh3D
+from ...mesh3d import Mesh3D, SurfaceMesh
 from ...coord import Line
 from ...geometry import GeoSurface, GeoVolume
 from ...elements.femdata import FEMBasis
@@ -156,7 +156,180 @@ def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
 
     return path
 
+def construct_pec_contour(mesh: 'Mesh3D',
+                          surface_tri_ids: np.ndarray,
+                          pec_vertices: set[int],
+                          normal_vector: np.ndarray,
+                          alpha: float = 0.2) -> np.ndarray:
+    """
+    Construct a closed contour loop around a PEC island.
 
+    Parameters
+    ----------
+    mesh : Mesh3D
+        The global 3D mesh. mesh.nodes is (3, N), mesh.tris is (3, M).
+    surface_tri_ids : ndarray of int
+        Indices into mesh.tris that define the 2D boundary surface.
+    pec_vertices : set of int
+        Vertex indices in the global mesh numbering.
+    normal_vector : ndarray, shape (3,)
+        Outward normal of the boundary surface.
+    alpha : float
+        Contour position within each boundary triangle.
+        0.0 = on the PEC vertices/edges (on the conductor).
+        1.0 = on the far edge of the triangle (maximum distance from PEC).
+        Values in between interpolate linearly.
+
+    Returns
+    -------
+    contour : ndarray, shape (3, K+1)
+        Ordered 3D coordinates forming a closed CCW contour loop.
+        Last point equals first point.
+    """
+    normal_vector = np.asarray(normal_vector, dtype=float)
+    normal_vector = normal_vector / np.linalg.norm(normal_vector)
+
+    tris = mesh.tris
+    nodes = mesh.nodes
+
+    # Step 1: Patch triangles (at least one PEC vertex)
+    patch_tri_indices = []
+    for j in surface_tri_ids:
+        v0, v1, v2 = int(tris[0, j]), int(tris[1, j]), int(tris[2, j])
+        if v0 in pec_vertices or v1 in pec_vertices or v2 in pec_vertices:
+            patch_tri_indices.append(j)
+
+    if not patch_tri_indices:
+        raise ValueError(f"No patch triangles found. {len(pec_vertices)} PEC vertices, "
+                         f"{len(surface_tri_ids)} surface triangles.")
+
+    patch_tri_set = set(patch_tri_indices)
+
+    # Step 2: Patch edge adjacency
+    edge_to_tris = defaultdict(list)
+    for j in patch_tri_indices:
+        v0, v1, v2 = int(tris[0, j]), int(tris[1, j]), int(tris[2, j])
+        verts = (v0, v1, v2)
+        for k in range(3):
+            va, vb = verts[k], verts[(k + 1) % 3]
+            edge_key = (min(va, vb), max(va, vb))
+            edge_to_tris[edge_key].append(j)
+
+    # Step 3: Boundary edges
+    boundary_edges = []
+    edge_to_patch_tri = {}
+    for edge_key, patch_tris_list in edge_to_tris.items():
+        if len(patch_tris_list) == 1:
+            boundary_edges.append(edge_key)
+            edge_to_patch_tri[edge_key] = patch_tris_list[0]
+
+    if not boundary_edges:
+        raise ValueError(f"No boundary edges. Patch has {len(patch_tri_indices)} triangles.")
+
+    # Step 4: Stitch into loop
+    vert_to_edges = defaultdict(list)
+    for edge_key in boundary_edges:
+        vert_to_edges[edge_key[0]].append(edge_key)
+        vert_to_edges[edge_key[1]].append(edge_key)
+
+    used = set()
+    start_edge = boundary_edges[0]
+    used.add(start_edge)
+    ordered_edges = [start_edge]
+
+    current_vertex = start_edge[1]
+    start_vertex = start_edge[0]
+
+    while current_vertex != start_vertex:
+        neighbors = vert_to_edges[current_vertex]
+        next_edge = None
+        for e in neighbors:
+            if e not in used:
+                next_edge = e
+                break
+        if next_edge is None:
+            break
+        used.add(next_edge)
+        ordered_edges.append(next_edge)
+        if next_edge[0] == current_vertex:
+            current_vertex = next_edge[1]
+        else:
+            current_vertex = next_edge[0]
+
+    if len(ordered_edges) < 3:
+        raise ValueError(f"Contour has only {len(ordered_edges)} edges.")
+
+    # Step 5: Build contour points with alpha interpolation.
+    #
+    # For each boundary triangle, classify its vertices as PEC or non-PEC.
+    # Three cases:
+    #   1 PEC vertex, 2 non-PEC:  PEC side is a point, far side is the opposite edge.
+    #   2 PEC vertices, 1 non-PEC: PEC side is an edge, far side is the opposite vertex.
+    #   3 PEC vertices:            fully PEC triangle — use centroid as fallback.
+    #
+    # alpha=0 → on the PEC side, alpha=1 → on the far side.
+    # The contour point is placed at the midpoint of the interpolated "slice"
+    # across the triangle at parameter alpha.
+
+    contour_points = np.empty((3, len(ordered_edges)))
+    for i, edge_key in enumerate(ordered_edges):
+        tri_idx = edge_to_patch_tri[edge_key]
+        tri_verts = [int(tris[0, tri_idx]), int(tris[1, tri_idx]), int(tris[2, tri_idx])]
+
+        pec_verts = [v for v in tri_verts if v in pec_vertices]
+        non_pec_verts = [v for v in tri_verts if v not in pec_vertices]
+        n_pec = len(pec_verts)
+
+        if n_pec == 1:
+            # PEC side is a single vertex, far side is the edge between the two non-PEC
+            P = nodes[:, pec_verts[0]]
+            A = nodes[:, non_pec_verts[0]]
+            B = nodes[:, non_pec_verts[1]]
+            # At alpha=0: point P
+            # At alpha=1: midpoint of edge AB
+            # At alpha: lerp between P and midpoint(A,B),
+            # but also the "slice" widens from 0 to |AB|.
+            # Point on edge PA at alpha: P + alpha*(A - P)
+            # Point on edge PB at alpha: P + alpha*(B - P)
+            # Contour point = midpoint of those two
+            pa = P + alpha * (A - P)
+            pb = P + alpha * (B - P)
+            contour_points[:, i] = 0.5 * (pa + pb)
+
+        elif n_pec == 2:
+            # PEC side is an edge between the two PEC vertices,
+            # far side is the single non-PEC vertex
+            A = nodes[:, pec_verts[0]]
+            B = nodes[:, pec_verts[1]]
+            Q = nodes[:, non_pec_verts[0]]
+            # At alpha=0: midpoint of edge AB
+            # At alpha=1: point Q
+            # At alpha: lerp from midpoint(AB) toward Q
+            pec_mid = 0.5 * (A + B)
+            contour_points[:, i] = pec_mid + alpha * (Q - pec_mid)
+
+        else:
+            # All three vertices are PEC — fully PEC triangle, use centroid
+            contour_points[:, i] = (nodes[:, tri_verts[0]] +
+                                    nodes[:, tri_verts[1]] +
+                                    nodes[:, tri_verts[2]]) / 3.0
+
+    # Step 6: Winding check
+    center = contour_points.mean(axis=1, keepdims=True)
+    rel = contour_points - center
+    n_pts = contour_points.shape[1]
+    signed_area = 0.0
+    for i in range(n_pts):
+        j = (i + 1) % n_pts
+        cross = np.cross(rel[:, i], rel[:, j])
+        signed_area += np.dot(cross, normal_vector)
+
+    if signed_area < 0:
+        contour_points = contour_points[:, ::-1]
+
+    # Close the loop
+    contour_points = np.hstack([contour_points, contour_points[:, 0:1]])
+    return contour_points
 ############################################################
 #                      MICROWAVE CLASS                     #
 ############################################################
@@ -535,7 +708,7 @@ class Microwave3D:
                 TEM = True
             else:
                 TEM = False
-            self.modal_analysis(bc, 1, direct=False, freq=freq, TEM=TEM)
+            self.modal_analysis(bc, bc._desired_number_of_modes, direct=False, freq=freq, TEM=TEM)
 
             bc._check_mode_betas()
     
@@ -670,6 +843,8 @@ class Microwave3D:
         urmean = np.mean(ur[ur>0].flatten()[itri_port])
         ermax = np.max(er[:,:,itri_port].flatten())
         urmax = np.max(ur[:,:,itri_port].flatten())
+        ermin = np.min(er[:,:,itri_port].flatten())
+        urmin = np.min(ur[:,:,itri_port].flatten())
 
         k0 = 2*np.pi*freq/299792458
         
@@ -687,14 +862,17 @@ class Microwave3D:
             target_kz = k0*target_neff
         
         if target_kz is None:
-            if TEM or port.forced_modetype=='TEM':
-                target_kz = ermean*urmean*1.1*k0
+            neff_estimate = port.neff_estimate(k0)
+            if neff_estimate is not None:
+                target_kz = neff_estimate*k0
+            elif TEM or port.forced_modetype=='TEM':
+                target_kz = ((ermax*urmax + ermin*ermin) / 2)**0.5 * 1.01 * k0
             else:
-                
-                target_kz = ermean*urmean*0.7*k0
+                target_kz = ((ermax*urmax + ermin*urmin) / 2)**0.5 * 0.7 * k0
                 
         logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
+        target_kz = target_kz.real
         eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz, sign=-1)
         
         logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
@@ -742,30 +920,65 @@ class Microwave3D:
             if port.forced_modetype == 'TEM' or TEM:
                 mode.modetype = 'TEM'
                 
-                if len(port.vintline)>0:
-                    line = port.vintline[0]
-                else:  
-                    G1, G2 = self._find_tem_conductors(port, sigtri=cond)
-                    if G1 is None or G2 is None:
-                        logger.warning('Skipping characteristic impedance calculation.')
-                        continue
-                    
-                    nodes1 = self.mesh.nodes[:,G1]
-                    nodes2 = self.mesh.nodes[:,G2]
-                    path = shortest_path(nodes1, nodes2, 2)
-                    line = Line.from_points(path[:,0], path[:,1], 21)
-                    port.vintline.append(line)
-                
-                cs = np.array(line.cmid)
+                imp_type = port.impedance_definition
 
-                logger.debug(f'Integrating portmode from {cs[:,0]} to {cs[:,-1]}')
-                voltage = line.line_integral(portfE)
+                intline1 = None
+                intline2 = None
+                V = 0
+                I = 0
+
+                G1 = None
+                G2 = None
+
+                if 'V' in imp_type:
+                    if len(port.vintline)>0:
+                        line = port.vintline[0]
+                    else:  
+                        G1, G2 = self._find_tem_conductors(port, sigtri=cond)
+                        if G1 is None or G2 is None:
+                            logger.warning('Skipping characteristic impedance calculation.')
+                            continue
+                        
+                        nodes1 = self.mesh.nodes[:,G1]
+                        nodes2 = self.mesh.nodes[:,G2]
+                        path = shortest_path(nodes1, nodes2, 2)
+                        line = Line.from_points(path[:,0], path[:,1], 101)
+                        port.vintline.append(line)
+
+                    cs = np.array(line.cmid)
+
+                    logger.debug(f'Integrating portmode from {cs[:,0]} to {cs[:,-1]}')
+                    V = line.line_integral(portfE)
+                
+                if 'I' in imp_type:
+                    if len(port.iintline) > 0:
+                        intline = port.iintline[0]
+                    else:
+                        if G1 is None or G2 is None:
+                            G1, G2 = self._find_tem_conductors(port, sigtri=cond)
+                        if G1 is None or G2 is None:
+                            logger.warning('Skipping characteristic impedance calculation.')
+                            continue
+                        path = construct_pec_contour(self.mesh, itri_port, set(G1), nlf.cs.zax.np)
+                        intline = Line(path[0,:], path[1,:], path[2,:]).subsample(20).smooth(5)
+                        port.iintline.append(intline)
+                    I = intline.line_integral(portfH)
+                
                 # Align mode polarity to positive voltage
-                if voltage < 0:
+                if V < 0:
                     mode.polarity = mode.polarity * -1
-                    
-                mode.Z0 = abs(voltage**2/(2*P))
-                logger.debug(f'Port Z0 = {mode.Z0}')
+                V = np.abs(V)
+                I = np.abs(I)
+                P = np.abs(P)
+                if imp_type=='PV':
+                    mode.Z0 = abs(V**2/(2*P))
+                elif imp_type=='PI':
+                    mode.Z0 = 2*np.abs(P)/(np.abs(I)**2)
+                elif imp_type=='VI':
+                    mode.Z0 = np.abs(V)/np.abs(I)
+
+                logger.debug(f'Port Z0 = {mode.Z0} Ω')
+                
             elif Ez/Exy < 1e-1 or port.forced_modetype=='TE':
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
@@ -818,7 +1031,7 @@ class Microwave3D:
             MWSimData: The dataset.
         """
         
-        logger.info(f'Starting frequency domain simulation (#tets = {self.mesh.n_tets:,})')
+        
         
         # --------------------------------------------------------------------
         # States
@@ -852,6 +1065,8 @@ class Microwave3D:
 
         if self._settings.check_ram:
             _check_ram(self.mesh.n_tets, n_workers, parallel)
+        
+        logger.info(f'Starting frequency domain simulation (#tets = {self.mesh.n_tets:,})')
         
         # --------------------------------------------------------------------
         # Material Assignments

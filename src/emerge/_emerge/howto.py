@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 class _HowtoClass:
     """The help class does nothing but offer docstring for
     function that have names related to potential activities.

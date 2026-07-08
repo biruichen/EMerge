@@ -15,7 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 from __future__ import annotations
 import numpy as np
 from loguru import logger
@@ -238,6 +238,8 @@ class PortBC(RobinBC, Saveable):
         self.active: bool | None = False
         self.driven: bool = True
         self.power: float = 1.0
+        self.vintline: list[Line] = []
+        self.iintline: list[Line] = []
         
     @property
     def voltage(self) -> complex | None:
@@ -563,7 +565,8 @@ class ModalPort(PortBC, Saveable):
                  power: float = 1,
                  modetype: Literal['TE','TM','TEM'] | None = None,
                  number_of_modes: int = 1,
-                 mixed_materials: bool = False):
+                 mixed_materials: bool = False,
+                 impedance_definition: Literal['PV','PI','VI'] = 'PV'):
         """Generes a ModalPort boundary condition for a port that requires eigenmode solutions for the mode.
 
         The boundary condition requires a FaceSelection (or GeoSurface related) object for the face and a port
@@ -597,6 +600,7 @@ class ModalPort(PortBC, Saveable):
             vec = [0.0 + 0.0j for _ in range(number_of_modes)]
             vec[i-1] = 1.0 + 0.0j
             self.port_modes[i] = vec
+        self._desired_number_of_modes: int = number_of_modes
         self.forced_modetype: Literal['TE','TM','TEM'] | None = modetype
         self.mixed_materials: bool = mixed_materials
         self.initialized: bool = False
@@ -606,7 +610,7 @@ class ModalPort(PortBC, Saveable):
         self.plus_terminal: list[tuple[int, int]] = []
         self.minus_terminal: list[tuple[int, int]] = []
         self.N_mesh_tris: int = 50
-        
+        self.impedance_definition: Literal['PV','PI','VI'] = impedance_definition
         if cs is None:
             logger.info('Constructing coordinate system from port normal')
             self.cs = Axis(self.selection.normal).construct_cs() # type: ignore
@@ -616,7 +620,15 @@ class ModalPort(PortBC, Saveable):
         self._ur: np.ndarray | None = None
         
         self.vintline: list[Line] = []
-    
+        self.iintline: list[Line] = []
+        
+    def neff_estimate(self, k0: float) -> float:
+        if len(self.available_modes)==0:
+            return None
+        else:
+            
+            return self.get_modes(k0)[0].neff
+        
     @property
     def _size_constraint(self) -> float:
         area = self.selection.area

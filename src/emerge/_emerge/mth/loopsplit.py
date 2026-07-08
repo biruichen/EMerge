@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 
-# Last Cleanup: 2026-03-04
+# Last Cleanup: 2025-01-01
 import numpy as np
 from .optimized import compute_distances
 import matplotlib.pyplot as plt
