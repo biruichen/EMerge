@@ -54,6 +54,7 @@ conda install meson swig
 conda install -c conda-forge compilers
 conda install -c conda-forge m2w64-toolchain
 conda install -c conda-forge openblas
+python -m pip install meson-python
 ```
 
 ---
