@@ -15,9 +15,6 @@ and far-field radiation patterns. """
 mm = 0.001              # meters per millimeter
 margin = 5 * mm         # extra air margin around substrate
 Nmodes = 1              # number of port modes to excite
-# Initial frequency sweep range (will override f1/f2 later)
-f1 = 0.5e9
-f2 = 3e9
 
 # --- Antenna geometry dimensions ----------------------------------------
 Wpatch = 53 * mm        # patch width (meters)
@@ -48,6 +45,7 @@ dielectric = em.geo.Box(wsub, hsub, th,
 # Air box above substrate (Z positive)
 air = em.geo.Box(wsub, hsub, Hair,
                   position=(-wsub/2, -hsub/2, 0))
+
 # Metal patch rectangle on top of substrate
 rpatch = em.geo.XYPlate(Wpatch, Lpatch,
                         position=(-Wpatch/2, -Lpatch/2, 0))
@@ -71,15 +69,16 @@ port = em.geo.Plate(
 rpatch = em.geo.remove(rpatch, cutout1)
 rpatch = em.geo.remove(rpatch, cutout2)
 rpatch = em.geo.add(rpatch, line)
+
 # Assign copper material for visualization only
 rpatch.material = em.lib.COPPER
 
 # --- Assign materials and simulation settings ---------------------------
 # Dielectric material with some transparency for display
-dielectric.material = em.Material(er, tand=0.0,
+dielectric.material = em.Material(er, tand=0.01,
                                   color="#207020", opacity=0.6)
 # Mesh resolution: fraction of wavelength
-model.mw.resolution = 0.1
+model.mw.resolution = 0.2
 # Frequency sweep across the resonance
 model.mw.set_frequency_range(f1, f2, 21)
 
@@ -101,18 +100,20 @@ model.view(selections=[port])              # show the mesh around the port
 port = model.mw.bc.LumpedPort(
     port, 1,
     width=wline, height=th,
-    direction=em.ZAX, Idirection=em.XAX,
+    direction=em.ZAX,
     active=True, Z0=50
 )
 # Apply absorbing boundary on underside of airbox to simulate open space
 boundary_selection = air.outside('bottom')
+
+model.view(selections=[boundary_selection,])
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
 # Perfect conductor on the metallic patch
 pec = model.mw.bc.PEC(rpatch)
 
 # --- Run frequency-domain solver ----------------------------------------
 data = model.mw.frequency_domain(
-    parallel=True, njobs=4, frequency_groups=54
+    parallel=True, njobs=4, frequency_groups=8
 )
 
 # --- Post-process S-parameters ------------------------------------------
@@ -123,10 +124,11 @@ smith(freqs, S11)                         # Smith chart of S11
 
 # --- Far-field radiation pattern ----------------------------------------
 # Extract 2D cut at phi=0 plane and plot E-field magnitude
-theta, Exax, Hxax = data.field.find(freq=1.6324e9)\
+theta, Exax, Hxax = data.field.find(freq=1.56e9)\
     .farfield_2d((0, 0, 1), (1, 0, 0), boundary_selection)
-theta, Eyax, Hyax = data.field.find(freq=1.6324e9)\
+theta, Eyax, Hyax = data.field.find(freq=1.56e9)\
     .farfield_2d((0, 0, 1), (0, 1, 0), boundary_selection)
+
 plot_ff(theta, [em.norm(Exax), em.norm(Eyax)])                # linear plot vs theta
 plot_ff_polar(theta, [em.norm(Exax), em.norm(Eyax)])          # polar plot of radiation
 

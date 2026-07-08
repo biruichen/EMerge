@@ -63,7 +63,7 @@ class Box(GeoVolume):
         tag = gmsh.model.occ.addBox(x,y,z,width,depth,height)
         super().__init__(tag)
 
-        self.centre = (x+width/2, y+depth/2, z+height/2)
+        self.center = (x+width/2, y+depth/2, z+height/2)
         self.width = width
         self.height = height
         self.depth = depth
@@ -71,8 +71,9 @@ class Box(GeoVolume):
         wax = cs.xax.np
         dax = cs.yax.np
         hax = cs.zax.np
-        p0 = np.array(position) + np.array([width/2, depth/2, height/2])
-        pc = p0 + height/2*hax
+
+        p0 = self.center
+        pc = p0
         self._add_face_pointer('front', pc - depth/2*dax, -dax)
         self._add_face_pointer('back', pc + depth/2*dax, dax)
         self._add_face_pointer('left', pc - width/2*wax, -wax)
@@ -92,30 +93,6 @@ class Box(GeoVolume):
         tags = list(reduce(lambda a,b: a+b, tagslist))
         return FaceSelection(tags)
 
-
-    @property
-    def front(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0], self.centre[1]-self.depth/2, self.centre[2])
-    
-    @property
-    def back(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0], self.centre[1]+self.depth/2, self.centre[2])
-    
-    @property
-    def left(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0]-self.width/2, self.centre[1], self.centre[2])
-    
-    @property
-    def right(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0]+self.width/2, self.centre[1], self.centre[2])
-    
-    @property
-    def bottom(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0], self.centre[1], self.centre[2]-self.height/2)
-    
-    @property
-    def top(self) -> FaceSelection:
-        return SELECTOR_OBJ.face.near(self.centre[0], self.centre[1], self.centre[2]+self.height/2)
     
 class Sphere(GeoVolume):
 
