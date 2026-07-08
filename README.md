@@ -16,8 +16,17 @@ pip install emerge
 On MacOS and Linux you can install it with the very fast UMFPACK through scikit-umfpack
 
 ```
-brew install swig suite-sparse #MacOS
+brew install cmake swig suite-sparse #MacOS
 sudo apt-get install libsuitesparse-dev #Linux
+```
+Then on MacOS do:
+```
+export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH"
+export CFLAGS="-I/opt/homebrew/include"
+export LDFLAGS="-L/opt/homebrew/lib"
+```
+Finally:
+```
 pip install emerge[umfpack]
 ```
 
