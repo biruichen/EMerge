@@ -28,7 +28,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS
 
 
 from loguru import logger
-from _emerge.logsettings import logger_format
+from ._emerge.logsettings import logger_format
 import sys
 
 logger.remove()
@@ -36,19 +36,19 @@ logger.add(sys.stderr, format=logger_format)
 
 logger.debug('Importing modules')
 
-from _emerge.simmodel import Simulation3D
-from _emerge.material import Material
-from _emerge import bc
-from _emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
-from _emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
-from _emerge.coord import Line
-from _emerge import geo
-from _emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
-from _emerge.mth.common_functions import norm, coax_rout, coax_rin
-from _emerge.physics.microwave.sc import stratton_chu
-from _emerge.periodic import RectCell, HexCell
-from _emerge.mesher import Algorithm2D, Algorithm3D
+from ._emerge.simmodel import Simulation3D
+from ._emerge.material import Material
+from ._emerge import bc
+from ._emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
+from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
+from ._emerge.coord import Line
+from ._emerge import geo
+from ._emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
+from ._emerge.mth.common_functions import norm, coax_rout, coax_rin
+from ._emerge.physics.microwave.sc import stratton_chu
+from ._emerge.periodic import RectCell, HexCell
+from ._emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
-from _emerge.howto import _HowtoClass
+from ._emerge.howto import _HowtoClass
 howto = _HowtoClass()
 logger.debug('Importing complete!')

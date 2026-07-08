@@ -1,4 +1,4 @@
-from _emerge.material import Material, AIR, COPPER
+from ._emerge.material import Material, AIR, COPPER
 
 C0 = 299792458
 Z0 = 376.73031366857
