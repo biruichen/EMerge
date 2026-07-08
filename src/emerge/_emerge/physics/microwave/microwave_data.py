@@ -731,6 +731,19 @@ class MWField:
                      x: float | None = None,
                      y: float | None = None,
                      z: float | None = None) -> EHField:
+        """Create a cartesian cut plane (XY, YZ or XZ) and compute the E and H-fields there
+
+        Only one coordiante and thus cutplane may be defined. If multiple are defined only the last (x->y->z) is used.
+        
+        Args:
+            ds (float): The discretization step size
+            x (float | None, optional): The X-coordinate in case of a YZ-plane. Defaults to None.
+            y (float | None, optional): The Y-coordinate in case of an XZ-plane. Defaults to None.
+            z (float | None, optional): The Z-coordinate in case of an XY-plane. Defaults to None.
+
+        Returns:
+            EHField: The resultant EHField object
+        """
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
