@@ -60,7 +60,7 @@ def add(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output.set_material(main.material) # type: ignore
+    return output # type: ignore
 
 def remove(main: T, tool: T, 
              remove_object: bool = True,
@@ -90,7 +90,7 @@ def remove(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output.set_material(main.material) # type: ignore
+    return output # type: ignore
 
 subtract = remove
 
@@ -122,7 +122,7 @@ def intersect(main: T, tool: T,
         main._exists = False
     if remove_tool:
         tool._exists = False
-    return output.set_material(main.material) #type:ignore
+    return output #type:ignore
 
 def embed(main: GeoVolume, other: GeoSurface) -> None:
     ''' Embeds a surface into a volume in the GMSH model.
@@ -268,19 +268,6 @@ def change_coordinate_system(main: GeoObject,
         fp.affine_transform(M2)
     return main
 
-def stretch(main: GeoObject, fx: float = 1, fy: float = 1, fz: float = 1, origin: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> GeoObject:
-    """Stretches a geometry with a factor fx, fy and fz along the x, y and Z axes respectively
-    
-    The stretch origin is centered at the provided origin.
-
-    Returns:
-        _type_: _description_
-    """
-    gmsh.model.occ.dilate(main.dimtags, *origin, fx, fy, fz)
-    
-    return main
-
-
 @overload
 def unite(*objects: GeoVolume) -> GeoVolume: ...
 
@@ -315,30 +302,3 @@ def unite(*objects: GeoObject) -> GeoObject:
     new_obj.prio_set(main._priority)
     
     return new_obj
-
-def expand_surface(surface: GeoSurface, distance: float) -> GeoSurface:
-    """EXPERIMENTAL: Expands an input surface. The surface must exist on a 2D plane.
-    
-    The output surface does not inherit material properties.
-    
-    If any problems occur, reach out through email.
-
-    Args:
-        surface (GeoSurface): The input surface to expand
-        distance (float): The exapansion distance
-
-    Returns:
-        GeoSurface: The output surface
-    """
-    surfs = [] 
-    for tag in surface.tags:
-        looptags, _ = gmsh.model.occ.get_curve_loops(tag)
-        new_curves = []
-        for looptag in looptags:
-            curve_tags = gmsh.model.occ.offset_curve(looptag, distance)
-            loop_tag = gmsh.model.occ.addCurveLoop([t for d,t in curve_tags])
-            new_curves.append(loop_tag)
-        surftag = gmsh.model.occ.addPlaneSurface(new_curves)
-        surfs.append(surftag)
-    surf = GeoSurface(surfs)
-    return surf
