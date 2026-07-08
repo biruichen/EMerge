@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 # Last Cleanup: 2026-01-04
-
+from __future__ import annotations
 from typing import TypeVar, Generic, Any
 from .physics.microwave.microwave_data import MWData
 from .simulation_data import DataContainer
@@ -35,6 +35,35 @@ class SimulationDataset(Saveable):
         self.mw: MWData = MWData()
         self.globals: dict[str, Any] = dict()
         self.sim: DataContainer = DataContainer()
+    
+    @staticmethod
+    def combine_sets(datasets: list[SimulationDataset]) -> SimulationDataset:
+        """Generate one big container from a list of SimulationDataset
+
+        Args:
+            datasets (list[SimulationDataset]): The datasets to merge
+
+        Returns:
+            DataContainer: _description_
+        """
+        base, *others = datasets
+        base.merge_with(*others)
+        return base
+    
+    def merge_with(self, *others: SimulationDataset) -> SimulationDataset:
+        """Combines this SimulationDataset with other SimulationDatasets
+
+        Args:
+            *other (SimulationDataset): The container to merge with
+
+        Returns:
+            DataContainer: _description_
+        """
+        for other in others:
+          self.mw.merge_with(other.mw)
+          self.globals.update(other.globals)
+          self.sim.merge_with(other.sim)
+        return self
     
     def remove_empty_datasets(self) -> None:
       """Cleans up datasets in .sim that are never written to.

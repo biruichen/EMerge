@@ -64,6 +64,14 @@ class SimState:
         self.has_been_modified: bool = False
         self.sign_on()
     
+    def import_from(self, other: SimState) -> None:
+        """Imports the dataset from another simulation
+
+        Args:
+            other (SimState): _description_
+        """
+        self.data.merge_with(other.data)
+
     def set_modified(self) -> None:
         logger.trace('Detected a change in simulation data. Setting modified flag to True')
         self.has_been_modified = True

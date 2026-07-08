@@ -66,7 +66,24 @@ class VersionError(Exception):
 ############################################################
 #                 BASE 3D SIMULATION MODEL                 #
 ############################################################
+def _get_caller_dir() -> Path:
+    """
+    Walk the call stack and return the directory of the first frame
+    that is NOT inside the emerge package itself.
+    """
+    val = os.environ.get("EMERGE_BASE_PATH")
+    if val is not None:
+        return Path(val)
+    emerge_src = Path(__file__).resolve().parent  # emerge's own src dir
 
+    for frame_info in inspect.stack():
+        caller = Path(frame_info.filename).resolve()
+        # Skip frames inside emerge itself and stdlib/site-packages
+        if not str(caller).startswith(str(emerge_src)) and caller.suffix == ".py" and caller.exists():
+            return caller.parent
+
+    # Fallback to cwd if nothing found
+    return Path.cwd()
 
 class Simulation:
 
@@ -92,8 +109,7 @@ class Simulation:
             path_suffix (str, optional): The suffix that will be added to the results directory. Defaults to ".EMResults".
         """
 
-        caller_file = Path(inspect.stack()[1].filename).resolve()
-        base_path = caller_file.parent
+        base_path = _get_caller_dir()
 
         self.base_path: Path = base_path
         self.modelname: str = modelname
@@ -313,13 +329,15 @@ class Simulation:
         """
         
         ## SIGN OFF SIMUALTION STATE
-        if self.state is not None:
-            self.state.sign_off()
-        self.state = None
+        if "state" in self.__dict__:
+            if self.state is not None:
+                self.state.sign_off()
+            self.state = None
         
         ## Remove the State object
-        if self.display:
-            self.display.clean()
+        if "display" in self.__dict__:
+            if self.display:
+                self.display.clean()
         self.mesher = None
         self.modeler = None
         self.mw = None
@@ -553,7 +571,7 @@ class Simulation:
         data_path = self.modelpath / 'simdata.emerge'
 
         if not data_path.exists():
-            raise FileNotFoundError("Missing required mesh or data file.")
+            raise FileNotFoundError(f"Cannot find file {data_path}.")
         
         logger.info(f"Loaded mesh from: {mesh_path}")
         if self.settings._save_method == 'msgpack':
@@ -838,17 +856,19 @@ class Simulation:
                 logger.info('Cleaning up mesh.')
                 self.reset(geometry=True, physics=True, mesh=True)
             
+            # Set the outer variable parameters
             params = {key: dim[i_iter] for key,dim in zip(paramlist, dims_flat)}
             self.state.set_parameters(params)
             
             logger.info(f'Iterating: {params}')
             
+            # Yield the parameters as tuples
             if len(dims_flat)==1:
                 yield dims_flat[0][i_iter]
             else:
                 yield (dim[i_iter] for dim in dims_flat) # type: ignore
             
-            
+            # Store the geometry data (geometries and mesh) to the current parameter setting
             if not clear_mesh:
                 self.state.store_geometry_data()
         
@@ -882,7 +902,16 @@ class Simulation:
         """
         logger.trace(f'Setting solver to {solver}')
         self.mw.solveroutine.set_solver(solver)
-        
+    
+    @staticmethod
+    def from_simulations(name: str, *sims: Simulation, **kwargs) -> Simulation:
+        new = Simulation(name, **kwargs)
+        for sim in sims:
+            new.state.import_from(sim.state)
+        new.state.data.remove_empty_datasets()
+        new.state.set_modified()
+        new.state.activate(0)
+        return new
     ############################################################
     #                     DEPRICATED FUNCTIONS                #
     ############################################################

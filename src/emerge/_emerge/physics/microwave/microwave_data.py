@@ -249,6 +249,17 @@ class MWData(Saveable):
         self.field = BaseDataset[MWField, None](MWField, None, False)
         self.sim: DataContainer = DataContainer()
 
+    def merge_with(self, *others: MWData) -> MWData:
+        """Merges this dataset with other datasets
+
+        Returns:
+            MWData: the merged dataset
+        """
+        self.sim.merge_with(*[other.sim for other in others])
+        self.scalar.merge_with(*[other.scalar for other in others])
+        self.field.merge_with(*[other.field for other in others])
+        return self
+
     def setreport(self, report, **vars):
         self.sim.new(**vars)['report'] = report
 
