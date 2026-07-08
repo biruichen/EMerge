@@ -40,7 +40,7 @@ extra = 100             # extra margin (mil)
 # --- Simulation setup ----------------------------------------------------
 model = em.Simulation('CoupledLineFilter')
 
-model.check_version("2.0.3") # Checks version compatibility.
+model.check_version("2.1.0") # Checks version compatibility.
 # --- Material and layouter -----------------------------------------------
 mat = em.Material(er=3.55, color="#488343", opacity=0.4)
 
@@ -125,6 +125,7 @@ S11_fit = data.scalar.grid.model_S(1, 1, f_fit)
 S21_fit = data.scalar.grid.model_S(2, 1, f_fit)
 plot_sp(f_fit, [S11_fit, S21_fit], labels=['S11', 'S21'])
 
+# --- 3D field visualization ------------------------------------------------
 
 field = data.field.find(freq=5.433e9)
 model.display.add_portmode(port1, k0=field.k0)
