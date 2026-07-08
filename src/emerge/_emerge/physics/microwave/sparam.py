@@ -94,7 +94,7 @@ def sparam_mode_power(nodes: np.ndarray,
         Ex2, Ey2, Ez2 = np.conj(modef(x,y,z))
         return (Ex1*Ex2 + Ey1*Ey2 + Ez1*Ez2)/(2*bc.Zmode(k0))
     
-    norm = surface_integral(nodes, tri_vertices, inproduct2, const, ndpts=ndpts)
+    norm = surface_integral(nodes, tri_vertices, inproduct2, const, gq_order=ndpts)
     
     return norm
 
@@ -132,7 +132,7 @@ def sparam_field_power(nodes: np.ndarray,
         Ex2, Ey2, Ez2 = np.conj(modef(x,y,z))
         return (Ex1*Ex2 + Ey1*Ey2 + Ez1*Ez2) / (2*bc.Zmode(k0))
     
-    mode_dot_field = surface_integral(nodes, tri_vertices, inproduct1, const, ndpts=ndpts)
+    mode_dot_field = surface_integral(nodes, tri_vertices, inproduct1, const, gq_order=ndpts)
     
     svec = mode_dot_field
     return svec
