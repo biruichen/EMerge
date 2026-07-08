@@ -103,11 +103,16 @@ class Simulation3D:
         self.save_file: bool = save_file
         self.load_file: bool = load_file
 
-        self.data: SimulationDataset = None
-        self._initialize_simulation()
-        
+        self.data: SimulationDataset = SimulationDataset()
+
         ## Physics
         self.mw: Microwave3D = Microwave3D(self.mesher, self.data.mw)
+
+        self._initialize_simulation()
+
+        self._update_data()
+        
+        
 
     def __setitem__(self, name: str, value: GeoObject) -> None:
         self.obj[name] = value
@@ -115,13 +120,16 @@ class Simulation3D:
     def __getitem__(self, name: str) -> GeoObject:
         return self.obj[name]
     
+    def _update_data(self) -> None:
+        self.mw.data = self.data.mw
+        
     def set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
         self.mesh = mesh
         self.mw.mesh = mesh
         self.mesher.mesh = mesh
         self.display._mesh = mesh
-   
+    
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
         # Ensure directory exists
@@ -319,7 +327,7 @@ class Simulation3D:
          >>> // Extract the data
          >>> widths, heights, frequencies, S21 = data.ax('width','height','freq').S(2,1)
         """
-        paramlist = list(parameters.keys())
+        paramlist = sorted(list(parameters.keys()))
         dims = np.meshgrid(*[parameters[key] for key in paramlist], indexing='ij')
         dims_flat = [dim.flatten() for dim in dims]
         self.mw.cache_matrices = False

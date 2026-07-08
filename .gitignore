@@ -9,7 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-
 # paths
 meshes/
 
@@ -32,4 +31,4 @@ version_update.txt
 *.snp
 
 
-
+manual_scripts/
