@@ -397,7 +397,7 @@ def matinv(M: np.ndarray) -> np.ndarray:
         out[2,0] = M[1,0]*M[2,1] - M[1,1]*M[2,0]
         out[2,1] = -M[0,0]*M[2,1] + M[0,1]*M[2,0]
         out[2,2] = M[0,0]*M[1,1] - M[0,1]*M[1,0]
-        out = out*det
+        out = out/det
     return out
 
 @njit(f8[:,:](f8[:,:]), cache=True, nogil=True)
@@ -427,7 +427,7 @@ def matinv_r(M: np.ndarray) -> np.ndarray:
         out[2,0] = M[1,0]*M[2,1] - M[1,1]*M[2,0]
         out[2,1] = -M[0,0]*M[2,1] + M[0,1]*M[2,0]
         out[2,2] = M[0,0]*M[1,1] - M[0,1]*M[1,0]
-        out = out*det
+        out = out/det
     return out
 
 @njit(cache=True, nogil=True)
