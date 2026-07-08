@@ -80,7 +80,7 @@ wgaps = np.linspace(1*mm, 20*mm, 21)
 Ks = []
 hphis = []
 with em.Simulation('IrisSim') as sim:
-    sim.check_version("0.6.9") # Checks version compatibility.
+    sim.check_version("1.0.0") # Checks version compatibility.
     for wgap in sim.parameter_sweep(True, wgap=wgaps):
         # Define two short waveguide sections separated by iris plate
         wg1 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, -Lfeed - t_thickness/2, 0))
@@ -186,7 +186,7 @@ with em.Simulation('FullFilter') as mf:
         mf.display.add_object(obj, opacity=0.1)
     # Show electric field cut-plane at center frequency
     cut = data.field.find(freq=f0).cutplane(2*mm, z=wgb/2)
-    mf.display.add_surf(*cut.scalar('Ez','real'))
+    mf.display.add_surf(*cut.scalar('Ez','real'), symmetrize=True, cmap='coolwarm')
     mf.display.add_portmode(p1)
     mf.display.add_portmode(p2)
     mf.display.show()

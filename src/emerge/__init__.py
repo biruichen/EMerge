@@ -18,7 +18,7 @@ along with this program; if not, see
 """
 import os
 
-__version__ = "0.6.9"
+__version__ = "1.0.0"
 
 ############################################################
 #               HANDLE ENVIRONMENT VARIABLES              #
@@ -27,7 +27,7 @@ __version__ = "0.6.9"
 NTHREADS = "1"
 os.environ["EMERGE_STD_LOGLEVEL"] = os.getenv("EMERGE_STD_LOGLEVEL", default="INFO")
 os.environ["EMERGE_FILE_LOGLEVEL"] = os.getenv("EMERGE_FILE_LOGLEVEL", default="DEBUG")
-os.environ["OMP_NUM_THREADS"] = os.getenv("OMP_NUM_THREADS", default="4")
+os.environ["OMP_NUM_THREADS"] = os.getenv("OMP_NUM_THREADS", default="1")
 os.environ["MKL_NUM_THREADS"] = os.getenv("MKL_NUM_THREADS", default="4")
 os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS
 os.environ["VECLIB_MAXIMUM_THREADS"] = NTHREADS
@@ -43,12 +43,13 @@ from loguru import logger
 
 LOG_CONTROLLER.set_default()
 logger.debug('Importing modules')
+LOG_CONTROLLER._set_log_buffer()
 
 from ._emerge.simmodel import Simulation
 from ._emerge.material import Material, FreqCoordDependent, FreqDependent, CoordDependent
 from ._emerge import bc
 from ._emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
-from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
+from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE, cs
 from ._emerge.coord import Line
 from ._emerge import geo
 from ._emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
@@ -63,3 +64,11 @@ from ._emerge.howto import _HowtoClass
 howto = _HowtoClass()
 
 logger.debug('Importing complete!')
+
+
+############################################################
+#                         CONSTANTS                        #
+############################################################
+
+CENTER = geo.Alignment.CENTER
+CORNER = geo.Alignment.CORNER

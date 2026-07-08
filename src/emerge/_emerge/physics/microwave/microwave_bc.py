@@ -73,11 +73,11 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         """
         bcs = self.oftype(PEC)
         for bc in self.oftype(SurfaceImpedance):
-            if bc.sigma > 1e3:
+            if bc.sigma > 10.0:
                 bcs.append(bc)
 
         return bcs
-
+        
     def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort','SurfaceImpedance']) -> FaceSelection:
         tags = []
         for bc in self.boundary_conditions:
@@ -306,11 +306,17 @@ class AbsorbingBoundary(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*self.get_beta(k0)
+        if self.order == 2:
+            
+            p0 = 1.06103
+            p2 = -0.84883
+            ky = k0*0.5
+            return 1j*k0*p0 - 1j*p2*ky**2/k0
+        else:
+            Factor = 1
+            return 1j*self.get_beta(k0)*Factor
     
-    def get_Uinc(self, x_local: np.ndarray, y_local: np.ndarray, k0: float) -> np.ndarray:
-        return np.zeros((3, len(x_local)), dtype=np.complex128)
-
+   
 @dataclass
 class PortMode:
     modefield: np.ndarray
@@ -539,7 +545,7 @@ class ModalPort(PortBC):
                 self.modes[k0] = new_modes
             return
         for k0, modes in self.modes.items():
-            self.modes[k0] = sorted(modes, key=lambda m: m.energy, reverse=True)
+            self.modes[k0] = sorted(modes, key=lambda m: m.beta, reverse=True)
 
     def get_mode(self, k0: float, i=None) -> PortMode:
         """Returns a given mode solution in the form of a PortMode object.
@@ -825,10 +831,10 @@ class LumpedPort(PortBC):
         self.Vdirection: Axis = direction # type: ignore
         self.type = 'TEM'
         
-        logger.info('Constructing coordinate system from normal port')
-        self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
-
-        self.vintline: Line | None = None
+        # logger.info('Constructing coordinate system from normal port')
+        # self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
+        self.cs = GCS
+        self.vintline: list[Line] = []
         self.v_integration = True
 
     @property
@@ -881,14 +887,7 @@ class LumpedPort(PortBC):
                      k0: float,
                      which: Literal['E','H'] = 'E') -> np.ndarray:
         ''' Compute the port mode E-field in local coordinates (XY) + Z out of plane.'''
-
-        px, py, pz = self.cs.in_local_basis(*self.Vdirection.np)
-        
-        Ex = px*np.ones_like(x_local)
-        Ey = py*np.ones_like(x_local)
-        Ez = pz*np.ones_like(x_local)
-        Exyz = np.array([Ex, Ey, Ez])
-        return Exyz
+        raise RuntimeError('This function should never be called in this context.')
 
     def port_mode_3d_global(self, 
                             x_global: np.ndarray,
@@ -911,10 +910,9 @@ class LumpedPort(PortBC):
         Returns:
             np.ndarray: The E-field in (3,N) indexing.
         """
-        xl, yl, _ = self.cs.in_local_cs(x_global, y_global, z_global)
-        Ex, Ey, Ez = self.port_mode_3d(xl, yl, k0)
-        Exg, Eyg, Ezg = self.cs.in_global_basis(Ex, Ey, Ez)
-        return np.array([Exg, Eyg, Ezg])
+        ON = np.ones_like(x_global)
+        Ex, Ey, Ez = self.Vdirection.np
+        return np.array([Ex*ON, Ey*ON, Ez*ON])
 
 
 class LumpedElement(RobinBC):
@@ -1004,6 +1002,7 @@ class SurfaceImpedance(RobinBC):
                  material: Material | None = None,
                  surface_conductance: float | None = None,
                  surface_roughness: float = 0,
+                 thickness: float | None = None,
                  sr_model: Literal['Hammerstad-Jensen'] = 'Hammerstad-Jensen',
                  ):
         """Generates a SurfaceImpedance bounary condition.
@@ -1023,7 +1022,8 @@ class SurfaceImpedance(RobinBC):
             material (Material | None, optional): The matrial to assign. Defaults to None.
             surface_conductance (float | None, optional): The specific bulk conductivity to use. Defaults to None.
             surface_roughness (float, optional): The surface roughness. Defaults to 0.
-            sr_model (Literal[&#39;Hammerstad, optional): The surface roughness model. Defaults to 'Hammerstad-Jensen'.
+            thickness (float | None, optional): The layer thickness. Defaults to None
+            sr_model (Literal["Hammerstad-Jensen", optional): The surface roughness model. Defaults to 'Hammerstad-Jensen'.
         """
         super().__init__(face)
 
@@ -1031,9 +1031,13 @@ class SurfaceImpedance(RobinBC):
         self._mur: float | complex = 1.0
         self._epsr: float | complex = 1.0
         self.sigma: float = 0.0
+        self.thickness: float | None = thickness
         
+        if isinstance(face, GeoObject) and thickness is None:
+            self.thickness = face._load('thickness')
+            
         if material is not None:
-            self.sigma = material.cond
+            self.sigma = material.cond.scalar(1e9)
             self._mur = material.ur
             self._epsr = material.er
         
@@ -1066,13 +1070,20 @@ class SurfaceImpedance(RobinBC):
         
         w0 = k0*C0
         f0 = w0/(2*np.pi)
-        sigma = self.sigma.scalar(f0)
+        sigma = self.sigma
         mur = self._material.ur.scalar(f0)
         er = self._material.er.scalar(f0)
-        
+        eps = EPS0*er
+        mu = MU0*mur
         rho = 1/sigma
-        d_skin = (2*rho/(w0*MU0*mur) * ((1+(w0*EPS0*er*rho)**2)**0.5 + rho*w0*EPS0*er))**0.5
-        R = rho/d_skin
+        d_skin = (2*rho/(w0*mu) * ((1+(w0*eps*rho)**2)**0.5 + rho*w0*eps))**0.5
+        logger.debug(f'Computed skin depth δ={d_skin*1e6:.2}μm')
+        R = (1+1j)*rho/d_skin
+        if self.thickness is not None:
+            eps_c = eps - 1j * sigma / w0
+            gamma_m = 1j * w0 * np.sqrt(mu*eps_c)
+            R = R / np.tanh(gamma_m * self.thickness)
+            logger.debug(f'Impedance scaler due to thickness: {1/ np.tanh(gamma_m * self.thickness) :.4f}')
         if self._sr_model=='Hammerstad-Jensen' and self._sr > 0.0:
             R = R * (1 + 2/np.pi * np.arctan(1.4*(self._sr/d_skin)**2))
         return 1j*k0*Z0/R
