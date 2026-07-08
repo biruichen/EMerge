@@ -91,9 +91,9 @@ def renormalise_s(S: np.ndarray,
                   Z0: complex | float = 50) -> np.ndarray:
     S   = np.asarray(S,  dtype=complex)
     Zn  = np.asarray(Zn, dtype=complex)
-    N   = S.shape[0]
-    if S.shape[:2] != (N, N):
-        raise ValueError("S must have shape (N, N, M) with same N on both axes")
+    N   = S.shape[1]
+    if S.shape[1:3] != (N, N):
+        raise ValueError("S must have shape (M, N, N) with same N on both axes")
     if Zn.shape != (N,):
         raise ValueError("Zn must be a length-N vector")
 
@@ -106,7 +106,7 @@ def renormalise_s(S: np.ndarray,
     S0 = np.empty_like(S)
 
     for k in range(M):
-        Sk = S[:, :, k]
+        Sk = S[k, :, :]
 
         # Z  = Wref (I + S) (I – S)⁻¹ Wref
         Zk = Wref @ (I_N + Sk) @ np.linalg.inv(I_N - Sk) @ Wref
@@ -115,7 +115,7 @@ def renormalise_s(S: np.ndarray,
         Ak = Zk * (W0_inv_sc ** 2)            # same as Zk / Z0
 
         # S0 = (A – I)(A + I)⁻¹
-        S0[:, :, k] = (Ak - I_N) @ np.linalg.inv(Ak + I_N)
+        S0[k, :, :] = (Ak - I_N) @ np.linalg.inv(Ak + I_N)
 
     return S0
 
@@ -537,17 +537,17 @@ class EMSimData(SimData[EMDataSet]):
             inc_real (bool, optional): Wether allow for a real pole. Defaults to False.
 
         Returns:
-            np.ndarray: The (Np,Np,Nf) S-parameter matrix
+            np.ndarray: The (Nf,Np,Np) S-parameter matrix
         """
         Nports = len(self.datasets[0].excitation)
         nfreq = frequencies.shape[0]
 
-        Smat = np.zeros((Nports,Nports,nfreq), dtype=np.complex128)
+        Smat = np.zeros((nfreq,Nports,Nports), dtype=np.complex128)
         
         for i in range(1,Nports+1):
             for j in range(1,Nports+1):
                 S = self.model_S(i,j)(frequencies)
-                Smat[i-1,j-1,:] = S
+                Smat[:,i-1,j-1] = S
 
         return Smat
 
@@ -562,7 +562,7 @@ class EMSimData(SimData[EMDataSet]):
 
         Additionally, one may provide a reference impedance. If this argument is provided, a port impedance renormalization
         will be performed to that common impedance.
-        
+
         Args:
             filename (str): The File name
             Z0ref (float): The reference impedance to normalize to. Defaults to None
@@ -594,7 +594,7 @@ class EMSimData(SimData[EMDataSet]):
 
         Args:
             filename (str): The filename
-            Smatrix (np.ndarray): The S-parameter matrix with shape (Nport, Nport, Nfreq)
+            Smatrix (np.ndarray): The S-parameter matrix with shape (Nfreq, Nport, Nport)
             frequencies (np.ndarray): The frequencies with size (Nfreq,)
             Z0ref (float, optional): An optional reference impedance to normalize to. Defaults to None.
             format (Literal["RI","MA",'DB], optional): The S-parameter format. Defaults to 'RI'.
@@ -604,7 +604,7 @@ class EMSimData(SimData[EMDataSet]):
         if Z0ref is not None:
             Z0s = [port.Z0 for port in self.datasets[0].port_modes]
             logger.debug(f'Renormalizing impedances {Z0s}Ω to {Z0ref}Ω')
-            Smatrix = renormalise_s(Smatrix, Z0s, Z0ref).transpose(2,0,1)
+            Smatrix = renormalise_s(Smatrix, Z0s, Z0ref)
 
 
         generate_touchstone(filename, frequencies, Smatrix, format)
