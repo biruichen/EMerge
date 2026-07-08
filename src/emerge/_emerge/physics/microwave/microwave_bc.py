@@ -46,6 +46,13 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
 
         self._cell: PeriodicCell = None
 
+    def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort']) -> FaceSelection:
+        tags = []
+        for bc in self.boundary_conditions:
+            if bctype in str(bc.__class__):
+                tags.extend(bc.selection.tags)
+        return FaceSelection(tags)
+
     def floquet_port(self, poly: GeoSurface, port_number: int) -> FloquetPort:
         if self._cell is None:
             raise ValueError('Periodic cel must be defined for this simulation.')

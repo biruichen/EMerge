@@ -392,7 +392,7 @@ class SolverUMFPACK(Solver):
         super().__init__()
         self.A: np.ndarray = None
         self.b: np.ndarray = None
-        self.up: um.UmfpackContext = um.UmfpackContext('zi')
+        self.up: um.UmfpackContext = um.UmfpackContext('zl')
         self.up.control[um.UMFPACK_PRL] = 0  #less terminal printing
         self.up.control[um.UMFPACK_IRSTEP] = 2
         self.up.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC
@@ -401,6 +401,7 @@ class SolverUMFPACK(Solver):
         self.up.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = 0.001
         self.up.control[um.UMFPACK_BLOCK_SIZE] = 64
         self.up.control[um.UMFPACK_FIXQ] = -1
+        #self.up.control[um.UMFPACK_]
 
         self.fact_symb: bool = False
 
@@ -409,6 +410,8 @@ class SolverUMFPACK(Solver):
 
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling UMFPACK Solver. ID={id}')
+        A.indptr  = A.indptr.astype(np.int64)
+        A.indices = A.indices.astype(np.int64)
         if self.fact_symb is False:
             logger.debug('Executing symbollic factorization.')
             self.up.symbolic(A)

@@ -874,6 +874,32 @@ class MWField:
         
         return Eff, Hff
 
+    def optycal(self, faces: FaceSelection | GeoSurface = None) -> tuple:
+        """Export this models exterior to an Optical acceptable dataset
+
+        Args:
+            faces (FaceSelection | GeoSurface): The faces to export. Defaults to None
+
+        Returns:
+            tuple: _description_
+        """
+        if faces is None:
+            tags = self.mesh.exterior_face_tags
+        else:
+            tags = faces.tags
+
+        surface = self.basis.mesh.boundary_surface(tags, None)
+        field = self.interpolate(*surface.exyz)
+        vertices = surface.nodes
+        triangles = surface.tris
+        print(surface._origin, surface._alignment_origin)
+        origin = surface._origin
+        E = field.E
+        H = field.H
+        k0 = self.k0
+        return vertices, triangles, E, H, origin, k0
+        
+
 class MWScalar:
     """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
     """

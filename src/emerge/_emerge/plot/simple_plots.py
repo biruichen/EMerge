@@ -400,6 +400,7 @@ def plot_ff(
     theta: np.ndarray,
     E: Union[np.ndarray, Sequence[np.ndarray]],
     grid: bool = True,
+    dB: bool = False,
     labels: Optional[List[str]] = None,
     xlabel: str = "Theta (rad)",
     ylabel: str = "|E|",
@@ -453,6 +454,8 @@ def plot_ff(
     fig, ax = plt.subplots()
     for i, Ei in enumerate(E_list):
         mag = np.abs(Ei)
+        if dB:
+            mag = 20*np.log10(mag)
         ax.plot(
             theta, mag,
             linestyle=linestyles[i],

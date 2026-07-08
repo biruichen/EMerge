@@ -87,6 +87,8 @@ class Mesh3D:
         
         self.geometry: Mesher = mesher
 
+        self.exterior_face_tags: list[int] = None
+        
         # All spatial objects
         self.nodes: np.ndarray = None
         self.n_i2t: dict = None
