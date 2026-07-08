@@ -1444,11 +1444,6 @@ class SolveRoutine:
         
         x_solved, report = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse, id=id)
         
-        # S = 0.5 * (Asorted + Asorted.T)
-        # K = 0.5 * (Asorted - Asorted.T)
-        # ratio = np.linalg.norm(K @ x_solved) / np.linalg.norm(S @ x_solved)
-        # logger.warning(f'Ratio = {ratio}')
-        
         end = time.time()
         simtime = end-start
         logger.info(f'{_pfx(self.pre,id)} Elapsed time taken: {simtime:.3f} seconds')

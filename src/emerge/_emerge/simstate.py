@@ -88,6 +88,31 @@ class SimState:
     def current_geo_state(self) -> list[GeoObject]:
         return self.manager.all_geometries()
     
+    def simulation_geostate(self) -> list[GeoObject]:
+        geodict: dict[int, dict[int, GeoObject]] = {
+            0: dict(),
+            1: dict(),
+            2: dict(),
+            3: dict()
+        }
+        
+        for geo in self.manager.all_geometries():
+            dim = geo.dim
+            prio = geo._priority
+            for tag in geo.tags:
+                current = geodict[dim].get(tag, None)
+                if current is None:
+                    geodict[dim][tag] = geo
+                else:
+                    if prio >= current._priority:
+                        geodict[dim][tag] = geo
+        
+        geolist = []
+        for dim, dct in geodict.items():
+            for tag, geometry in dct.items():
+                geolist.append(GeoObject.from_dimtags([(dim,tag)], _submit_geometry = False).set_material(geometry.material))
+        return geolist
+                
     def reset_geostate(self) -> None:
         _GEOMANAGER.reset(self.modelname)
         self.clear_mesh()

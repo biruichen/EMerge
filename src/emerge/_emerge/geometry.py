@@ -541,14 +541,14 @@ class AnchorSet(Saveable):
                     
         self.initialized: bool = False
         return self
-    
+        
 class GeoObject(Saveable):
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
     dim: int = -1
     _default_name: str = 'GeoObject'
     
-    def __init__(self, tags: list[int] | None = None, name: str | None = None):
+    def __init__(self, tags: list[int] | None = None, name: str | None = None, _submit_geometry: bool = True):
         if tags is None:
             tags = []
         self.old_tags: list[int] = []
@@ -575,7 +575,8 @@ class GeoObject(Saveable):
         self._exists: bool = True
         
         self.give_name(name)
-        _GEOMANAGER.submit_geometry(self)
+        if _submit_geometry:
+            _GEOMANAGER.submit_geometry(self)
         self._fill_face_pointers()
     
     @property
@@ -1050,18 +1051,18 @@ class GeoObject(Saveable):
         return []
 
     @staticmethod
-    def from_dimtags(dimtags: list[tuple[int,int]]) -> GeoVolume | GeoSurface | GeoObject:
+    def from_dimtags(dimtags: list[tuple[int,int]], _submit_geometry: bool = True) -> GeoVolume | GeoSurface | GeoObject:
         dim = dimtags[0][0]
         tags = [t for d,t in dimtags]
         if dim==0:
-            return GeoPoint(tags)
+            return GeoPoint(tags, _submit_geometry=_submit_geometry)
         elif dim==1:
-            return GeoEdge(tags)
+            return GeoEdge(tags, _submit_geometry=_submit_geometry)
         if dim==2:
-            return GeoSurface(tags)
+            return GeoSurface(tags, _submit_geometry=_submit_geometry)
         if dim==3:
-            return GeoVolume(tags)
-        return GeoObject(tags)
+            return GeoVolume(tags, _submit_geometry=_submit_geometry)
+        return GeoObject(tags, _submit_geometry=_submit_geometry)
     
     def remove(self) -> None:
         """Delete the geometry from the simulation model
@@ -1095,8 +1096,8 @@ class GeoVolume(GeoObject):
     dim = 3
     _default_name: str = 'GeoVolume'
     
-    def __init__(self, tag: int | Iterable[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | Iterable[int], name: str | None = None, _submit_geometry=True):
+        super().__init__(name=name, _submit_geometry=_submit_geometry)
         
         self.tags: list[int] = []
         
@@ -1253,8 +1254,8 @@ class GeoPoint(GeoObject):
     def selection(self) -> PointSelection:
         return PointSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int], name: str | None = None, _submit_geometry: bool = True):
+        super().__init__(name=name, _submit_geometry=_submit_geometry)
 
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
@@ -1270,8 +1271,8 @@ class GeoEdge(GeoObject):
     def selection(self) -> EdgeSelection:
         return EdgeSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int], name: str | None = None, _submit_geometry: bool = True):
+        super().__init__(name=name, _submit_geometry=_submit_geometry)
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
             self.tags = list(tag)
@@ -1289,8 +1290,8 @@ class GeoSurface(GeoObject):
     def selection(self) -> FaceSelection:
         return FaceSelection(self.tags)
     
-    def __init__(self, tag: int | list[int], name: str | None = None):
-        super().__init__(name=name)
+    def __init__(self, tag: int | list[int], name: str | None = None, _submit_geometry: bool = True):
+        super().__init__(name=name, _submit_geometry=_submit_geometry)
         self.tags: list[int] = []
         if isinstance(tag, Iterable):
             self.tags = list(tag)
@@ -1302,8 +1303,9 @@ class GeoPolygon(GeoSurface):
     
     def __init__(self,
                  tags: list[int],
-                 name: str | None = None):
-        super().__init__(tags, name=name)
+                 name: str | None = None,
+                 _submit_geometry: bool = True):
+        super().__init__(tags, name=name, _submit_geometry=_submit_geometry)
         self.points: list[int] = []
         self.lines: list[int] = []
 
