@@ -1,7 +1,7 @@
 import emerge as em
 
 model = em.Simulation('Sphere')
-model.check_version("0.6.10") # Checks version compatibility.
+model.check_version("0.6.11") # Checks version compatibility.
 
 poly = em.geo.XYPolygon([0, 0.05, 0.05, 0], [0, 0, 0.1, 0.1])
 vol = poly.revolve(em.XZPLANE.cs(), (0,0,0), (1,0,0))
