@@ -174,6 +174,7 @@ dependencies = [
     { name = "numba-progress" },
     { name = "numpy" },
     { name = "pyvista" },
+    { name = "scikit-umfpack" },
     { name = "scipy" },
     { name = "threadpoolctl" },
 ]
@@ -197,6 +198,7 @@ requires-dist = [
     { name = "pypardiso", marker = "extra == 'pypardiso'", git = "https://github.com/haasad/PyPardiso.git" },
     { name = "pyvista", specifier = ">=0.45.2" },
     { name = "scikit-rf", marker = "extra == 'pypardiso'" },
+    { name = "scikit-umfpack", specifier = ">=0.4.2" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "threadpoolctl", specifier = ">=3.6.0" },
 ]
@@ -841,6 +843,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/10/07/2bf21f21d5d1dbf97
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/55/776fa042d2061f29c5bfbb9af456d5b5eae6d547b9a6a9cba54b60bc19fb/scikit_rf-1.7.0-py3-none-any.whl", hash = "sha256:1edd9d8c8b6be634e348fb8f0457d4395ae0644bf24f7a953154e98008b8fb88", size = 615061, upload-time = "2025-05-09T06:25:53.339Z" },
 ]
+
+[[package]]
+name = "scikit-umfpack"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/87/e9837fbc60271bcbc569911814f3e63cb40c75aa4904a3d1d82cf8f5e079/scikit_umfpack-0.4.2.tar.gz", hash = "sha256:7cd652e6559804a52379f4ff367cfad54d6f7a6fc65a5e0bd26d26a1282c3f64", size = 33827, upload-time = "2025-07-08T08:52:41.643Z" }
 
 [[package]]
 name = "scipy"

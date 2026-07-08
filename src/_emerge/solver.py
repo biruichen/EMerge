@@ -22,6 +22,7 @@ from scipy.sparse.csgraph import reverse_cuthill_mckee
 from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigs, splu
 from scipy.linalg import eig
 from scipy import sparse, show_config
+from functools import partial
 from dataclasses import dataclass
 import numpy as np
 from loguru import logger
@@ -30,6 +31,7 @@ import platform
 import time
 
 _PARDISO_AVAILABLE = False
+_UMFPACK_AVAILABLE = False
 _PARDISO_ERROR_CODES = """
    0 | No error.
   -1 | Input inconsistent.
@@ -59,6 +61,11 @@ if 'arm' not in platform.processor():
         _PARDISO_AVAILABLE = True
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
+try:
+    import scikits.umfpack as um
+    _UMFPACK_AVAILABLE = True
+except ModuleNotFoundError as e:
+    logger.debug('UMFPACK not found, defaulting to SuperLU')
 
 def superlu_info() -> None:
     """Prints relevant SuperLU backend information
@@ -167,29 +174,19 @@ class Sorter:
     It must implement a sort and unsort method.
     """
     def __init__(self):
-        pass
+        self.perm = None
+        self.inv_perm = None
+
+    def reset(self) -> str:
+        """ Reset the permuation vectors."""
+        self.perm = None
+        self.inv_perm = None
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'
     
     def sort(self, A: lil_matrix, b: np.ndarray, reuse_sorting: bool = False) -> tuple[lil_matrix, np.ndarray]:
         return A,b
-    
-    def unsort(self, x: np.ndarray) -> np.ndarray:
-        return x
-    
-class PreSorter(Sorter):
-    """ A Generic class that executes a sort on the indices.
-    It must implement a sort and unsort method.
-    """
-    def __init__(self):
-        pass
-
-    def __str__(self) -> str:
-        return f'{self.__class__.__name__}'
-    
-    def sort(self, A: lil_matrix, b: np.ndarray, solve_ids: np.ndarray) -> tuple[lil_matrix, np.ndarray]:
-        return A,b, solve_ids
     
     def unsort(self, x: np.ndarray) -> np.ndarray:
         return x
@@ -229,7 +226,11 @@ class Solver:
     
     def eig(self, A: lil_matrix, B: np.ndarray, nmodes: int = 6, target_k0: float = None, which: str = 'LM', sign: float = 1.):
         raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
-        
+    
+    def reset(self) -> None:
+        """Reset state variables like numeric and symbollic factorizations."""
+        pass
+
 ## SORTERS
 @dataclass
 class SolveReport:
@@ -246,8 +247,7 @@ class ReverseCuthillMckee(Sorter):
     """ Implements the Reverse Cuthill-Mckee sorting."""
     def __init__(self):
         super().__init__()
-        self.perm = None
-        self.inv_perm = None
+        
 
     def sort(self, A, b, reuse_sorting: bool = False):
         if not reuse_sorting:
@@ -262,6 +262,7 @@ class ReverseCuthillMckee(Sorter):
     def unsort(self, x: np.ndarray):
         logger.debug('Reversing Reverse Cuthill-Mckee sorting.')
         return  x[self.inv_perm]
+    
 ## Preconditioners
 
 class ILUPrecon(Preconditioner):
@@ -363,8 +364,6 @@ class SolverSuperLU(Solver):
 
         self.A: np.ndarray = None
         self.b: np.ndarray = None
-        self._perm_c = None
-        self._perm_r = None
         self.options: dict[str, str] = dict(SymmetricMode=True, Equil=False, IterRefine='SINGLE')
         self.lu = None
         
@@ -372,7 +371,7 @@ class SolverSuperLU(Solver):
         logger.info(f'Calling SuperLU Solver, ID={id}')
         self.single = True
         if not reuse_factorization:
-            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', relax=2, diag_pivot_thresh=0.001, options=self.options)
+            self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', relax=0, diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
 
         return x, 0
@@ -382,18 +381,38 @@ class SolverUMFPACK(Solver):
     """ Implements the UMFPACK Sparse SP solver."""
     req_sorter = False
     real_only = False
+
     def __init__(self):
         super().__init__()
-        self.atol = 1e-5
-
         self.A: np.ndarray = None
         self.b: np.ndarray = None
+        self.up: um.UmfpackContext = um.UmfpackContext('zi')
+        self.up.control[um.UMFPACK_PRL] = 0
+        self.up.control[um.UMFPACK_IRSTEP] = 2
+        self.up.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC
+        self.up.control[um.UMFPACK_ORDERING] = 3
+        self.up.control[um.UMFPACK_PIVOT_TOLERANCE] = 0.001
+        self.up.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = 0.001
+        self.up.control[um.UMFPACK_BLOCK_SIZE] = 64
+        self.up.control[um.UMFPACK_FIXQ] = -1
+
+        self.fact_symb: bool = False
+
+    def reset(self) -> None:
+        self.fact_symb = False
 
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling UMFPACK Solver. ID={id}')
-        self.A = A
-        self.b = b
-        x = spsolve(A, b)
+        if self.fact_symb is False:
+            logger.debug('Executing symbollic factorization.')
+            self.up.symbolic(A)
+            #self.up.report_symbolic()
+            self.fact_symb = True
+        if not reuse_factorization:
+            #logger.debug('Executing numeric factorization.')
+            self.up.numeric(A)
+            self.A = A
+        x = self.up.solve(um.UMFPACK_A, self.A, b, autoTranspose = False )
         return x, 0
 
 class SolverPardiso(Solver):
@@ -596,6 +615,12 @@ class SolveRoutine:
     def __str__(self) -> str:
         return f'SolveRoutine({self.sorter},{self.precon},{self.iterative_solver}, {self.direct_solver})'
     
+    def reset(self) -> None:
+        """Reset all solver states"""
+        self.direct_solver.reset()
+        self.fast_direct_solver.reset()
+        self.sorter.reset()
+
     def get_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
 
@@ -841,15 +866,39 @@ class AutomaticRoutine(SolveRoutine):
             self.use_preconditioner = False
             return self.direct_solver
 
+### DEFAULTS
+
+if not _PARDISO_AVAILABLE:
+    if not _UMFPACK_AVAILABLE:
+        DIRECT_SOLVER_SINGLE = SolverSuperLU()
+    else:
+        DIRECT_SOLVER_SINGLE = SolverUMFPACK()
+else:
+    DIRECT_SOLVER_SINGLE = SolverPardiso()
+
+
+
+if not _UMFPACK_AVAILABLE:
+    DIRECT_SOLVER_PAR = SolverSuperLU()
+else:
+    DIRECT_SOLVER_PAR = SolverUMFPACK()
+
+
+DEFAULT_ROUTINE = AutomaticRoutine(DIRECT_SOLVER_SINGLE)
+
+
 class ParallelRoutine(SolveRoutine):
     """ Defines the Parallel solve routine to be used in the multithreaded environment.
     """
-    def __init__(self):
+    def __init__(self, multi_process: bool):
         self.sorter: Sorter = ReverseCuthillMckee()
         self.precon: Preconditioner = None
 
         self.iterative_solver: Solver = None
-        self.direct_solver: Solver = SolverSuperLU()
+        if multi_process:
+            self.direct_solver: Solver = DIRECT_SOLVER_PAR
+        else:
+            self.direct_solver: Solver = SolverSuperLU()
         #self.direct_solver._limit = 1
 
         self.iterative_eig_solver: Solver = None
@@ -876,11 +925,3 @@ class ParallelRoutine(SolveRoutine):
         """
         return self.direct_solver
     
-### DEFAULTS
-
-if not _PARDISO_AVAILABLE:
-    direct_solver = SolverSuperLU()
-else:
-    direct_solver = SolverPardiso()
-
-DEFAULT_ROUTINE = AutomaticRoutine(direct_solver)

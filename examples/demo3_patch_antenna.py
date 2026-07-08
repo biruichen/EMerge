@@ -113,7 +113,7 @@ pec = model.mw.bc.PEC(rpatch)
 
 # --- Run frequency-domain solver ----------------------------------------
 data = model.mw.frequency_domain(
-    parallel=True, njobs=4, frequency_groups=8
+    parallel=False, njobs=4, frequency_groups=8
 )
 
 # --- Post-process S-parameters ------------------------------------------

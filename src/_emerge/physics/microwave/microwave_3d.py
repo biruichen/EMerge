@@ -38,7 +38,7 @@ import multiprocessing as mp
 from cmath import sqrt as csqrt
 
 def run_job_multi(job: SimJob):
-    routine = ParallelRoutine()
+    routine = ParallelRoutine(True)
     for A, b, ids, reuse in job.iter_Ab():
         solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         job.submit_solution(solution, report)
@@ -115,8 +115,10 @@ class Microwave3D:
         self.data = MWData()
 
     def reset(self):
+        self.bc.reset()
         self.basis: FEMBasis = None
         self.bc = MWBoundaryConditionSet(None)
+        self.solveroutine.reset()
 
     def set_order(self, order: int) -> None:
         """Sets the order of the basis functions used. Currently only supports second order.
@@ -156,13 +158,12 @@ class Microwave3D:
         """
         logger.debug('Initializing boundary conditions.')
 
-        self.bc.reset()
-
         tags = self.mesher.domain_boundary_face_tags
         self.bc.PEC(FaceSelection(tags))
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
 
         if self.mesher.periodic_cell is not None:
+            self.mesher.periodic_cell.generate_bcs()
             for bc in self.mesher.periodic_cell.bcs:
                 self.bc.assign(bc)
 
@@ -592,7 +593,7 @@ class Microwave3D:
         ## DEFINE SOLVE FUNCTIONS
         def get_routine():
             if not hasattr(thread_local, "routine"):
-                thread_local.routine = ParallelRoutine()
+                thread_local.routine = ParallelRoutine(False)
             return thread_local.routine
 
         def run_job(job: SimJob):

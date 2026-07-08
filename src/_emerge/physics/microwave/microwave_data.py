@@ -612,7 +612,7 @@ class MWField:
         return sum([self.excitation[mode.port_number]*self._fields[mode.port_number] for mode in self.port_modes]) 
     
     def set_field_vector(self) -> None:
-        """Defines the default excitetion coefficients for the current dataset"""
+        """Defines the default excitation coefficients for the current dataset"""
         self.excitation = {key: 0.0 for key in self._fields.keys()}
         self.excitation[self.port_modes[0].port_number] = 1.0 + 0j
 

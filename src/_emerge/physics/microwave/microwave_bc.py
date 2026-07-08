@@ -22,7 +22,7 @@ from typing import Callable, Literal
 from ...selection import Selection, FaceSelection
 from ...cs import CoordinateSystem, Axis, GCS
 from ...coord import Line
-from ...geometry import GeoSurface, GeoObject
+from ...geometry import GeoSurface, GeoObject, GeoPolygon
 from dataclasses import dataclass
 from collections import defaultdict
 from ...bc import BoundaryCondition, BoundaryConditionSet, Periodic
@@ -46,21 +46,18 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
 
         self._cell: PeriodicCell = None
 
-    def floquet_port(self, port_number: int, z: float) -> tuple[XYPolygon, FloquetPort]:
+    def floquet_port(self, poly: GeoSurface, port_number: int) -> FloquetPort:
         if self._cell is None:
             raise ValueError('Periodic cel must be defined for this simulation.')
         if isinstance(self._cell, RectCell):
-            poly = XYPlate(self._cell.width, self._cell.height, position=(0,0,z), alignment=Alignment.CENTER)
-            port = FloquetPort(poly, port_number)
+            port = self.FloquetPort(poly, port_number)
             port.width = self._cell.width
             port.height = self._cell.height
         elif isinstance(self._cell, HexCell):
-            xs, ys, zs = zip(self._cell.p1, self._cell.p2, self._cell.p3)
-            poly = XYPolygon(xs, ys).geo()
-            port = FloquetPort(poly, port_number)
+            port = self.FloquetPort(poly, port_number)
             port.area = 1.0
         self._cell._ports.append(port)
-        return poly, port
+        return port
 
 
 
