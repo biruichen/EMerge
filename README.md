@@ -6,6 +6,17 @@ If all is well it should not be possible for others to push anything to this rep
 
 **https://discord.gg/7PF4WcS6uA**
 
+## How to install
+
+Clone this repository or download the files. While in the EMerge path containing the src/emerge folder, install the module using:
+```
+pip install .
+```
+If you want to install the library with PyPardiso on Intel machines, you can install the optional dependency with EMerge using:
+```
+pip install ".[pypardiso]"
+```
+
 ## Compatibility
 
 As far as I know, the library should work on all systems. PyPARDISO is not supported on ARM but the current SuperLU solver settings should work on ARM as well. I have now implemented a proto version of parallel processing for the `.frequency_domain()` method that can run a simulation on multiple parallel threads. This is work in progress!

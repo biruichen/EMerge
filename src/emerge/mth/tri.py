@@ -718,7 +718,7 @@ def ned2_tri_stiff(vertices, edge_lengths, gamma):
     basis[:,1] = ax2
     basis[:,2] = axn
     basis = np.linalg.pinv(basis)
-    lcs_vertices = basis @ vertices
+    lcs_vertices = basis @ np.ascontiguousarray(vertices)
 
     xs = lcs_vertices[0,:]
     ys = lcs_vertices[1,:]

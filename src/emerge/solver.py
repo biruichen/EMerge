@@ -31,7 +31,6 @@ import time
 _PARDISO_AVAILABLE = False
 if 'arm' not in platform.processor():
     logger.info('Non ARM architecture discovered. Importing PyPARDISO')
-    from pypardiso import spsolve as pardiso_solve
     try:
         from pypardiso import spsolve as pardiso_solve
         _PARDISO_AVAILABLE = True
