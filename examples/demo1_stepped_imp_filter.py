@@ -113,14 +113,30 @@ if False:
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
 sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
-f, S11 = sol.ax('freq').S(1,1)
-f, S21 = sol.ax('freq').S(2,1)
-f, S12 = sol.ax('freq').S(1,2)
-f, S22 = sol.ax('freq').S(2,2)
+# Our "sol" variable is of type MWData (Microwave Data). This contains a set of scalar data 
+# like S-parameters and field data like the E/H field. The scalar data is in sol.scalar and the 
+# field data in sol.field. Our data is currently a large list of entries in the dataset simply in order
+# at which it is computed. We can structure our data in cases where we do a single frequency sweep
+# or with a structured parameter sweep. In this case we can use the .grid property which will attempt
+# to construct an N-dimensional grid from our results. 
+
+gritted_data = sol.scalar.grid
+
+# The gritted_data is of type MWGlobalNdim which means its an N-dimensional set of data.
+# From this we can simply take all that we need.
+
+f = gritted_data.freq
+S11 = gritted_data.S(1,1)
+S21 = gritted_data.S(2,1)
+
+# This extracts the actual simulation data.
+plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
+
+# We can also supersample our data by constructing a model using the Vector Fitting algorithm
 
 f = np.linspace(0.2e9, 10e9, 2001)
-S11 = sol.model_S(1,1,f)
-S21 = sol.model_S(2,1,f)
+S11 = gritted_data.model_S(1,1,f)
+S21 = gritted_data.model_S(2,1,f)
 
 smith(f,S11)
 

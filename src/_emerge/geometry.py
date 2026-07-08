@@ -29,6 +29,8 @@ def _map_tags(tags: list[int], mapping: dict[int, list[int]]):
         new_tags.extend(mapping.get(tag, [tag,]))
     return new_tags
 
+def _bbcenter(x1, y1, z1, x2, y2, z2):
+    return np.array([(x1+x2)/2, (y1+y2)/2, (z1+z2)/2])
 FaceNames = Literal['back','front','left','right','top','bottom']
 
 class _KEY_GENERATOR:
@@ -63,7 +65,7 @@ class _FacePointer:
         for (d,t), o, n in zip(dimtags, origins, normals):
             normdist = np.abs((o-self.o)@self.n)
             dotnorm = np.abs(n@self.n)
-            if normdist < 1e-6 and dotnorm > 0.99999:
+            if normdist < 1e-3 and dotnorm > 0.99:
                 tags.append(t)
         return tags
     
@@ -170,6 +172,8 @@ class _FacePointer:
         # Optionally normalize self.n if you need to keep it unit-length:
         # self.n = self.n / np.linalg.norm(self.n)
 
+    def copy(self) -> _FacePointer:
+        return _FacePointer(self.o, self.n)
 
 class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
@@ -238,6 +242,23 @@ class GeoObject:
                           normal: np.ndarray):
         self._face_pointers[name] = _FacePointer(origin, normal)
     
+    def make_copy(self) -> GeoObject:
+        new_dimtags = gmsh.model.occ.copy(self.dimtags)
+        new_obj = GeoObject.from_dimtags(new_dimtags)
+        new_obj.material = self.material
+        new_obj.mesh_multiplier = self.mesh_multiplier
+        new_obj.max_meshsize = self.max_meshsize
+        
+        new_obj._unset_constraints = self._unset_constraints
+        new_obj._embeddings = [emb.make_copy() for emb in self._embeddings]
+        new_obj._face_pointers = {key: value.copy() for key,value in self._face_pointers.items()}
+        new_obj._tools = {key: {key2: value2.copy() for key2, value2 in value.items()} for key,value in self._tools.items()}
+        
+        new_obj._aux_data = self._aux_data.copy()
+        new_obj._priority = self._priority
+        new_obj._exists = self._exists
+        return new_obj
+
     def replace_tags(self, tagmap: dict[int, list[int]]):
         self.old_tags = self.tags
         newtags = []
@@ -284,8 +305,9 @@ class GeoObject:
         
         gmsh.model.occ.synchronize()
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
-        origins = [gmsh.model.occ.get_center_of_mass(d,t) for d,t in dimtags]
-        normals = [gmsh.model.get_normal(t, (0,0)) for d,t, in dimtags]
+        
+        normals = [gmsh.model.get_normal(t, [0,0]) for d,t, in dimtags]
+        origins = [gmsh.model.occ.get_center_of_mass(d, t) for d,t in dimtags]
         
         if tool is not None:
             tags = self._tools[tool._key][name].find(dimtags, origins, normals)
@@ -359,7 +381,13 @@ class GeoObject:
             raise ValueError('Can only generate faces for objects of dimension 2 or higher.')
 
     @staticmethod
-    def from_dimtags(dim: int, tags: list[int]) -> GeoVolume | GeoSurface | GeoObject:
+    def from_dimtags(dimtags: list[tuple[int,int]]) -> GeoVolume | GeoSurface | GeoObject:
+        dim = dimtags[0][0]
+        tags = [t for d,t in dimtags]
+        if dim==0:
+            return GeoPoint(tags)
+        elif dim==1:
+            return GeoEdge(tags)
         if dim==2:
             return GeoSurface(tags)
         if dim==3:

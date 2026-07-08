@@ -116,21 +116,21 @@ data = model.mw.frequency_domain()
 
 
 # First the S11 plot
-f, S11 = data.ax('freq').S(1,1)
+f = data.scalar.grid.freq
+S11 = data.scalar.grid.S(1,1)
 
 plot_sp(f/1e9, S11, labels=['S11'])
 
 # First we need to create a boundary mesh
 rad_surf = model.mesh.boundary_surface(radiation_boundary.tags, (0,0,0))
 # Then we need to compute the E-field on the edges.  We will pick the first frequency.
-Ein, Hin = data.item(0).interpolate(*rad_surf.exyz).EH
+Ein, Hin = data.field[0].interpolate(*rad_surf.exyz).EH
 
 # Then we define some angles for our plot
 theta = np.linspace(-np.pi/2, 1.5*np.pi, 201)
 phi = 0*theta
-k0 =  data.item(0).k0
+k0 =  data.field[0].k0
 E, H = em.stratton_chu(Ein, Hin, rad_surf, theta, phi, k0)
-
 
 # Finally we create the plot
 plot_ff_polar(theta, em.norm(E))

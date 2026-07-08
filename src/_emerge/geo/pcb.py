@@ -89,6 +89,22 @@ def _rot_mat(angle):
     ang = -angle * np.pi/180
     return np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
 
+class PCBPoly:
+
+    def __init__(self, 
+                 xs: list[float],
+                 ys: list[float],
+                 z: float = 0,
+                 material: Material = COPPER):
+        self.xs: list[float] = xs
+        self.ys: list[float] = ys
+        self.z: float = z
+        self.material: Material = material
+
+    @property
+    def xys(self) -> list[tuple[float, float]]:
+        return list([(x,y) for x,y in zip(self.xs, self.ys)])
+    
 class StripTurn(RouteElement):
 
     def __init__(self,
@@ -483,6 +499,7 @@ class PCBLayouter:
         self.length: float = None
         self.origin: np.ndarray = None
         self.paths: list[StripPath] = []
+        self.polies: list[PCBPoly] = []
 
         self.lumped_ports: list[StripLine] = []
 
@@ -757,6 +774,7 @@ class PCBLayouter:
         poly._aux_data['height'] = height*self.unit
         poly._aux_data['vdir'] = self.cs.zax
         poly._aux_data['idir'] = Axis(self.cs.xax.np*stripline.dirright[0] + self.cs.yax.np*stripline.dirright[1])
+        
         return poly
 
     def modal_port(self,
@@ -815,6 +833,38 @@ class PCBLayouter:
             return GeoVolume.merged(vias)
         return vias   
 
+    def add_poly(self, 
+                 xs: list[float],
+                 ys: list[float],
+                 z: float = 0,
+                 material: Material = COPPER):
+        """Add a custom polygon to the PCB
+
+        Args:
+            xs (list[float]): A list of x-coordinates
+            ys (list[float]): A list of y-coordinates
+            z (float, optional): The z-height. Defaults to 0.
+            material (Material, optional): The material. Defaults to COPPER.
+        """
+        self.polies.append(PCBPoly(xs, ys, z, material))
+
+    def _gen_poly(self, xys: list[tuple[float, float]], z: float) -> GeoPolygon:
+        """ Generates a GeoPoly out of a list of (x,y) coordinate tuples"""
+        ptags = []
+        for x,y in xys:
+            px, py, pz = self.cs.in_global_cs(x*self.unit, y*self.unit, z*self.unit)
+            ptags.append(gmsh.model.occ.addPoint(px, py, pz))
+        
+        ltags = []
+        for t1, t2 in zip(ptags[:-1], ptags[1:]):
+            ltags.append(gmsh.model.occ.addLine(t1, t2))
+        ltags.append(gmsh.model.occ.addLine(ptags[-1], ptags[0]))
+        
+        tag_wire = gmsh.model.occ.addWire(ltags)
+        planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
+        poly = GeoPolygon([planetag,])
+        return poly
+    
     def compile_paths(self, merge: bool = False) -> list[GeoPolygon] | GeoSurface:
         """Compiles the striplines and returns a list of polygons or asingle one.
 
@@ -839,8 +889,6 @@ class PCBLayouter:
                 xys.extend(elemn.right)
             for element in path.path[::-1]:
                 xys.extend(element.left)
-            
-            ptags = []
 
             xm, ym = xys[0]
             xys2 = [(xm,ym),]
@@ -852,19 +900,14 @@ class PCBLayouter:
                     allx.append(x)
                     ally.append(y)
             
-            for x,y in xys2:
-                px, py, pz = self.cs.in_global_cs(x*self.unit, y*self.unit, z*self.unit)
-                ptags.append(gmsh.model.occ.addPoint(px, py, pz))
-            
-            ltags = []
-            for t1, t2 in zip(ptags[:-1], ptags[1:]):
-                ltags.append(gmsh.model.occ.addLine(t1, t2))
-            ltags.append(gmsh.model.occ.addLine(ptags[-1], ptags[0]))
-            
-            tag_wire = gmsh.model.occ.addWire(ltags)
-            planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-            poly = GeoPolygon([planetag,])
+            poly = self._gen_poly(xys2, z)
             poly.material = COPPER
+            polys.append(poly)
+
+        for pcbpoly in self.polies:
+            self.zs.append(pcbpoly.z)
+            poly = self._gen_poly(pcbpoly.xys, pcbpoly.z)
+            poly.material = pcbpoly.material
             polys.append(poly)
 
         self.xs = allx
@@ -875,6 +918,8 @@ class PCBLayouter:
             tags = []
             for p in polys:
                 tags.extend(p.tags)
+                if p.material != COPPER:
+                    logger.warning(f'Merging a polygon with material {p.material} into a single polygon that will be COPPER.')
             polys = GeoSurface(tags)
             polys.material = COPPER
         return polys

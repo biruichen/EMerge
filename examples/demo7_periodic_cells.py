@@ -105,6 +105,6 @@ data = model.mw.frequency_domain()
 
 model.display.add_object(wg)
 model.display.add_object(model['box'])
-model.display.add_surf(*data.item(0).cutplane(3*mm, y=0).scalar('Ey','real'))
-model.display.add_surf(*data.item(0).cutplane(3*mm, x=0).scalar('Ey','real'))
+model.display.add_surf(*data.field[0].cutplane(3*mm, y=0).scalar('Ey','real'))
+model.display.add_surf(*data.field[0].cutplane(3*mm, x=0).scalar('Ey','real'))
 model.display.show()

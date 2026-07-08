@@ -161,7 +161,8 @@ def translate(main: GeoVolume,
 
 def mirror(main: GeoVolume,
            origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-           direction: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> GeoVolume:
+           direction: tuple[float, float, float] = (1.0, 0.0, 0.0),
+           make_copy: bool = True) -> GeoVolume:
     """Mirrors a GeoVolume object along a miror plane defined by a direction originating at a point
 
     Args:
@@ -177,11 +178,17 @@ def mirror(main: GeoVolume,
     d = -(a*x0 + b*y0 + c*z0)
     if (a==0) and (b==0) and (c==0):
         return main
-    gmsh.model.occ.mirror(main.dimtags, a,b,c,d)
+    mirror_obj = main
+    if make_copy:
+        new_obj = main.make_copy()
+        gmsh.model.occ.mirror(new_obj.dimtags, a,b,c,d)
+        mirror_obj = new_obj
+    else:
+        gmsh.model.occ.mirror(main.dimtags, a,b,c,d)
 
-    for fp in main._all_pointers:
+    for fp in mirror_obj._all_pointers:
         fp.mirror(origin, direction)
-    return main
+    return mirror_obj
 
 def change_coordinate_system(main: GeoVolume,
                              new_cs: CoordinateSystem = GCS,

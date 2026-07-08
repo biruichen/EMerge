@@ -72,8 +72,9 @@ d.show()
 
 data = model.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
-f, S11 = data.ax('freq').S(1,1)
-f, S21 = data.ax('freq').S(2,1)
+f = data.scalar.grid.freq
+S11 = data.scalar.grid.S(1,1)
+S21 = data.scalar.grid.S(2,1)
 
 plot_sp(f/1e9, [S11, S21], labels=['S11','S21'])
 

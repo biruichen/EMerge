@@ -25,9 +25,9 @@ from .logsettings import logger_format
 from .geo.builder import Builder
 from .plot.display import BaseDisplay
 from .plot.pyvista import PVDisplay
-from .dataset import SimData
+from .dataset import SimulationDataset
 from .periodic import PeriodicCell
-from typing import Literal, Type, Generator
+from typing import Literal, Type, Generator, Any
 from loguru import logger
 import numpy as np
 import sys
@@ -98,15 +98,16 @@ class Simulation3D:
         if logfile:
             self.set_logfile(logfile)
 
+        self.obj: dict[str, GeoObject] = dict()
+
         self.save_file: bool = save_file
         self.load_file: bool = load_file
-        self.data: SimData = None
-        self.obj: dict[str, GeoObject] = dict()
+
+        self.data: SimulationDataset = None
+        self._initialize_simulation()
         
         ## Physics
-        self.mw: Microwave3D = Microwave3D(self.mesher)
-
-        self._initialize_gmsh()
+        self.mw: Microwave3D = Microwave3D(self.mesher, self.data.mw)
 
     def __setitem__(self, name: str, value: GeoObject) -> None:
         self.obj[name] = value
@@ -114,6 +115,13 @@ class Simulation3D:
     def __getitem__(self, name: str) -> GeoObject:
         return self.obj[name]
     
+    def set_mesh(self, mesh: Mesh3D) -> None:
+        """Set the current model mesh to a given mesh."""
+        self.mesh = mesh
+        self.mw.mesh = mesh
+        self.mesher.mesh = mesh
+        self.display._mesh = mesh
+   
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
         # Ensure directory exists
@@ -123,13 +131,20 @@ class Simulation3D:
 
         # Save mesh
         mesh_path = self.modelpath / 'mesh.msh'
+        brep_path = self.modelpath / 'model.brep'
+
+        gmsh.option.setNumber('Mesh.SaveParametric', 1)
+        gmsh.option.setNumber('Mesh.SaveAll', 1)
+        gmsh.model.geo.synchronize()
+        gmsh.model.occ.synchronize()
+
         gmsh.write(str(mesh_path))
+        gmsh.write(str(brep_path))
         logger.info(f"Saved mesh to: {mesh_path}")
 
         # Pack and save data
-        physics = self.mw.pack_data()
         objects = self.obj
-        dataset = dict(physics=physics, objects=objects, mesh=self.mesh)
+        dataset = dict(simdata=self.data, objects=objects, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
         joblib.dump(dataset, str(data_path))
         logger.info(f"Saved simulation data to: {data_path}")
@@ -137,24 +152,30 @@ class Simulation3D:
     def load(self) -> None:
         """Loads the model from the project directory."""
         mesh_path = self.modelpath / 'mesh.msh'
+        brep_path = self.modelpath / 'model.brep'
         data_path = self.modelpath / 'simdata.emerge'
 
         if not mesh_path.exists() or not data_path.exists():
             raise FileNotFoundError("Missing required mesh or data file.")
 
         # Load mesh
-        gmsh.open(str(mesh_path))
+        gmsh.open(str(brep_path))
+        gmsh.merge(str(mesh_path))
+        gmsh.model.geo.synchronize()
+        gmsh.model.occ.synchronize()
         logger.info(f"Loaded mesh from: {mesh_path}")
-        self.mesh.update()
+        #self.mesh.update([])
 
         # Load data
         datapack = joblib.load(str(data_path))
-        self.mw.load_data(datapack['physics'])
+        self.data = datapack['simdata']
         self.obj = datapack['objects']
-        self.mesh = datapack['mesh']
-        self.data = self.mw.get_data()
+        self.set_mesh(datapack['mesh'])
         logger.info(f"Loaded simulation data from: {data_path}")
 
+    def load_data(self, key: str) -> Any:
+        return self.save_data[key]
+    
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:
         """Set the loglevel for loguru.
 
@@ -309,6 +330,7 @@ class Simulation3D:
                 self.mesh = Mesh3D(self.mesher)
                 self.mw.reset()
             self.mw._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            self._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
             logger.info(f'Iterating: {self.mw._params}')
             if len(dims_flat)==1:
                 yield dims_flat[0][iter]
@@ -351,8 +373,9 @@ class Simulation3D:
             signal.signal(signum, signal.SIG_DFL)
             os.kill(os.getpid(), signum)
 
-    def _initialize_gmsh(self):
-        """Initializes the GMSH API with proper shutdown routines.
+ 
+    def _initialize_simulation(self):
+        """Initializes the Simulation data and GMSH API with proper shutdown routines.
         """
         # If GMSH is not yet initialized (Two simulation in a file)
         if gmsh.isInitialized() == 0:
@@ -368,6 +391,7 @@ class Simulation3D:
         # Create a new GMSH model or load it
         if not self.load_file:
             gmsh.model.add(self.modelname)
+            self.data: SimulationDataset = SimulationDataset()
         else:
             self.load()
 
