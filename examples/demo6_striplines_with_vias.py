@@ -59,9 +59,9 @@ model.mesher.set_boundary_size(trace, 0.001)
 
 model.generate_mesh()
 
-# We display the geometry with extra attention to the vias. With the vias.outside() method we can
+# We display the geometry with extra attention to the vias. With the vias.boundary() method we can
 # specifically show the outside faces of the via.
-model.view(selections=[vias.outside()])
+model.view(selections=[vias.boundary()])
 
 # We setup the lumped port boundary conditions. Because of an added functionality in the PCBLayouter 
 # class, you don't have to specify the width, height and direction of the lumped port, this information
@@ -74,7 +74,7 @@ p2 = model.mw.bc.LumpedPort(lp2, 2)
 pec = model.mw.bc.PEC(trace)
 
 #We also add a PEC for the outsides of our via.
-pecvia = model.mw.bc.PEC(vias.outside())
+pecvia = model.mw.bc.PEC(vias.boundary())
 
 # Finally we run the simulation!
 data = model.mw.run_sweep(True, 4, frequency_groups=8)
