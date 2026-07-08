@@ -30,7 +30,7 @@ pcbmat = em.Material(er=er, color="#217627", opacity=0.2)
 # We start by creating our simulation object.
 
 m = em.Simulation('SteppedImpedanceFilter')
-m.check_version("2.1.0") # Checks version compatibility.
+m.check_version("2.1.1") # Checks version compatibility.
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
 # the dimensions and the PCB material.
@@ -42,7 +42,7 @@ layouter = em.geo.PCB(th, unit=mil, material=pcbmat, layers=3)
 # sequentially constructs our stripline trace. In this case, it is sipmly a sequence of straight
 # sections.
 
-layouter.new(0,0,W0, (1,0), z=layouter.z(2)).store('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
+layouter.new(0,0,W0, (1,0), z=layouter.z(1)).store('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
     .straight(L2,W2).straight(L1,W1).straight(L0,W0).store('p2')
 
 # Next we generate a wave port surface to use for our simulation. A wave port can be automatically
@@ -85,8 +85,9 @@ m.mesher.set_face_size(p1, 5*mm)
 m.mesher.set_face_size(p2, 5*mm)
 
 # Finally we generate our mesh and view it
+
 m.generate_mesh()
-m.view()
+
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, modetype='TEM')

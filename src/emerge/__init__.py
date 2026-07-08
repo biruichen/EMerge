@@ -34,7 +34,7 @@ warnings.filterwarnings(
 
 import os
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 NTHREADS = "1"
 os.environ["EMERGE_STD_LOGLEVEL"] = os.getenv("EMERGE_STD_LOGLEVEL", default="INFO")
@@ -76,6 +76,7 @@ from ._emerge.mesher import Algorithm2D, Algorithm3D
 #from . import lib
 from ._emerge.howto import _HowtoClass
 from ._emerge.emerge_update import update_emerge
+from ._emerge.cleanup import cleanup
 from .auxilliary.touchstone import TouchstoneData
 from emsutil import isola, rogers, const, lib
 from emsutil.material import Material, MatProperty, FreqDependent, CoordDependent, FreqCoordDependent
