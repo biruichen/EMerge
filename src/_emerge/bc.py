@@ -360,9 +360,7 @@ class ModalPort(PortBC):
 
         self.port_number: int= port_number
         self.active: bool = active
-
         self.power: float = power
-
         self.cs: CoordinateSystem = cs
         self.selected_mode: int = 0
         self.modes: list[PortMode] = []

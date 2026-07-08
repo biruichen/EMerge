@@ -18,12 +18,69 @@
 from __future__ import annotations
 import numpy as np
 from ..mesh3d import SurfaceMesh
-from ..dataset_old import Dataset, Axis
 from .femdata import FEMBasis
-from ..mth.tri import ned2_tri_interp, ned2_tri_interp_full, ned2_tri_interp_curl
-from ..mth.optimized import local_mapping, matinv
+from ..mth.tri import ned2_tri_interp_full, ned2_tri_interp_curl
+from ..mth.optimized import matinv
 from ..cs import CoordinateSystem
 from typing import Callable
+
+
+## TODO: TEMPORARY SOLUTION FIX THIS
+
+class FieldFunctionClass:
+    """"""
+    def __init__(self, 
+                 field: np.ndarray,
+                 cs: CoordinateSystem,
+                 nodes: np.ndarray,
+                 tris: np.ndarray,
+                 tri_to_field: np.ndarray,
+                 EH: str = 'E',
+                 diadic: np.ndarray = None,
+                 beta: float = None,
+                 constant: float = 1.0):
+        self.field: np.ndarray = field
+        self.cs: CoordinateSystem = cs
+        self.nodes: np.ndarray = nodes
+        self.tris: np.ndarray = tris
+        self.tri_to_field: np.ndarray = tri_to_field
+        self.eh: str = EH
+        self.diadic: np.ndarray = diadic
+        self.beta: float = beta
+        self.constant: float = constant
+        if EH == 'H':
+            if diadic is None:
+                self.diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.tris.shape[1]))
+
+    def __call__(self, xs: np.ndarray,
+             ys: np.ndarray,
+             zs: np.ndarray):
+        xl, yl, zl = self.cs.in_local_cs(xs, ys, zs)
+        if self.eh == 'E':
+            Fxl, Fyl, Fzl = self.calcE(xl, yl)
+        else:
+            Fxl, Fyl, Fzl = self.calcH(xl, yl)
+        Fx, Fy, Fz = self.cs.in_global_basis(Fxl, Fyl, Fzl)
+        return np.array([Fx, Fy, Fz])*self.constant
+    
+    def calcE(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        coordinates = np.array([xs, ys])
+        return ned2_tri_interp_full(coordinates, 
+                               self.field, 
+                               self.tris,  
+                               self.nodes, 
+                               self.tri_to_field)
+    
+    def calcH(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        coordinates = np.array([xs, ys])
+        
+        return ned2_tri_interp_curl(coordinates, 
+                               self.field, 
+                               self.tris,  
+                               self.nodes, 
+                               self.tri_to_field,
+                               self.diadic,
+                               self.beta)
 
 ############### Nedelec2 Class
 
@@ -79,17 +136,17 @@ class NedelecLegrange2(FEMBasis):
         self._field = self.fielddata(**kwargs)
         return self
     
-    def interpolate_Ef(self, field: np.ndarray) -> Callable:
+    def interpolate_Ef(self, field: np.ndarray) -> FieldFunctionClass:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
         
-        def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
-            xl, yl, zl = self.cs.in_local_cs(xs, ys, zs)
-            Exl, Eyl, Ezl = self.tri_interpolate(field, xl, yl)
-            Ex, Ey, Ez = self.cs.in_global_basis(Exl, Eyl, Ezl)
-            return np.array([Ex, Ey, Ez])
-        return func
+        # def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
+        #     xl, yl, zl = self.cs.in_local_cs(xs, ys, zs)
+        #     Exl, Eyl, Ezl = self.tri_interpolate(field, xl, yl)
+        #     Ex, Ey, Ez = self.cs.in_global_basis(Exl, Eyl, Ezl)
+        #     return np.array([Ex, Ey, Ez])
+        return FieldFunctionClass(field, self.cs, self.local_nodes, self.mesh.tris, self.tri_to_field, 'E')
 
-    def interpolate_Hf(self, field: np.ndarray, k0: float, ur: np.ndarray, beta: float) -> Callable:
+    def interpolate_Hf(self, field: np.ndarray, k0: float, ur: np.ndarray, beta: float) -> FieldFunctionClass:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
         constant = 1j/ ((k0*299792458)*(4*np.pi*1e-7))
         urinv = np.zeros_like(ur)
@@ -97,12 +154,12 @@ class NedelecLegrange2(FEMBasis):
         for i in range(ur.shape[2]):
             urinv[:,:,i] = matinv(ur[:,:,i])
 
-        def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
-            xl, yl, _ = self.cs.in_local_cs(xs, ys, zs)
-            Exl, Eyl, Ezl = self.tri_interpolate_curl(field, xl, yl, urinv, beta)
-            Ex, Ey, Ez = self.cs.in_global_basis(Exl, Eyl, Ezl)
-            return np.array([Ex, Ey, Ez])*constant
-        return func
+        # def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
+        #     xl, yl, _ = self.cs.in_local_cs(xs, ys, zs)
+        #     Exl, Eyl, Ezl = self.tri_interpolate_curl(field, xl, yl, urinv, beta)
+        #     Ex, Ey, Ez = self.cs.in_global_basis(Exl, Eyl, Ezl)
+        #     return np.array([Ex, Ey, Ez])*constant
+        return FieldFunctionClass(field, self.cs, self.local_nodes, self.mesh.tris, self.tri_to_field, 'H', urinv, beta, constant)
     
     def tri_interpolate(self, field, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
@@ -112,7 +169,7 @@ class NedelecLegrange2(FEMBasis):
                                self.local_nodes, 
                                self.tri_to_field)
     
-    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray,diadic: np.ndarray = None,beta: float = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray, diadic: np.ndarray = None, beta: float = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
         if diadic is None:
             diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.mesh.n_tris))
