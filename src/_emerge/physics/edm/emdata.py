@@ -145,6 +145,13 @@ class EMDataSet(DataSet):
         return self.Ex, self.Ey, self.Ez
     
     @property
+    def normE(self) -> np.ndarray:
+        return np.sqrt(np.abs(self.Ex)**2 + np.abs(self.Ey)**2 + np.abs(self.Ez)**2)
+    
+    @property
+    def normH(self) -> np.ndarray:
+        return np.sqrt(np.abs(self.Hx)**2 + np.abs(self.Hy)**2 + np.abs(self.Hz)**2)
+    @property
     def Emat(self) -> np.ndarray:
         return np.array([self.Ex, self.Ey, self.Ez])
     
@@ -204,7 +211,7 @@ class EMDataSet(DataSet):
                      ds: float,
                      x: float=None,
                      y: float=None,
-                     z: float=None):
+                     z: float=None) -> EMDataSet:
         xb, yb, zb = self._basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
@@ -220,18 +227,45 @@ class EMDataSet(DataSet):
             Z = z*np.ones_like(Y)
         self.interpolate(X,Y,Z)
         return self
+    
+    def grid(self, ds: float) -> EMDataSet:
+        """Interpolate a uniform grid sampled at ds
 
+        Args:
+            ds (float): the sampling distance
+
+        Returns:
+            This object
+        """
+        xb, yb, zb = self._basis.bounds
+        xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
+        ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
+        zs = np.linspace(zb[0], zb[1], int((zb[1]-zb[0])/ds))
+        X, Y, Z = np.meshgrid(xs, ys, zs)
+        self.interpolate(X,Y,Z)
+        return self
+    
     def S(self, i1: int, i2: int) -> complex:
         ''' Returns the S-parameter S(i1,i2)'''
         return self.Sp(i1, i2)
 
-    def quiver(self, field: Literal['E','H']):
+    def vector(self, field: Literal['E','H']) -> tuple[np.ndarray, np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+        
         if field=='E':
             return self._x, self._y, self._z, self.Ex.real, self.Ey.real, self.Ez.real
         if field=='H':
             return self._x, self._y, self._z, self.Hx.real, self.Hy.real, self.Hz.real
 
-    def surf(self, field: Literal['Ex','Ey','Ez','Hx','Hy','Hz'], metric: Literal['abs','real','imag'] = 'real'):
+    def scalar(self, field: Literal['Ex','Ey','Ez','Hx','Hy','Hz','normE','normH'], metric: Literal['abs','real','imag'] = 'real') -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the data X, Y, Z, Field based on the interpolation
+
+        Args:
+            field (str): The field to plot
+            metric (str, optional): The metric to impose on the plot. Defaults to 'real'.
+
+        Returns:
+            (X,Y,Z,Field): The coordinates plus field scalar
+        """
         field = getattr(self, field)
         if metric=='abs':
             field = np.abs(field)
