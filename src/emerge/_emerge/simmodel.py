@@ -245,11 +245,12 @@ class Simulation:
         vM, vm, vp = [float(x) for x in version.split('.')]
         cM, cm, cp = [float(x) for x in __version__.split('.')]
         if vM != cM:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
         if vm != cm:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
         if vp != cp:
             logger.warning(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            logger.warning("\n You can upgrade your version of emerge with: pip --upgrade emerge")
             logger.warning("You may suppress this error by removing the call to .check_version().")
             input('Press enter to proceed...')
 

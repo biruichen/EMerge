@@ -19,6 +19,6 @@ from .pcb import PCB
 from .pmlbox import pmlbox
 from .horn import Horn
 from .shapes import Cylinder, CoaxCylinder, Box, XYPlate, HalfSphere, Sphere, Plate, OldBox, Alignment, Cone
-from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system, translate, intersect, unite, expand_surface
+from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system, translate, intersect, unite, expand_surface, stretch
 from .polybased import XYPolygon, GeoPrism, Disc, Curve
 from .step import STEPItems

@@ -22,7 +22,7 @@ _COMPILE_MESSAGE = """
  [ EMERGE ]
 ⚠  Numba is compiling optimized code; this may take a few minutes.
    • Additional functions may be compiled on-the-fly.
-   • Compilation happens only once—subsequent runs load from cache.
+   • Compilation happens only once-subsequent runs load from cache.
    Please wait…"""
 
 @njit(cache=True)

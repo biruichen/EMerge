@@ -282,9 +282,9 @@ class FarFieldData:
     
     @property
     def Etheta(self) -> np.ndarray:
-        thx = -np.cos(self.theta)*np.cos(self.phi)
-        thy = -np.cos(self.theta)*np.sin(self.phi)
-        thz = np.sin(self.theta)
+        thx = np.cos(self.theta)*np.cos(self.phi)
+        thy = np.cos(self.theta)*np.sin(self.phi)
+        thz = -np.sin(self.theta)
         return thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:]
     
     @property
@@ -296,11 +296,11 @@ class FarFieldData:
     
     @property
     def Erhcp(self) -> np.ndarray:
-        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def Elhcp(self) -> np.ndarray:
-        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
+        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
     
     @property
     def AR(self) -> np.ndarray:
@@ -702,6 +702,11 @@ class MWField:
     
     def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> EHField:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
+        if isinstance(xs, (float, int, complex)):
+            xs = np.array([xs,])
+            ys = np.array([ys,])
+            zs = np.array([zs,])
+            
         shp = xs.shape
         xf = xs.flatten()
         yf = ys.flatten()
