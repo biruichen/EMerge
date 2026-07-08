@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from ..microwave_bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic
+from ..microwave_bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic, MWBoundaryConditionSet
 from ....elements.nedelec2 import Nedelec2
 from ....elements.nedleg2 import NedelecLegrange2
 from ....mth.optimized import gaus_quad_tri
@@ -26,14 +26,7 @@ from scipy.sparse import csr_matrix
 from loguru import logger
 from ..simjob import SimJob
 from .periodicbc import gen_periodic_matrix
-
-
-############################################################
-#                         CONSTANTS                        #
-############################################################
-
-C0 = 299792458
-EPS0 = 8.854187818814e-12
+from ....const import MU0, EPS0, C0
 
 
 ############################################################
@@ -124,7 +117,7 @@ class Assembler:
                         sig: np.ndarray,
                         k0: float,
                         port: PortBC,
-                        bcs: list[BoundaryCondition]) -> tuple[csr_matrix, csr_matrix, np.ndarray, NedelecLegrange2]:
+                        bc_set: MWBoundaryConditionSet) -> tuple[csr_matrix, csr_matrix, np.ndarray, NedelecLegrange2]:
         """Computes the boundary mode analysis matrices
 
         Args:
@@ -134,32 +127,37 @@ class Assembler:
             sig (np.ndarray): The conductivity scalar of shape (N,)
             k0 (float): The simulation phase constant
             port (PortBC): The port boundary condition object
-            bcs (list[BoundaryCondition]): The other boundary conditions
+            bcs (MWBoundaryConditionSet): The other boundary conditions
 
         Returns:
             tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]: The E, B, solve ids and Mixed order field object.
         """
         from .generalized_eigen import generelized_eigenvalue_matrix
-        
+        logger.debug('Assembling Boundary Mode Matrices')
+
+        bcs = bc_set.boundary_conditions
         mesh = field.mesh
         tri_ids = mesh.get_triangles(port.tags)
+        logger.trace(f'.boundary face has {len(tri_ids)} triangles.')
 
         origin = tuple([c-n for c,n in zip(port.cs.origin, port.cs.gzhat)])
-        
+        logger.trace(f'.boundary origin {origin}')
+
         boundary_surface = mesh.boundary_surface(port.tags, origin)
         nedlegfield = NedelecLegrange2(boundary_surface, port.cs)
 
         ermesh = er[:,:,tri_ids]
         urmesh = ur[:,:,tri_ids]
         sigmesh = sig[tri_ids]
-
         ermesh = ermesh - 1j * sigmesh/(k0*C0*EPS0)
 
+        logger.trace(f'.assembling matrices for {nedlegfield} at k0={k0:.2f}')
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)
 
-        pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
+        # TODO: Simplified to all "conductors" loosely defined. Must change to implementing line robin boundary conditions.
+        pecs: list[BoundaryCondition] = bc_set.get_conductors()#[bc for bc in bcs if isinstance(bc,PEC)]
         if len(pecs) > 0:
-            logger.debug('Implementing PEC BCs')
+            logger.debug(f'.total of equiv. {len(pecs)} PEC BCs implemented')
 
         pec_ids = []
 
@@ -172,8 +170,8 @@ class Assembler:
         pec_edges = []
         pec_vertices = []
         for pec in pecs:
+            logger.trace(f'.implementing {pec}')
             face_tags = pec.tags
-
             tri_ids = mesh.get_triangles(face_tags)
             edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
             for ii in edge_ids:
@@ -186,7 +184,6 @@ class Assembler:
                 pec_vertices.append(eids[3]-nedlegfield.n_xy)
                 pec_vertices.append(eids[4]-nedlegfield.n_xy)
             
-
             for ii in tri_ids:
                 i2 = nedlegfield.mesh.from_source_tri(ii)
                 if i2 is None:
@@ -196,6 +193,8 @@ class Assembler:
 
         # Process all port boundary Conditions
         pec_ids_set: set[int] = set(pec_ids)
+
+        logger.trace(f'.total of {len(pec_ids_set)} pec DoF to remove.')
         solve_ids = [i for i in range(nedlegfield.n_field) if i not in pec_ids_set]
 
         return E, B, np.array(solve_ids), nedlegfield
@@ -236,11 +235,11 @@ class Assembler:
 
         if cache_matrices and not is_frequency_dependent and self.cached_matrices is not None:
             # IF CACHED AND AVAILABLE PULL E AND B FROM CACHE
-            logger.debug('    Retreiving cached matricies')
+            logger.debug('Using cached matricies.')
             E, B = self.cached_matrices
         else:
             # OTHERWISE, COMPUTE
-            logger.debug('    Assembling matrices')
+            logger.debug('Assembling matrices')
             E, B = tet_mass_stiffness_matrices(field, er, ur)
             self.cached_matrices = (E, B)
 
@@ -259,15 +258,24 @@ class Assembler:
         b = np.zeros((E.shape[0],)).astype(np.complex128)
         port_vectors = {port.port_number: np.zeros((E.shape[0],)).astype(np.complex128) for port in port_bcs}
         
-        # Process all PEC Boundary Conditions
-        logger.debug('    Implementing PEC Boundary Conditions.')
+
+        ############################################################
+        #                      PEC BOUNDARY CONDITIONS             #
+        ############################################################
+
+        logger.debug('Implementing PEC Boundary Conditions.')
         pec_ids: list[int] = []
         # Conductivity above al imit, consider it all PEC
+        ipec = 0
         for itet in range(field.n_tets):
             if sig[itet] > self.conductivity_limit:
+                ipec+=1
                 pec_ids.extend(field.tet_to_field[:,itet])
-        
+        if ipec>0:
+            logger.trace(f'Extended PEC with {ipec} tets with a conductivity > {self.conductivity_limit}.')
+
         for pec in pec_bcs:
+            logger.trace(f'Implementing: {pec}')
             if len(pec.tags)==0:
                 continue
             face_tags = pec.tags
@@ -282,14 +290,18 @@ class Assembler:
                 tids = field.tri_to_field[:, ii]
                 pec_ids.extend(list(tids))
 
-        # Robin BCs
+
+        ############################################################
+        #                     ROBIN BOUNDARY CONDITIONS            #
+        ############################################################
+
         if len(robin_bcs) > 0:
-            logger.debug('    Implementing Robin Boundary Conditions.')
+            logger.debug('Implementing Robin Boundary Conditions.')
         
             gauss_points = gaus_quad_tri(4)
             Bempty = field.empty_tri_matrix()
             for bc in robin_bcs:
-
+                logger.trace(f'.Implementing {bc}')
                 for tag in bc.tags:
                     face_tags = [tag,]
 
@@ -298,6 +310,7 @@ class Assembler:
                     edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
 
                     gamma = bc.get_gamma(K0)
+                    logger.trace(f'..robin bc γ={gamma:.3f}')
 
                     def Ufunc(x,y): 
                         return bc.get_Uinc(x,y,K0)
@@ -306,38 +319,42 @@ class Assembler:
                     if ibasis is None:
                         basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
                         ibasis = np.linalg.pinv(basis)
+                        logger.trace(f'..Using computed basis: {ibasis.flatten()}')
                     if bc._include_force:
-                        
                         Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points) # type: ignore
-                        
                         port_vectors[bc.port_number] += b_p # type: ignore
-                    
+                        logger.trace(f'..included force vector term with norm {np.linalg.norm(b_p):.3f}')
                     else:
                         Bempty = assemble_robin_bc(field, Bempty, tri_ids, gamma) # type: ignore
             B_p = field.generate_csr(Bempty)
             K = K + B_p
         
         if len(periodic_bcs) > 0:
-            logger.debug('    Implementing Periodic Boundary Conditions.')
+            logger.debug('Implementing Periodic Boundary Conditions.')
 
-        
-        # Periodic BCs
+
+        ############################################################
+        #                   PERIODIC BOUNDARY CONDITIONS          #
+        ############################################################
+
         Pmats = []
         remove: set[int] = set()
         has_periodic = False
 
         for pbc in periodic_bcs:
+            logger.trace(f'.Implementing {pbc}')
             has_periodic = True
             tri_ids_1 = mesh.get_triangles(pbc.face1.tags)
             edge_ids_1 = mesh.get_edges(pbc.face1.tags)
             tri_ids_2 = mesh.get_triangles(pbc.face2.tags)
             edge_ids_2 = mesh.get_edges(pbc.face2.tags)
             dv = np.array(pbc.dv)
+            logger.trace(f'..displacement vector {dv}')
             linked_tris = pair_coordinates(mesh.tri_centers, tri_ids_1, tri_ids_2, dv, 1e-9)
             linked_edges = pair_coordinates(mesh.edge_centers, edge_ids_1, edge_ids_2, dv, 1e-9)
             dv = np.array(pbc.dv)
             phi = pbc.phi(K0)
-            
+            logger.trace(f'..ϕ={phi} rad/m')
             Pmat, rows = gen_periodic_matrix(tri_ids_1,
                                        edge_ids_1,
                                        field.tri_to_field,
@@ -348,8 +365,9 @@ class Assembler:
                                        phi)
             remove.update(rows)
             Pmats.append(Pmat)
-        
+
         if Pmats:
+            logger.trace(f'.periodic bc removes {len(remove)} boundary DoF')
             Pmat = Pmats[0]
             for P2 in Pmats[1:]:
                 Pmat = Pmat @ P2
@@ -360,6 +378,11 @@ class Assembler:
         else:
             Pmat = None
         
+
+        ############################################################
+        #                             FINALIZE                     #
+        ############################################################
+
         pec_ids_set = set(pec_ids)
         solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids_set])
         
@@ -416,7 +439,7 @@ class Assembler:
 
         er = er - 1j*sig/(w0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
         
-        logger.debug('    Assembling matrices')
+        logger.debug('Assembling matrices')
         E, B = tet_mass_stiffness_matrices(field, er, ur)
         self.cached_matrices = (E, B)
 
@@ -429,7 +452,7 @@ class Assembler:
         # Process all PEC Boundary Conditions
         pec_ids: list = []
         
-        logger.debug('    Implementing PEC Boundary Conditions.')
+        logger.debug('Implementing PEC Boundary Conditions.')
         
         # Conductivity above a limit, consider it all PEC
         for itet in range(field.n_tets):
@@ -454,10 +477,10 @@ class Assembler:
 
         # Robin BCs
         if len(robin_bcs) > 0:
-            logger.debug('    Implementing Robin Boundary Conditions.')
+            logger.debug('Implementing Robin Boundary Conditions.')
         
         if len(robin_bcs) > 0:
-            logger.debug('    Implementing Robin Boundary Conditions.')
+            logger.debug('Implementing Robin Boundary Conditions.')
         
             gauss_points = gaus_quad_tri(4)
             Bempty = field.empty_tri_matrix()
@@ -482,7 +505,7 @@ class Assembler:
             B = B + B_p
         
         if len(periodic) > 0:
-            logger.debug('    Implementing Periodic Boundary Conditions.')
+            logger.debug('Implementing Periodic Boundary Conditions.')
 
         # Periodic BCs
         Pmats = []

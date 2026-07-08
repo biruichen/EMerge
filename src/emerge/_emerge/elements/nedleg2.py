@@ -22,7 +22,7 @@ from .femdata import FEMBasis
 from .ned2_interp import ned2_tri_interp_full, ned2_tri_interp_curl
 from ..mth.optimized import matinv
 from ..cs import CoordinateSystem
-
+from ..const import MU0, C0
 
 ## TODO: TEMPORARY SOLUTION FIX THIS
 
@@ -158,7 +158,7 @@ class NedelecLegrange2(FEMBasis):
 
     def interpolate_Hf(self, field: np.ndarray, k0: float, ur: np.ndarray, beta: float) -> FieldFunctionClass:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
-        constant = 1j / ((k0*299792458)*(4*np.pi*1e-7))
+        constant = 1j / ((k0*C0)*MU0)
         urinv = np.zeros_like(ur)
         
         for i in range(ur.shape[2]):

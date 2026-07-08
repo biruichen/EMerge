@@ -113,7 +113,6 @@ if False:
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
 sol = m.mw.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
-
 # Our "sol" variable is of type MWData (Microwave Data). This contains a set of scalar data 
 # like S-parameters and field data like the E/H field. The scalar data is in sol.scalar and the 
 # field data in sol.field. Our data is currently a large list of entries in the dataset simply in order

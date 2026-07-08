@@ -46,6 +46,10 @@ class Material:
         self._color_rgb = tuple(int(hex_str[i:i+2], 16)/255.0 for i in (0, 2, 4))
 
     @property
+    def sigma(self) -> float:
+        return self.cond
+        
+    @property
     def color_rgb(self) -> tuple[float,float,float]:
         return self._color_rgb
     

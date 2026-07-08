@@ -60,7 +60,7 @@ def _fast_integral_f(nodes, triangles, constants, DPTs, field_values):
 def surface_integral(nodes: np.ndarray, 
                      triangles: np.ndarray, 
                      function: Callable, 
-                     constants: np.ndarray = None,
+                     constants: np.ndarray | None = None,
                      gq_order: int = 4) -> complex:
     """Computes the surface integral of a scalar-field
 

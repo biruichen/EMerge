@@ -1,9 +1,9 @@
 import numpy as np
 from ...material import Material
+from ...const import Z0 as n0
 
 PI = np.pi
 TAU = 2*PI
-n0 = 376.73
 
 def microstrip_z0(W: float, th: float, er: float):
     u = W/th
@@ -14,7 +14,7 @@ def microstrip_z0(W: float, th: float, er: float):
 
 class PCBCalculator:
 
-    def __init__(self, thickness: float, layers: np.array, material: Material, unit: float):
+    def __init__(self, thickness: float, layers: np.ndarray, material: Material, unit: float):
         self.th = thickness
         self.layers = layers
         self.mat = material

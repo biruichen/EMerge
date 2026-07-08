@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from collections import defaultdict
 from ...bc import BoundaryCondition, BoundaryConditionSet, Periodic
 from ...periodic import PeriodicCell, HexCell, RectCell
+from ...material import Material
+from ...const import Z0, C0, PI, EPS0, MU0
 
 class MWBoundaryConditionSet(BoundaryConditionSet):
 
@@ -39,13 +41,28 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         self.ModalPort: type[ModalPort] = self._construct_bc(ModalPort)
         self.LumpedPort: type[LumpedPort] = self._construct_bc(LumpedPort)
         self.LumpedElement: type[LumpedElement] = self._construct_bc(LumpedElement)
+        self.SurfaceImpedance: type[SurfaceImpedance] = self._construct_bc(SurfaceImpedance)
         self.RectangularWaveguide: type[RectangularWaveguide] = self._construct_bc(RectangularWaveguide)
         self.Periodic: type[Periodic] = self._construct_bc(Periodic)
         self.FloquetPort: type[FloquetPort] = self._construct_bc(FloquetPort)
 
         self._cell: PeriodicCell | None = None
 
-    def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort']) -> FaceSelection:
+    def get_conductors(self) -> list[BoundaryCondition]:
+        """Returns a list of all boundary conditions that ought to be considered as a "conductor" 
+        for the purpose of modal analyses.
+
+        Returns:
+            list[BoundaryCondition]: All conductor like boundary conditions
+        """
+        bcs = self.oftype(PEC)
+        for bc in self.oftype(SurfaceImpedance):
+            if bc.material.cond > 1e3:
+                bcs.append(bc)
+
+        return bcs
+
+    def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort','SurfaceImpedance']) -> FaceSelection:
         tags = []
         for bc in self.boundary_conditions:
             if bctype in str(bc.__class__):
@@ -119,7 +136,7 @@ class RobinBC(BoundaryCondition):
         raise NotImplementedError('get_Uinc not implemented for Port class')
 
 class PortBC(RobinBC):
-    Zvac: float = 376.730313412
+    Zvac: float = Z0
     def __init__(self, face: FaceSelection | GeoSurface):
         """(DO NOT USE) A generalization of the Port boundary condition.
         
@@ -165,9 +182,9 @@ class PortBC(RobinBC):
         if self.modetype(k0)=='TEM':
             return self.Zvac
         elif self.modetype(k0)=='TE':
-            return k0*299792458/self.get_beta(k0) * 4*np.pi*1e-7
+            return k0*299792458/self.get_beta(k0) * MU0
         elif self.modetype(k0)=='TM':
-            return self.get_beta(k0)/(k0*299792458*8.854187818814*1e-12)
+            return self.get_beta(k0)/(k0*299792458*EPS0)
         else:
             raise ValueError(f'Port mode type should be TEM, TE or TM but instead is {self.modetype(k0)}')
     
@@ -183,7 +200,7 @@ class PortBC(RobinBC):
         Returns:
             float: The mode amplitude correction factor.
         """
-        return np.sqrt(self.Zmode(k0)/376.73031341259)
+        return np.sqrt(self.Zmode(k0)/Z0)
     
     @property
     def mode_number(self) -> int:
@@ -300,7 +317,7 @@ class PortMode:
     
     def set_power(self, power: complex) -> None:
         self.norm_factor = np.sqrt(1/np.abs(power))
-        logger.info(f'Setting port mode amplitude to: {self.norm_factor} ')
+        logger.info(f'Setting port mode amplitude to: {self.norm_factor:.2f} ')
 
 class FloquetPort(PortBC):
     _include_stiff: bool = True
@@ -334,7 +351,7 @@ class FloquetPort(PortBC):
             self.cs = GCS
 
     def portZ0(self, k0: float | None = None) -> complex | float | None:
-        return 376.73031341259
+        return Z0
 
     def get_amplitude(self, k0: float) -> float:
         return 1.0
@@ -372,7 +389,7 @@ class FloquetPort(PortBC):
         P = self.pol_p
         S = self.pol_s
 
-        E0 = self.get_amplitude(k0)*np.sqrt(2*376.73031341259/(self.area))
+        E0 = self.get_amplitude(k0)*np.sqrt(2*Z0/(self.area))
         Ex = E0*(-S*np.sin(self.scan_phi) - P*np.cos(self.scan_theta)*np.cos(self.scan_phi))*phi
         Ey = E0*(S*np.cos(self.scan_phi) - P*np.cos(self.scan_theta)*np.sin(self.scan_phi))*phi
         Ez = E0*(-P*E0*np.sin(self.scan_theta))*phi
@@ -646,13 +663,13 @@ class RectangularWaveguide(PortBC):
         return self.cs._basis_inv
     
     def portZ0(self, k0: float) -> complex:
-        return k0*299792458 * 4*np.pi*1e-7/self.get_beta(k0)
+        return k0*299792458 * MU0/self.get_beta(k0)
 
     def modetype(self, k0):
         return self.type
     
     def get_amplitude(self, k0: float) -> float:
-        Zte = 376.73031341259
+        Zte = Z0
         amplitude= np.sqrt(self.power*4*Zte/(self.dims[0]*self.dims[1]))
         return amplitude
 
@@ -807,10 +824,10 @@ class LumpedPort(PortBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*k0*376.730313412/self.surfZ
+        return 1j*k0*Z0/self.surfZ
     
     def get_Uinc(self, x_local, y_local, k0) -> np.ndarray:
-        Emag = -1j*2*k0 * self.voltage/self.height * (376.730313412/self.surfZ)
+        Emag = -1j*2*k0 * self.voltage/self.height * (Z0/self.surfZ)
         return Emag*self.port_mode_3d(x_local, y_local, k0)
     
     def port_mode_3d(self, 
@@ -899,16 +916,9 @@ class LumpedElement(RobinBC):
         self.Z0: Callable = impedance_function # type: ignore
         self.width: float = width # type: ignore
         self.height: float = height # type: ignore
-        
-        logger.info('Constructing coordinate system from normal port')
-        self.cs = Axis(self.selection.normal).construct_cs() # type: ignore
-
-        self.vintline: Line | None = None
-        self.v_integration = True
-        self.iintline: Line | None = None
 
     def surfZ(self, k0: float) -> float:
-        """The surface sheet impedance for the lumped port
+        """The surface sheet impedance for the lumped Element
 
         Returns:
             float: The surface sheet impedance
@@ -916,18 +926,17 @@ class LumpedElement(RobinBC):
         Z0 = self.Z0(k0*299792458/(2*np.pi))*self.width/self.height
         return Z0
     
-    
-    def get_basis(self) -> np.ndarray:
-        return self.cs._basis
+    def get_basis(self) -> np.ndarray | None:
+        return None
 
-    def get_inv_basis(self) -> np.ndarray:
-        return self.cs._basis_inv
+    def get_inv_basis(self) -> np.ndarray | None:
+        return None
     
     def get_beta(self, k0: float) -> float:
         ''' Return the out of plane propagation constant. βz.'''
 
         return k0
-    
+
     def get_gamma(self, k0: float) -> complex:
         """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
 
@@ -937,6 +946,67 @@ class LumpedElement(RobinBC):
         Returns:
             complex: The γ-constant
         """
-        return 1j*k0*376.730313412/self.surfZ(k0)
+        return 1j*k0*Z0/self.surfZ(k0)
+    
 
 
+class SurfaceImpedance(RobinBC):
+    
+    _include_stiff: bool = True
+    _include_mass: bool = False
+    _include_force: bool = False
+
+    def __init__(self, 
+                 face: FaceSelection | GeoSurface,
+                 material: Material | None = None,
+                 ):
+        """Generates a lumped power boundary condition.
+        
+        The lumped port boundary condition assumes a uniform E-field along the "direction" axis.
+        The port with and height must be provided manually in meters. The height is the size
+        in the "direction" axis along which the potential is imposed. The width dimension
+        is orthogonal to that. For a rectangular face its the width and for a cyllindrical face
+        its the circumpherance.
+
+        Args:
+            face (FaceSelection, GeoSurface): The port surface
+            port_number (int): The port number
+            width (float): The port width (meters).
+            height (float): The port height (meters).
+            direction (Axis): The port direction as an Axis object (em.Axis(..) or em.ZAX)
+            active (bool, optional): Whether the port is active. Defaults to False.
+            power (float, optional): The port output power. Defaults to 1.
+            Z0 (float, optional): The port impedance. Defaults to 50.
+        """
+        super().__init__(face)
+
+        self.material: Material = material 
+    
+    
+    def get_basis(self) -> np.ndarray | None:
+        return None
+
+    def get_inv_basis(self) -> np.ndarray | None:
+        return None
+    
+    def get_beta(self, k0: float) -> float:
+        ''' Return the out of plane propagation constant. βz.'''
+
+        return k0
+
+    def get_gamma(self, k0: float) -> complex:
+        """Computes the γ-constant for matrix assembly. This constant is required for the Robin boundary condition.
+
+        Args:
+            k0 (float): The free space propagation constant.
+
+        Returns:
+            complex: The γ-constant
+        """
+        w0 = k0*C0
+        sigma = self.material.cond
+        rho = 1/sigma
+        d_skin = (2*rho/(w0*MU0) * ((1+(w0*EPS0*rho)**2)**0.5 + rho*w0*EPS0))**0.5
+        d_skin = (2*rho/(w0*MU0))**0.5
+        R = rho/d_skin
+        return 1j*k0*Z0/R

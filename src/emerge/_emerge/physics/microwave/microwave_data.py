@@ -27,6 +27,7 @@ from ...cs import Axis, _parse_axis
 from ...selection import FaceSelection
 from ...geometry import GeoSurface
 from ...mesh3d import Mesh3D
+from ...const import Z0, MU0, EPS0
 
 EMField = Literal[
     "er", "ur", "freq", "k0",
@@ -35,9 +36,6 @@ EMField = Literal[
     "Hx", "Hy", "Hz",
     "mode", "beta",
 ]
-
-EPS0 = 8.854187818814e-12
-MU0 = 1.2566370612720e-6
 
 def arc_on_plane(ref_dir, normal, angle_range_deg, num_points=100):
     """
@@ -297,7 +295,7 @@ class FarfieldData:
             logger.warning('Defaulting to normE')
             F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
         if isotropic:
-            F = F/np.sqrt(376.730313412/(2*np.pi))
+            F = F/np.sqrt(Z0/(2*np.pi))
         if dB:
             F = 20*np.log10(np.clip(np.abs(F), a_min=10**(dBfloor/20), a_max = 1e9))-dBfloor
         if rmax is not None:
@@ -662,7 +660,7 @@ class MWField:
         self.Ez = Ez.reshape(shp)
 
         
-        constants = 1/ (-1j*2*np.pi*self.freq*(self._dur*4*np.pi*1e-7) )
+        constants = 1/ (-1j*2*np.pi*self.freq*(self._dur*MU0) )
         Hx, Hy, Hz = self.basis.interpolate_curl(self._field, xf, yf, zf, constants)
         ids = self.basis.interpolate_index(xf, yf, zf)
         self.er = self._der[ids].reshape(shp)

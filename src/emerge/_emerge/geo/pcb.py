@@ -17,9 +17,6 @@
 
 from __future__ import annotations
 
-import numpy as np
-import gmsh
-
 from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
@@ -28,11 +25,14 @@ from .polybased import XYPolygon
 from .operations import change_coordinate_system
 from .pcb_tools.macro import parse_macro
 from .pcb_tools.calculator import PCBCalculator
+
+import numpy as np
 from loguru import logger
 from typing import Literal, Callable, overload
 from dataclasses import dataclass
-import math
 
+import math
+import gmsh
 
 ############################################################
 #                        EXCEPTIONS                        #
@@ -63,7 +63,15 @@ def normalize(vector: np.ndarray) -> np.ndarray:
         return vector
     return vector / norm
 
-def _rot_mat(angle):
+def _rot_mat(angle: float) -> np.ndarray:
+    """Returns a 2D rotation matrix given an angle in degrees
+
+    Args:
+        angle (float): The angle in degrees
+
+    Returns:
+        np.ndarray: The rotation matrix
+    """
     ang = -angle * np.pi/180
     return np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
 
@@ -265,6 +273,66 @@ class StripTurn(RouteElement):
         else:
             raise RouteException(f'Trying to route a StripTurn with an unknown corner type: {self.corner_type}')
  
+class StripCurve(StripTurn):
+    def __init__(self,
+                 x: float,
+                 y: float,
+                 width: float,
+                 direction: tuple[float, float],
+                 angle: float,
+                 radius: float,
+                 dang: float = 10.0):
+        self.xold: float = x
+        self.yold: float = y
+        self.width: float = width
+        self.old_direction: np.ndarray = normalize(np.array(direction))
+        self.direction: np.ndarray = _rot_mat(angle) @ self.old_direction
+        self.angle: float = angle
+        self.radius: float = radius
+        self.dirright: np.ndarray = np.array([self.old_direction[1], -self.old_direction[0]])
+        self.dang: float = dang
+
+        angd = abs(angle*np.pi/180)
+        self.start = np.array([x,y])
+        self.circ_origin = self.start + radius * np.sign(angle) * self.dirright
+
+        self._xhat = -self.dirright * np.sign(angle)
+        self._yhat = self.old_direction
+        
+        self.end = self.circ_origin + radius*(self._xhat*np.cos(angd)+self._yhat*np.sin(angd))
+        self.x, self.y = self.end
+
+    def __str__(self) -> str:
+        return f'StripCurve[{self.x},{self.y},w={self.width},d=({self.direction})]'
+
+    @property
+    def right(self) -> list[tuple[float, float]]:
+        points: list[tuple[float, float]] = []
+        Npts = int(np.ceil(abs(self.angle/self.dang)))
+        R = self.radius-np.sign(self.angle)*self.width/2
+        print(R, self.circ_origin, self._xhat, self._yhat)
+        for i in range(Npts):
+            ang = abs((i+1)/Npts * self.angle * np.pi/180)
+            pnew = self.circ_origin + R*(self._xhat*np.cos(ang)+self._yhat*np.sin(ang))
+            points.append((pnew[0], pnew[1]))
+        
+        return points
+
+    @property
+    def left(self) -> list[tuple[float, float]]:
+        points: list[tuple[float, float]] = []
+
+        Npts = int(np.ceil(abs(self.angle/self.dang)))
+        R = self.radius+np.sign(self.angle)*self.width/2
+        print(R, self.circ_origin, self._xhat, self._yhat)
+        for i in range(Npts):
+            ang = abs((i+1)/Npts * self.angle * np.pi/180)
+            pnew = self.circ_origin + R*(self._xhat*np.cos(ang)+self._yhat*np.sin(ang))
+            points.append((pnew[0], pnew[1]))
+        
+        return points[::-1]
+
+    
 ############################################################
 #                    THE STRIP PATH CLASS                  #
 ############################################################
@@ -405,13 +473,46 @@ class StripPath:
         """
         x, y = self.end.x, self.end.y
         dx, dy = self.end.direction
-        
+        if abs(angle) <= 20:
+            corner_type = 'square'
+            logger.warning('Small turn detected, defaulting to rectangular corners because chamfers would add to much detail.')
         if width is not None:
             if width != self.end.width:
                 self._add_element(StripLine(x, y, width, (dx, dy)))
         else:
             width=self.end.width
         self._add_element(StripTurn(x, y, width, (dx, dy), angle, corner_type))
+        return self
+
+    def curve(self, angle: float, radius: float,
+             width: float | None = None, 
+             corner_type: Literal['champher','square'] = 'champher',
+             dang: float = 10) -> StripPath:
+        """Adds a bend to the strip path.
+
+        The angle is specified in degrees. The width of the turn will be the same as the last segment.
+        optionally, a different width may be provided. 
+        By default, all corners will be cut using the "champher" type. Other options are not yet provided.
+
+        Args:
+            angle (float): The turning angle
+            width (float, optional): The stripline width. Defaults to None.
+            corner_type (str, optional): The corner type. Defaults to 'champher'.
+
+        Returns:
+            StripPath: The current StripPath object
+        """
+        if angle == 0:
+            logger.trace('Zero angle turn, passing action')
+            return self
+        x, y = self.end.x, self.end.y
+        dx, dy = self.end.direction
+        if width is not None:
+            if width != self.end.width:
+                self._add_element(StripLine(x, y, width, (dx, dy)))
+        else:
+            width=self.end.width
+        self._add_element(StripCurve(x, y, width, (dx, dy), angle, radius, dang=dang))
         return self
     
     def store(self, name: str) -> StripPath:
@@ -494,7 +595,6 @@ class StripPath:
         
         self.pcb._lumped_element(poly, impedance_function, width, length)
         return self.pcb.new(x+dx*length, y+dy*length, self.end.width, self.end.direction, self.z)
-
 
     def cut(self) -> StripPath:
         """Split the current path in N new paths given by a new departure direction
@@ -637,7 +737,7 @@ class StripPath:
     def to(self, dest: tuple[float, float], 
            arrival_dir: tuple[float, float] | None = None,
            arrival_margin: float  | None= None,
-           angle_step: float = 90):
+           angle_step: float = 90) -> StripPath:
         """
         Extend the path from current end point to dest (x, y).
         Optionally ensure arrival in arrival_dir after a straight segment of arrival_margin.
@@ -743,9 +843,8 @@ class StripPath:
         back_ang = math.degrees(math.atan2(cross2, dot2))
         
         backoff = math.tan(abs(back_ang)*np.pi/360)*self.end.width/2
-        self.straight(s - backoff)
-        
 
+        self.straight(s - backoff)
         self.turn(-back_ang)
 
         x0 = self.end.x
@@ -753,7 +852,6 @@ class StripPath:
         D = math.hypot(tx-x0, ty-y0)
         # 4) Final straight into destination by arrival_margin + t
         self.straight(D)
-        
 
         return self
 
@@ -801,7 +899,7 @@ class StripPath:
         return self.path[element_nr]
 
 ############################################################
-#                     PCB DESIGN CLASS                    #
+#                     PCB DESIGN CLASS                     #
 ############################################################
 
 class PCB:
@@ -1270,7 +1368,6 @@ class PCB:
             polys.material = COPPER
         return polys
                 
-
 ############################################################
 #                        DEPRICATED                       #
 ############################################################
