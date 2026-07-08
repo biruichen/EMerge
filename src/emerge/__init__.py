@@ -18,7 +18,6 @@ along with this program; if not, see
 """
 import os
 
-__version__ = "0.5.5"
 
 ############################################################
 #               HANDLE ENVIRONMENT VARIABLES              #
@@ -58,7 +57,5 @@ from ._emerge.periodic import RectCell, HexCell
 from ._emerge.mesher import Algorithm2D, Algorithm3D
 from . import lib
 from ._emerge.howto import _HowtoClass
-
 howto = _HowtoClass()
-
 logger.debug('Importing complete!')

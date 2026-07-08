@@ -16,7 +16,7 @@ pip install emerge
 On MacOS and Linux you can install it with the very fast UMFPACK through scikit-umfpack
 
 ```
-pip install emerge[scikit-umfpack]
+pip install emerge[umfpack]
 ```
 
 ### Experimental
