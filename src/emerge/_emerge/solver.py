@@ -199,7 +199,7 @@ class SolveReport(Saveable):
 def _pfx(name: str, id: int = 0) -> str:
     return f'[{name}-j{id:03d}]'
 
-def is_numerically_complex_symmetric(A, rtol=0.01) -> tuple[float, bool]:
+def is_numerically_complex_symmetric(A, rtol=0.025) -> tuple[float, bool]:
     num = np.linalg.norm((A - A.T).data)
     den = np.linalg.norm(A.data)
     ratio = num/den

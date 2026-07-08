@@ -10,7 +10,7 @@ from emerge.plot import plot_sp
 
 mm = 0.001  # meter units helper: 1 mm
 
-model = em.Simulation('DiffCommon')  # simulation container
+model = em.Simulation('DiffCommon', loglevel='DEBUG')  # simulation container
 model.check_version('2.3.0') # Checks version compatibility.
 
 # PCB stack: 1 mm substrate, RO3003 dielectric, 0.05 mm copper thickness, thick traces enabled

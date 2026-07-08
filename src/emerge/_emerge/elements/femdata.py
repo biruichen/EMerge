@@ -58,7 +58,7 @@ class FEMBasis(Saveable):
         def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
             xyz = np.array([xs, ys, zs]) + origin[:, np.newaxis]
             xyzg = matmul(basis, xyz)
-            return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids)))
+            return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids, usenan=False)))
         return func
     
     def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
