@@ -181,13 +181,17 @@ class GeoObject:
         self.material: Material = AIR
         self.mesh_multiplier: float = 1.0
         self.max_meshsize: float = 1e9
+        
         self._unset_constraints: bool = False
         self._embeddings: list[GeoObject] = []
         self._face_pointers: dict[str, _FacePointer] = dict()
         self._tools: dict[int, dict[str, _FacePointer]] = dict()
+        
         self._key = _GENERATOR.new()
         self._aux_data: dict[str, Any] = dict()
         self._priority: int = 10
+
+        self._exists: bool = True
 
     @property
     def color_rgb(self) -> tuple[int,int,int]:

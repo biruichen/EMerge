@@ -289,7 +289,8 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
                     linestyles: list[str] = None,
                     colorcycle: list[int] = None,
                     filename: str = None,
-                    show_plot: bool = True) -> None:
+                    show_plot: bool = True,
+                    figdata: tuple = None) -> None:
     """Plot S-parameters in dB and phase
 
     Args:
@@ -323,10 +324,12 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
     unitdivider = {"MHz": 1e6, "GHz": 1e9, "kHz": 1e3}
     fnew = f / unitdivider[xunit]
 
-    # Create two subplots: one for magnitude and one for phase
-    fig, (ax_mag, ax_phase) = plt.subplots(2, 1, sharex=False, gridspec_kw={'height_ratios': [3, 1]})
-    fig.subplots_adjust(hspace=0.3)
-
+    if figdata is None:
+        # Create two subplots: one for magnitude and one for phase
+        fig, (ax_mag, ax_phase) = plt.subplots(2, 1, sharex=False, gridspec_kw={'height_ratios': [3, 1]})
+        fig.subplots_adjust(hspace=0.3)
+    else:
+        fig, ax_mag, ax_phase = figdata
     minphase, maxphase = -180, 180
 
     maxy = 0
@@ -389,6 +392,8 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
         plt.show()
     if filename is not None:
         fig.savefig(filename)
+
+    return fig, ax_mag, ax_phase
 
     
 def plot_ff(

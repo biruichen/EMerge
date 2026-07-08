@@ -18,8 +18,8 @@ from __future__ import annotations
 import time
 from ...mesh3d import Mesh3D
 from ...geometry import GeoObject
-from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection, encode_data, decode_data
-from ...bc import PortBC, ModalPort
+from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection, encode_data
+from ...physics.microwave.microwave_bc import PortBC, ModalPort
 import numpy as np
 import pyvista as pv
 from typing import Iterable, Literal, Callable

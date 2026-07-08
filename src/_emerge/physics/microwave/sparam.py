@@ -15,10 +15,10 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from ..bc import RobinBC
+from .microwave_bc import RobinBC
+from ...mth.integrals import surface_integral
 import numpy as np
 from typing import Callable
-from .integrals import surface_integral
 
 def sparam_waveport(nodes: np.ndarray,
                     tri_vertices: np.ndarray,

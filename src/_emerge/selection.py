@@ -202,6 +202,10 @@ class Selection:
         return (0.5,0.5,1.0)
     
     @property
+    def centers(self) -> list[tuple[float, float, float],]:
+        return [gmsh.model.occ.get_center_of_mass(self.dim, tag) for tag in self.tags]
+    
+    @property
     def opacity(self) -> float:
         return 0.6
     ####### DUNDER METHODS

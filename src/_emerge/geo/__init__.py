@@ -22,3 +22,4 @@ from .shapes import Cyllinder, CoaxCyllinder, Box, XYPlate, HalfSphere, Sphere, 
 from .operations import subtract, add, embed, remove, rotate, mirror, change_coordinate_system
 from .extrude import XYPolygon, GeoPrism
 from .step import STEPItems
+from .builder import Builder

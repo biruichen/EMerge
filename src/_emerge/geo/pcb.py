@@ -36,6 +36,9 @@ def normalize(vector: np.ndarray) -> np.ndarray:
         return vector
     return vector / norm
 
+class RouteException(Exception):
+    pass
+
 @dataclass
 class Via:
     x: float
@@ -321,8 +324,8 @@ class StripPath:
         return self
     
     def split(self, 
-              directions: list[tuple[float, float]],
-              widths: list[float] = None) -> list[StripPath]:
+              direction: tuple[float, float] = None,
+              width: float = None) -> StripPath:
         """Split the current path in N new paths given by a new departure direction
 
         Args:
@@ -332,13 +335,32 @@ class StripPath:
         Returns:
             list[StripPath]: A list of new StripPath objects
         """
-        if widths is None:
-            widths = [self.last.width for _ in directions]
+        if width is None:
+            width = self.last.width
+        if direction is None:
+            direction = self.last.direction
         x = self.last.x
         y = self.last.y
         z = self.z
-        paths = [self.pcb.new(x, y, w, d, z) for w,d in zip(widths, directions)]
+        paths = self.pcb.new(x,y,width, direction, z)
+        self.pcb._checkpoint = self
         return paths
+    
+    def stub(self, direction: tuple[float, float],
+             width: float,
+             length: float, 
+             mirror: bool = False) -> StripPath:
+        """ Add a single rectangular strip line section at the current coordinate"""
+        self.pcb.new(self.last.x, self.last.y, width, direction, self.z).straight(length)
+        if mirror:
+            self.pcb.new(self.last.x, self.last.y, width, (-direction[0], -direction[1]), self.z).straight(length)
+        return self
+    
+    def merge(self) -> StripPath:
+        """Continue at the last point where .split() is called"""
+        if self.pcb._checkpoint is None:
+            raise RouteException('No checkpoint known. Make sure to call .check() first')
+        return self.pcb._checkpoint
         
     def via(self,
             znew: float,
@@ -481,6 +503,7 @@ class PCBLayouter:
 
         self.stored_coords: dict[str,tuple[float, float]] = dict()
         self.stored_striplines: dict[str, StripLine] = dict()
+        self._checkpoint: StripPath = None
     
     @property
     def trace(self) -> GeoPolygon:
@@ -697,7 +720,7 @@ class PCBLayouter:
         self.last = path
         return path
     
-    def lumped_port(self, stripline: StripLine, z_ground: float = None) -> None:
+    def lumped_port(self, stripline: StripLine, z_ground: float = None) -> GeoPolygon:
         """Generate a lumped-port object to be created.
 
         Args:

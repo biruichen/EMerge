@@ -1,7 +1,7 @@
 from ..mesh3d import Mesh3D
-from ..geometry import GeoObject, GeoSurface, GeoVolume
+from ..geometry import GeoObject
 from ..selection import Selection
-from ..bc import PortBC
+from ..physics.microwave.microwave_bc import PortBC
 from typing import Iterable, Literal
 import numpy as np
 

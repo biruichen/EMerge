@@ -52,7 +52,7 @@ model.define_geometry(diel, lp1, lp2, trace, air, vias)
 
 model.view()
 
-model.physics.set_frequency_range(1e9, 6e9, 11)
+model.mw.set_frequency_range(1e9, 6e9, 11)
 model.mesher.set_boundary_size(trace, 0.001)
 
 model.generate_mesh()
@@ -66,18 +66,16 @@ model.view(selections=[vias.outside()])
 # is contained in the lumped port sheet. You can see this information as its stored in the lp1._aux_data
 # dictionary.
 
-p1 = em.bc.LumpedPort(lp1, 1)
-p2 = em.bc.LumpedPort(lp2, 2)
+p1 = model.mw.bc.LumpedPort(lp1, 1)
+p2 = model.mw.bc.LumpedPort(lp2, 2)
 
-pec = em.bc.PEC(trace)
+pec = model.mw.bc.PEC(trace)
 
 #We also add a PEC for the outsides of our via.
-pecvia = em.bc.PEC(vias.outside())
-
-model.physics.assign(p1, p2, pec, pecvia)
+pecvia = model.mw.bc.PEC(vias.outside())
 
 # Finally we run the simulation!
-data = model.physics.frequency_domain()
+data = model.mw.frequency_domain()
 
 freq, S11 = data.ax('freq').S(1,1)
 freq, S21 = data.ax('freq').S(2,1)

@@ -18,17 +18,15 @@
 from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
-from ...bc import BoundaryCondition, PEC, ModalPort, LumpedPort, PortBC
-from .emdata import EMSimData
+from ...coord import Line
 from ...elements.femdata import FEMBasis
-from .assembly.assembler import Assembler
 from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
 from ...selection import FaceSelection
-from ...mth.sparam import sparam_field_power, sparam_mode_power
-from ...coord import Line
+from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
+from .microwave_data import MWSimData
+from .assembly.assembler import Assembler
 from .port_functions import compute_avg_power_flux
 from .simjob import SimJob
-
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from loguru import logger
@@ -72,7 +70,7 @@ def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
 
     return path
 
-class Electrodynamics3D:
+class Microwave3D:
     """The Electrodynamics time harmonic physics class.
 
     This class contains all physics dependent features to perform EM simuation in the time-harmonic
@@ -89,7 +87,7 @@ class Electrodynamics3D:
         self.mesh: Mesh3D = None
 
         self.assembler: Assembler = Assembler()
-        self.boundary_conditions: list[BoundaryCondition] = []
+        self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
         self.basis: FEMBasis = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
         self.set_order(order)
@@ -97,8 +95,8 @@ class Electrodynamics3D:
 
         ## States
         self._bc_initialized: bool = False
-        self.freq_data: EMSimData = EMSimData()
-        self.mode_data: dict[int, EMSimData] = dict()
+        self.freq_data: MWSimData = MWSimData()
+        self.mode_data: dict[int, MWSimData] = dict()
 
         ## Data
         self._params: dict[str, float] = dict()
@@ -112,7 +110,7 @@ class Electrodynamics3D:
                         mode_data = self.mode_data)
         return datapack
     
-    def get_data(self) -> EMSimData:
+    def get_data(self) -> MWSimData:
         return self.freq_data
     
     def load_data(self, datapack: dict) -> None:
@@ -143,7 +141,7 @@ class Electrodynamics3D:
         Returns:
             int: The number of ports
         """
-        return len([bc for bc in self.boundary_conditions if isinstance(bc,PortBC)])
+        return self.bc.count(PortBC)
     
     def ports(self) -> list[PortBC]:
         """A list of all port boundary conditions.
@@ -151,7 +149,7 @@ class Electrodynamics3D:
         Returns:
             list[PortBC]: A list of all port boundary conditions
         """
-        return sorted([bc for bc in self.boundary_conditions if isinstance(bc,PortBC)], key=lambda x: x.number)
+        return sorted(self.bc.oftype(PortBC), key=lambda x: x.number)
     
     
     def _initialize_bcs(self) -> None:
@@ -159,12 +157,15 @@ class Electrodynamics3D:
         """
         logger.debug('Initializing boundary conditions.')
 
-        self.boundary_conditions = []
+        self.bc.reset()
 
         tags = self.mesher.domain_boundary_face_tags
-        pec = PEC(FaceSelection(tags))
+        self.bc.PEC(FaceSelection(tags))
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
-        self.boundary_conditions.append(pec)
+
+        if self.mesher.periodic_cell is not None:
+            for bc in self.mesher.periodic_cell.bcs:
+                self.bc.assign(bc)
 
     def set_frequency(self, frequency: float | list[float] | np.ndarray ) -> None:
         """Define the frequencies for the frequency sweep
@@ -192,7 +193,14 @@ class Electrodynamics3D:
             Npoints (int): The number of points
         """
         self.set_frequency(np.linspace(fmin, fmax, Npoints))
-        
+    
+    def fdense(self, Npoints: int) -> np.ndarray:
+        if len(self.frequencies) == 1:
+            raise ValueError('Only 1 frequency point known. At least two need to be defined.')
+        fmin = min(self.frequencies)
+        fmax = max(self.frequencies)
+        return np.linspace(fmin, fmax, Npoints)
+    
     def set_resolution(self, resolution: float) -> None:
         """Define the simulation resolution as the fraction of the wavelength.
 
@@ -224,7 +232,7 @@ class Electrodynamics3D:
             Callable: The discretizer function
         """
         def disc(material: Material):
-            return 299792456/(max(self.frequencies) * np.abs(material.neff))
+            return 299792456/(max(self.frequencies) * np.real(material.neff))
         return disc
     
     def _initialize_field(self):
@@ -237,7 +245,7 @@ class Electrodynamics3D:
             return
         if self.order == 1:
             raise NotImplementedError('Nedelec 1 is temporarily not supported')
-            from ...elements.nedelec1 import Nedelec1
+            from ...elements import Nedelec1
             self.basis = Nedelec1(self.mesh)
         elif self.order == 2:
             from ...elements.nedelec2 import Nedelec2
@@ -247,9 +255,8 @@ class Electrodynamics3D:
         ''' Initializes auxilliary required boundary condition information before running simulations.
         '''
         logger.debug('Initializing boundary conditions')
-        for bc in self.boundary_conditions:
-            if isinstance(bc, LumpedPort):
-                self.define_lumped_port_integration_points(bc)
+        for port in self.bc.oftype(LumpedPort):
+            self.define_lumped_port_integration_points(port)
  
     def modal_analysis(self, 
                        port: ModalPort, 
@@ -259,7 +266,7 @@ class Electrodynamics3D:
                        target_kz = None,
                        target_neff = None,
                        freq: float = None,
-                       search: bool = False) -> EMSimData:
+                       search: bool = False) -> MWSimData:
         ''' Execute a modal analysis on a given ModalPort boundary condition.
         
         Parameters:
@@ -283,7 +290,7 @@ class Electrodynamics3D:
                 propagation constant is unknown. It will search between ½k0 and √εᵣ k0
         '''
         T0 = time.time()
-        if self._bc_initialized is False:
+        if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         
         self._initialize_field()
@@ -308,7 +315,7 @@ class Electrodynamics3D:
         ermax = np.max(er.flatten())
         urmax = np.max(ur.flatten())
 
-        mode_data = EMSimData()
+        mode_data = MWSimData()
         self.mode_data[port.port_number] = mode_data
 
         if freq is None:
@@ -318,7 +325,7 @@ class Electrodynamics3D:
 
         logger.info('Assembling BMA Matrices')
         
-        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.boundary_conditions)
+        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.bc.boundary_conditions)
         
         logger.debug(f'Total of {Amatrix.shape[0]} Degrees of freedom.')
         logger.debug(f'Applied frequency: {freq/1e9:.2f}GHz')
@@ -469,7 +476,7 @@ class Electrodynamics3D:
         '''
 
         logger.debug('Finding PEC TEM conductors')
-        pecs: list[PEC] = [bc for bc in self.boundary_conditions if isinstance(bc,PEC)]
+        pecs: list[PEC] = self.bc.oftype(PEC)
         mesh = self.mesh
 
         # Process all PEC Boundary Conditions
@@ -521,10 +528,7 @@ class Electrodynamics3D:
             freq (float): The simulation frequency
         """
         k0 = 2*np.pi*freq/299792458
-        for bc in self.boundary_conditions:
-            # Only treat modal ports
-            if not isinstance(bc, ModalPort):
-                continue
+        for bc in self.bc.oftype(ModalPort):
             
             # If there is a port mode (at least one) and the port does not have mixed materials. No new analysis is needed
             if not bc.mixed_materials and bc.initialized:
@@ -538,7 +542,7 @@ class Electrodynamics3D:
                              harddisc_threshold: int = None,
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
-                             automatic_modal_analysis: bool = False) -> EMSimData:
+                             automatic_modal_analysis: bool = False) -> MWSimData:
         """Executes a parallel frequency domain study
 
         The study is distributed over "njobs" workers.
@@ -561,11 +565,11 @@ class Electrodynamics3D:
             SimulationError: An error associated witha a problem during the simulation.
 
         Returns:
-            EMSimData: The dataset.
+            MWSimData: The dataset.
         """
         T0 = time.time()
         mesh = self.mesh
-        if self._bc_initialized is False:
+        if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         self._initialize_field()
         self._initialize_bc_data()
@@ -588,7 +592,7 @@ class Electrodynamics3D:
         
         #### Port settings
 
-        all_ports = [bc for bc in self.boundary_conditions if isinstance(bc,PortBC)]
+        all_ports = self.bc.oftype(PortBC)
         port_numbers = [port.port_number for port in all_ports]
 
         ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
@@ -646,7 +650,10 @@ class Electrodynamics3D:
                     if automatic_modal_analysis:
                         self._compute_modes(freq)
                     # Assembling matrix problem
-                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
+                                                              self.bc.boundary_conditions, 
+                                                              freq, 
+                                                              cache_matrices=self.cache_matrices)
                     job.store_limit = harddisc_threshold
                     job.relative_path = harddisc_path
                     jobs.append(job)
@@ -723,7 +730,7 @@ class Electrodynamics3D:
 
         return self.freq_data
     
-    def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> EMSimData:
+    def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> MWSimData:
         """Execute a frequency domain study without distributed frequency sweep.
 
         Args:
@@ -733,11 +740,11 @@ class Electrodynamics3D:
             SimulationError: _description_
 
         Returns:
-            EMSimData: The Simulation data.
+            MWSimData: The Simulation data.
         """
         T0 = time.time()
         mesh = self.mesh
-        if self._bc_initialized is False:
+        if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         
         self._initialize_field()
@@ -759,7 +766,7 @@ class Electrodynamics3D:
         
         #### Port settings
 
-        all_ports = [bc for bc in self.boundary_conditions if isinstance(bc,PortBC)]
+        all_ports = self.bc.oftype(PortBC)
         port_numbers = [port.port_number for port in all_ports]
 
         ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
@@ -791,7 +798,7 @@ class Electrodynamics3D:
             if automatic_modal_analysis:
                 self._compute_modes(freq)
             
-            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
+            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.bc.boundary_conditions, freq, cache_matrices=self.cache_matrices)
             
             logger.debug(f'Routine: {self.solveroutine}')
 
@@ -864,7 +871,7 @@ class Electrodynamics3D:
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
                              automatic_modal_analysis: bool = True,
-                             ) -> EMSimData:
+                             ) -> MWSimData:
         """Perform a frequency sweep study
         The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
         The njobs-parameter defines the number of parallel threads.
@@ -889,7 +896,7 @@ class Electrodynamics3D:
             automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to True
 
         Returns:
-            EMDataSet: The Resultant dataset.
+            MWDataSet: The Resultant dataset.
         """
         if parallel:
             if njobs == 1:
@@ -918,6 +925,7 @@ class Electrodynamics3D:
         Returns:
             tuple[complex, complex]: _description_
         """
+        from .sparam import sparam_field_power, sparam_mode_power
         if bc.v_integration:
             V = bc.vintline.line_integral(fieldfunction)
             
@@ -943,33 +951,6 @@ class Electrodynamics3D:
             field_p = sparam_field_power(self.mesh.nodes, tri_vertices, bc, k0, fieldfunction, const)
             mode_p = sparam_mode_power(self.mesh.nodes, tri_vertices, bc, k0, const)
             return field_p, mode_p
-          
-    def assign(self, 
-               *bcs: BoundaryCondition) -> None:
-        """Assign a boundary-condition object to a domain or list of domains.
-        This method must be called to submit any boundary condition object you made to the physics.
-
-        Args:
-            bcs *(BoundaryCondition): A list of boundary condition objects.
-        """
-        self._bc_initialized = True
-        wordmap = {
-            0: 'point',
-            1: 'edge',
-            2: 'face',
-            3: 'domain'
-        }
-        for bc in bcs:
-            bc.add_tags(bc.selection.dimtags)
-
-            logger.info('Excluding other possible boundary conditions')
-
-            for existing_bc in self.boundary_conditions:
-                excluded = existing_bc.exclude_bc(bc)
-                if excluded:
-                    logger.debug(f'Removed the {excluded} tags from {wordmap[bc.dim]} BC {existing_bc}')
-            
-            self.boundary_conditions.append(bc)
 
 
 ## DEPRICATED

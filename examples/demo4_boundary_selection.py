@@ -56,7 +56,7 @@ model.define_geometry(wg_box_new, airbox)
 
 # Lets define a frequency range for our simulation. This is needed
 # If we want to mesh our model.
-model.physics.set_frequency_range(8e9, 10e9, 11)
+model.mw.set_frequency_range(8e9, 10e9, 11)
 
 # Now lets mesh our geometry
 model.generate_mesh()
@@ -106,15 +106,13 @@ model.view(selections=[radiation_boundary_2,])
 
 # Now lets define our simulation futher and do some farfield-computation!
 
-port = em.bc.ModalPort(feed_port, 1)
-rad = em.bc.AbsorbingBoundary(radiation_boundary)
+port = model.mw.bc.ModalPort(feed_port, 1)
+rad = model.mw.bc.AbsorbingBoundary(radiation_boundary)
 
-model.physics.assign(port, rad)
-
-model.physics.modal_analysis(port, 1)
+model.mw.modal_analysis(port, 1)
 
 # Run the simulation
-data = model.physics.frequency_domain()
+data = model.mw.frequency_domain()
 
 
 # First the S11 plot

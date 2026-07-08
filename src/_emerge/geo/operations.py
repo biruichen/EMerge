@@ -53,11 +53,16 @@ def add(main: T, tool: T,
     '''
     out_dim_tags, out_dim_tags_map = gmsh.model.occ.fuse(main.dimtags, tool.dimtags, removeObject=remove_object, removeTool=remove_tool)
     if out_dim_tags[0][0] == 3:
-        return GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+        output = GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
     elif out_dim_tags[0][0] == 2:
-        return GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+        output = GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+    if remove_object:
+        main._exists = False
+    if remove_tool:
+        tool._exists = False
+    return output
 
-def remove(main: T, other: T, 
+def remove(main: T, tool: T, 
              remove_object: bool = True,
              remove_tool: bool = True) -> T:
     ''' Subtractes a tool object GMSH from the main object, returning a new object that is the difference of the two.
@@ -76,11 +81,16 @@ def remove(main: T, other: T,
     GeoSurface | GeoVolume
         A new object that is the difference of the main and tool objects.
     '''
-    out_dim_tags, out_dim_tags_map = gmsh.model.occ.cut(main.dimtags, other.dimtags, removeObject=remove_object, removeTool=remove_tool)
+    out_dim_tags, out_dim_tags_map = gmsh.model.occ.cut(main.dimtags, tool.dimtags, removeObject=remove_object, removeTool=remove_tool)
     if out_dim_tags[0][0] == 3:
-        return GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(other,main)
+        output = GeoVolume([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
     elif out_dim_tags[0][0] == 2:
-        return GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(other,main)
+        output = GeoSurface([dt[1] for dt in out_dim_tags])._take_tools(tool,main)
+    if remove_object:
+        main._exists = False
+    if remove_tool:
+        tool._exists = False
+    return output
 
 subtract = remove
 

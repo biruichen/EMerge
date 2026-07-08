@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from ....bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic
+from ..microwave_bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic
 from ....elements.nedelec2 import Nedelec2
 from ....elements.nedleg2 import NedelecLegrange2
 from ....mth.optimized import gaus_quad_tri
@@ -161,7 +161,7 @@ class Assembler:
         w0 = 2*np.pi*frequency
         k0 = w0/C0
 
-        er = er - 1j*sig/(w0*EPS0)
+        er = er - 1j*sig/(w0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
         
         f_dependent_properties = np.any((sig > 0) & (sig < self.conductivity_limit))
         
@@ -238,6 +238,7 @@ class Assembler:
         
         if len(periodic) > 0:
             logger.debug('    Implementing Periodic Boundary Conditions.')
+
         # Periodic BCs
         Pmats = []
         remove = set()
@@ -307,15 +308,18 @@ class Assembler:
                 
             Pmats.append(Pmat)
         
-        Pmat = Pmats[0]
-        for P2 in Pmats[1:]:
-            Pmat = Pmat @ P2
-        Pmat = Pmat.tocsr()
-        remove = np.array(sorted(list(remove)))
-        all_indices = np.arange(NF)
-        keep_indices = np.setdiff1d(all_indices, remove)
-        Pmat = Pmat[:,keep_indices]
-
+        if Pmats:
+            Pmat = Pmats[0]
+            for P2 in Pmats[1:]:
+                Pmat = Pmat @ P2
+            Pmat = Pmat.tocsr()
+            remove = np.array(sorted(list(remove)))
+            all_indices = np.arange(NF)
+            keep_indices = np.setdiff1d(all_indices, remove)
+            Pmat = Pmat[:,keep_indices]
+        else:
+            Pmat = None
+        
         pec_ids = set(pec_ids)
         solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids])
         
@@ -325,7 +329,9 @@ class Assembler:
             mask = mask[keep_indices]
             solve_ids = np.argwhere(mask==1).flatten()
 
-        logger.debug(f'Assembly complete! Total of {K.shape[0]} DOF')
+        logger.debug(f'Assembly complete!')
+        logger.debug(f'Number of tets: {mesh.n_tets}')
+        logger.debug(f'Number of DoF: {K.shape[0]}')
         simjob = SimJob(K, b, k0*299792458/(2*np.pi), True)
         
         simjob.port_vectors = port_vectors

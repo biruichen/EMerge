@@ -234,8 +234,8 @@ class PortProperties:
     Pout: float | None = None
     mode_number: int = 1
     
-class EMDataSet(DataSet):
-    """The EMDataSet class stores solution data of FEM Time Harmonic simulations.
+class MWDataSet(DataSet):
+    """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
 
     
     """
@@ -326,7 +326,7 @@ class EMDataSet(DataSet):
     def write_S(self, i1: int | float, i2: int | float, value: complex) -> None:
         self.Sp[i1,i2] = value
 
-    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> EMDataSet:
+    def interpolate(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> MWDataSet:
         ''' Interpolate the dataset in the provided xs, ys, zs values'''
         shp = xs.shape
         xf = xs.flatten()
@@ -353,7 +353,7 @@ class EMDataSet(DataSet):
                      ds: float,
                      x: float=None,
                      y: float=None,
-                     z: float=None) -> EMDataSet:
+                     z: float=None) -> MWDataSet:
         xb, yb, zb = self.basis.bounds
         xs = np.linspace(xb[0], xb[1], int((xb[1]-xb[0])/ds))
         ys = np.linspace(yb[0], yb[1], int((yb[1]-yb[0])/ds))
@@ -370,7 +370,7 @@ class EMDataSet(DataSet):
         self.interpolate(X,Y,Z)
         return self
     
-    def grid(self, ds: float) -> EMDataSet:
+    def grid(self, ds: float) -> MWDataSet:
         """Interpolate a uniform grid sampled at ds
 
         Args:
@@ -499,11 +499,11 @@ class _DataSetProxy:
             return generate_ndim(xaxs, yax, self._field)
 
 
-class EMSimData(SimData[EMDataSet]):
-    """The EMSimData class contains all EM simulation data from a Time Harmonic simulation
+class MWSimData(SimData[MWDataSet]):
+    """The MWSimData class contains all EM simulation data from a Time Harmonic simulation
     along all sweep axes.
     """
-    datatype: type = EMDataSet
+    datatype: type = MWDataSet
     def __init__(self):
         super().__init__()
         self._injections = dict()
@@ -522,8 +522,8 @@ class EMSimData(SimData[EMDataSet]):
         return self.datasets[0].basis.mesh
     
     def howto(self) -> None:
-        """To access data in the EMSimData class use the .ax method to extract properties selected
-        along an access of global variables. The axes are all global properties that the EMDatasets manage.
+        """To access data in the MWSimData class use the .ax method to extract properties selected
+        along an access of global variables. The axes are all global properties that the MWDataSets manage.
         
         For example the following would return all S(2,1) parameters along the frequency axis.
         
@@ -545,30 +545,30 @@ class EMSimData(SimData[EMDataSet]):
 
         """
 
-    def select(self, **axes: EMField) -> EMSimData:
+    def select(self, **axes: EMField) -> MWSimData:
         """Takes the provided axis points and constructs a new dataset only for those axes values
 
         Returns:
-            EMSimData: The new dataset
+            MWSimData: The new dataset
         """
-        newdata = EMSimData()
+        newdata = MWSimData()
         for dataset in self.datasets:
             if dataset.equals(**axes):
                 newdata.datasets.append(dataset)
         return newdata
     
-    def ax(self, *field: EMField) -> EMDataSet:
-        """Return a EMDataSet proxy object that you can request properties for along a provided axis.
+    def ax(self, *field: EMField) -> MWDataSet:
+        """Return a MWDataSet proxy object that you can request properties for along a provided axis.
 
-        The EMSimData class contains a list of EMDataSet objects. Any global variable like .freq of the 
-        EMDataSet object can be used as inner-axes after which the outer axis can be selected as if
+        The MWSimData class contains a list of MWDataSet objects. Any global variable like .freq of the 
+        MWDataSet object can be used as inner-axes after which the outer axis can be selected as if
         you are extract a single one.
 
         Args:
             field (EMField): The global field variable to select the data along
 
         Returns:
-            EMDataSet: An EMDataSet object (actually a proxy for)
+            MWDataSet: An MWDataSet object (actually a proxy for)
 
         Example:
         The following will select all S11 parameters along the frequency axis:
@@ -579,7 +579,11 @@ class EMSimData(SimData[EMDataSet]):
         # find the real DataSet
         return _DataSetProxy(field, self.datasets)
 
-    def model_S(self, i: int, j: int, freq: np.ndarray, Npoles: int | Literal['auto'] = 'auto', inc_real: bool = False) -> np.ndarray:
+    def model_S(self, i: int, j: int, 
+                freq: np.ndarray, 
+                Npoles: int | Literal['auto'] = 'auto', 
+                inc_real: bool = False,
+                maxpoles: int = 30) -> np.ndarray:
         """Returns an S-parameter model object at a dense frequency range.
         This method uses vector fitting inside the datasets frequency points to determine a model for the linear system.
 
@@ -594,7 +598,7 @@ class EMSimData(SimData[EMDataSet]):
             SparamModel: The SparamModel object
         """
         fs, S = self.ax('freq').S(i,j)
-        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real)(freq)
+        return SparamModel(fs, S, n_poles=Npoles, inc_real=inc_real, maxpoles=maxpoles)(freq)
 
     def model_Smat(self, frequencies: np.ndarray,
                        Npoles: int = 10,
