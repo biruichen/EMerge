@@ -121,20 +121,20 @@ smith(S11, f=freqs, labels='S11')         # Smith chart of S11
 
 # --- Far-field radiation pattern ----------------------------------------
 # Extract 2D cut at phi=0 plane and plot E-field magnitude
-theta, Exax, Hxax = data.field.find(freq=1.56e9)\
+ff1 = data.field.find(freq=1.56e9)\
     .farfield_2d((0, 0, 1), (1, 0, 0), boundary_selection)
-theta, Eyax, Hyax = data.field.find(freq=1.56e9)\
+ff2 = data.field.find(freq=1.56e9)\
     .farfield_2d((0, 0, 1), (0, 1, 0), boundary_selection)
 
-plot_ff(theta, [em.norm(Exax), em.norm(Eyax)])                # linear plot vs theta
-plot_ff_polar(theta, [em.norm(Exax), em.norm(Eyax)])          # polar plot of radiation
+plot_ff(ff1.ang*180/np.pi, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO])                # linear plot vs theta
+plot_ff_polar(ff1.ang, [ff1.normE/em.lib.EISO, ff2.normE/em.lib.EISO])          # polar plot of radiation
 
 # --- 3D radiation visualization -----------------------------------------
 # Add geometry to 3D display
 model.display.add_object(rpatch)
 model.display.add_object(dielectric)
 # Compute full 3D far-field and display surface colored by |E|
-ff3d = data.field[1].farfield_3d(abc)
+ff3d = data.field[1].farfield_3d(boundary_selection)
 surf = ff3d.surfplot('normE', rmax=60 * mm,
                       offset=(0, 0, 20 * mm))
 model.display.add_surf(*surf, cmap='viridis', symmetrize=False)

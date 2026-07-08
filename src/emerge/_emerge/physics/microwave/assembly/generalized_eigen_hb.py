@@ -18,7 +18,6 @@
 import numpy as np
 from ....elements.nedleg2 import NedelecLegrange2
 from scipy.sparse import csr_matrix
-from numba_progress import ProgressBar, ProgressBarType
 from ....mth.optimized import local_mapping, matinv, compute_distances, gaus_quad_tri
 from numba import c16, types, f8, i8, njit, prange
 
@@ -54,8 +53,7 @@ def generelized_eigenvalue_matrix(field: NedelecLegrange2,
 
     nodes = field.local_nodes
     
-    with ProgressBar(total=nT, ncols=100, dynamic_ncols=False) as pgb:
-        dataE, dataB, rows, cols = _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb)
+    dataE, dataB, rows, cols = _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0)
     
     nfield = field.n_field
 
@@ -427,9 +425,8 @@ def generalized_matrix_GQ(tri_vertices, local_edge_map, Ms, Mm, k0):
                                                       i8[:,:],
                                                       c16[:,:,:], 
                                                       c16[:,:,:], 
-                                                      f8,
-                                                      ProgressBarType), cache=True, nogil=True, parallel=True)
-def _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb: ProgressBar):
+                                                      f8), cache=True, nogil=True, parallel=True)
+def _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0):
 
     ntritot = tris.shape[1]
     nnz = ntritot*196
@@ -443,8 +440,6 @@ def _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb: ProgressB
     
     for itri in prange(ntritot): # type: ignore
         p = itri*196
-        if np.mod(itri,10)==0:
-            pgb.update(10)
         urt = ur[:,:,itri]
         ert = er[:,:,itri]
 

@@ -62,7 +62,7 @@ class Simulation:
 
     def __init__(self, 
                  modelname: str, 
-                 loglevel: Literal['DEBUG','INFO','WARNING','ERROR'] = 'INFO',
+                 loglevel: Literal['TRACE','DEBUG','INFO','WARNING','ERROR'] = 'INFO',
                  load_file: bool = False,
                  save_file: bool = False,
                  logfile: bool = False,

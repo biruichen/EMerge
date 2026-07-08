@@ -342,8 +342,6 @@ and sparse frequency annotations (e.g., labeled by frequency).
     fdiv = units[key]
 
     # --- figure/axes ---
-    fig: Figure
-    ax: Axes
     fig, ax = plt.subplots(figsize=(6, 6))
 
     # --- smith grid (kept out of legend) ---

@@ -114,7 +114,7 @@ pec = model.mw.bc.PEC(stripline)
 d = model.display
 # show dielectric block translucent green and stripline in red
 d.add_object(diel, color='green', opacity=0.5)
-d.add_object(stripline, color='red')
+d.add_object(stripline)
 d.show()
 
 # --- Run frequency-domain solver ----------------------------------------

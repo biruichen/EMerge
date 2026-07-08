@@ -254,9 +254,72 @@ class FarfieldData:
     H: np.ndarray
     theta: np.ndarray
     phi: np.ndarray
+    ang: np.ndarray | None = None
 
+    @property
+    def Ex(self) -> np.ndarray:
+        return self.E[0,:]
+    
+    @property
+    def Ey(self) -> np.ndarray:
+        return self.E[1,:]
+    
+    @property
+    def Ez(self) -> np.ndarray:
+        return self.E[2,:]
+    
+    @property
+    def Hx(self) -> np.ndarray:
+        return self.H[0,:]
+    
+    @property
+    def Hy(self) -> np.ndarray:
+        return self.H[1,:]
+    
+    @property
+    def Hz(self) -> np.ndarray:
+        return self.H[2,:]
+    
+    @property
+    def Etheta(self) -> np.ndarray:
+        thx = -np.cos(self.theta)*np.cos(self.phi)
+        thy = -np.cos(self.theta)*np.sin(self.phi)
+        thz = np.sin(self.theta)
+        return thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:]
+    
+    @property
+    def Ephi(self) -> np.ndarray:
+        phx = -np.sin(self.phi)
+        phy = np.cos(self.phi)
+        phz = np.zeros_like(self.theta)
+        return phx*self.E[0,:] + phy*self.E[1,:] + phz*self.E[2,:]
+    
+    @property
+    def Erhcp(self) -> np.ndarray:
+        return (self.Etheta - 1j*self.Ephi)/np.sqrt(2)
+    
+    @property
+    def Elhcp(self) -> np.ndarray:
+        return (self.Etheta + 1j*self.Ephi)/np.sqrt(2)
+    
+    @property
+    def AR(self) -> np.ndarray:
+        R = np.abs(self.Erhcp)
+        L = np.abs(self.Elhcp)
+        return (R+L)/(R-L)
+    
+    @property
+    def normE(self) -> np.ndarray:
+        return np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
+    
+    @property
+    def normH(self) -> np.ndarray:
+        return np.sqrt(np.abs(self.H[0,:])**2 + np.abs(self.H[1,:])**2 + np.abs(self.H[2,:])**2)
+    
+    
     def surfplot(self, 
-             polarization: Literal['Ex','Ey','Ez','Etheta','Ephi','normE'], 
+             polarization: Literal['Ex','Ey','Ez','Etheta','Ephi','normE','Erhcp','Elhcp','AR'],
+             quantity: Literal['abs','real','imag','angle'] = 'abs',
              isotropic: bool = True, dB: bool = False, dBfloor: float = -30, rmax: float | None = None,
              offset: tuple[float, float, float] = (0,0,0)) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Returns the parameters to be used as positional arguments for the display.add_surf() function.
@@ -273,27 +336,16 @@ class FarfieldData:
         Returns:
             tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The X, Y, Z, F values
         """
-        if polarization == "Ex":
-            F = self.E[0,:]
-        elif polarization == "Ey":
-            F = self.E[1,:]
-        elif polarization == "Ez":
-            F = self.E[2,:]
-        elif polarization == "normE":
-            F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
-        elif polarization == "Etheta":
-            thx = -np.cos(self.theta)*np.cos(self.phi)
-            thy = -np.cos(self.theta)*np.sin(self.phi)
-            thz = np.sin(self.theta)
-            F = np.abs(thx*self.E[0,:] + thy*self.E[1,:] + thz*self.E[2,:])
-        elif polarization == "Ephi":
-            phx = -np.sin(self.phi)
-            phy = np.cos(self.phi)
-            phz = np.zeros_like(self.theta)
-            F = np.abs(phx*self.E[0,:] + phy*self.E[1,:] + phz*self.E[2,:])
-        else:
-            logger.warning('Defaulting to normE')
-            F = np.sqrt(np.abs(self.E[0,:])**2 + np.abs(self.E[1,:])**2 + np.abs(self.E[2,:])**2)
+        fmap = {
+            'abs': np.abs,
+            'real': np.real,
+            'imag': np.imag,
+            'angle': np.angle,
+        }
+        mapping = fmap.get(quantity.lower(),np.abs)
+        
+        F = mapping(self.__dict__.get(polarization, self.normE))
+        
         if isotropic:
             F = F/np.sqrt(Z0/(2*np.pi))
         if dB:
@@ -764,7 +816,7 @@ class MWField:
                          ang_range: tuple[float, float] = (-180, 180),
                          Npoints: int = 201,
                          origin: tuple[float, float, float] | None = None,
-                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                         syms: list[Literal['Ex','Ey','Ez', 'Hx','Hy','Hz']] | None = None) -> FarfieldData:#tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute the farfield electric and magnetic field defined by a circle.
 
         Args:
@@ -784,7 +836,7 @@ class MWField:
         theta, phi = arc_on_plane(refdir, plane_normal_parsed, ang_range, Npoints)
         E,H = self.farfield(theta, phi, faces, origin, syms = syms)
         angs = np.linspace(*ang_range, Npoints)*np.pi/180
-        return angs, E ,H
+        return FarfieldData(E, H, theta, phi, ang=angs)
 
     def farfield_3d(self, 
                     faces: FaceSelection | GeoSurface,
