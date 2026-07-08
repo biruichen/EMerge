@@ -62,7 +62,7 @@ class FEMBasis:
     
     def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         pass
-
+    
     def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
@@ -147,6 +147,12 @@ class FEMBasis:
     def local_tet_to_edgeid(self, itet: int) -> np.ndarray:
         raise NotImplementedError("local_tet_to_edgeid not implemented")
 
+    def interpolate_index(self, xs: np.ndarray,
+                    ys: np.ndarray,
+                    zs: np.ndarray,
+                    tetids: np.ndarray = None) -> np.ndarray:
+        raise NotImplementedError()
+    
     def map_edge_to_field(self, edge_ids: np.ndarray) -> np.ndarray:
         """
         Returns the field ids for the edges.

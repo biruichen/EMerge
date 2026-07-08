@@ -785,8 +785,8 @@ class Microwave3D:
 
             fielddata = self.data.field.new(freq=eig_freq, **self._params)
             fielddata.freq = eig_freq
-            fielddata.er = np.squeeze(er[0,0,:])
-            fielddata.ur = np.squeeze(ur[0,0,:])
+            fielddata._der = np.squeeze(er[0,0,:])
+            fielddata._dur = np.squeeze(ur[0,0,:])
             fielddata._mode_field = Emode
             fielddata.basis = self.basis
         ### Compute S-parameters and return
@@ -830,8 +830,8 @@ class Microwave3D:
             
             fielddata = self.data.field.new(freq=freq, **self._params)
             fielddata.freq = freq
-            fielddata.er = np.squeeze(er[0,0,:])
-            fielddata.ur = np.squeeze(ur[0,0,:])
+            fielddata._der = np.squeeze(er[0,0,:])
+            fielddata._dur = np.squeeze(ur[0,0,:])
 
             self.data.setreport(job.reports, freq=freq, **self._params)
 
