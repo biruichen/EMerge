@@ -12,6 +12,7 @@ mm = 0.001
 th = 1
 
 model = em.Simulation('Stripline_test', loglevel='DEBUG')
+model.check_version("0.6.4") # Checks version compatibility.
 # As usual we start by creating our layouter
 ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
 

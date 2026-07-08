@@ -37,7 +37,7 @@ import inspect
 from pathlib import Path
 from atexit import register
 import signal
-
+from .. import __version__
 
 ############################################################
 #                   EXCEPTION DEFINITIONS                  #
@@ -52,6 +52,9 @@ Known problems/solutions:
 """
 
 class SimulationError(Exception):
+    pass
+
+class VersionError(Exception):
     pass
 
 ############################################################
@@ -227,6 +230,28 @@ class Simulation:
     ############################################################
     #                       PUBLIC FUNCTIONS                  #
     ############################################################
+
+    def check_version(self, version: str) -> None:
+        """Compares the provided version number with the version number of EMerge that is running the script.
+        
+        You may remove any call to check_version to suppress VersionErrors and warnings.
+        
+        Args:
+            version (str): The EMerge version you intend to write this code for.
+
+        Raises:
+            VersionError: A potential version error if incompatibility is possible
+        """
+        vM, vm, vp = [float(x) for x in version.split('.')]
+        cM, cm, cp = [float(x) for x in __version__.split('.')]
+        if vM != cM:
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+        if vm != cm:
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+        if vp != cp:
+            logger.warning(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            logger.warning("You may suppress this error by removing the call to .check_version().")
+            input('Press enter to proceed...')
 
     def save(self) -> None:
         """Saves the current model in the provided project directory."""

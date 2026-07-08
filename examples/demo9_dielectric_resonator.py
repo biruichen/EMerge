@@ -33,6 +33,7 @@ Nmodes = 5
 
 # --- Create simulation ---------------------------------------------------
 model = em.Simulation('DielectricResonatorFilter', loglevel='INFO')
+model.check_version("0.6.4") # Checks version compatibility.
 
 # --- Build geometry ------------------------------------------------------
 # Metal enclosure box (PEC by default)

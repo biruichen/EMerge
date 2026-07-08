@@ -25,6 +25,8 @@ porth = 2*mm                    # vertical height of the feed extrusion
 
 # --- Simulation object -------------------------------------------------------
 model = em.Simulation('helix', loglevel="DEBUG")
+model.check_version("0.6.4") # Checks version compatibility.
+
 dfeed = 5*mm                    # straight feed length before the helix starts
 
 # --- Geometry: helix curve and metal pipe -----------------------------------
