@@ -40,7 +40,7 @@ extra = 100             # extra margin (mil)
 # --- Simulation setup ----------------------------------------------------
 model = em.Simulation('CoupledLineFilter')
 
-model.check_version("2.4.2") # Checks version compatibility.
+model.check_version("2.4.1") # Checks version compatibility.
 # --- Material and layouter -----------------------------------------------
 mat = em.Material(er=3.55, color="#488343", opacity=0.4)
 
@@ -94,7 +94,6 @@ model.mw.set_frequency_range(5.2e9, 6.2e9, 30)  # 5.2–6.2 GHz, 31 points
 # --- Assemble geometry into simulation -----------------------------------
 model.commit_geometry()
 # --- Mesh refinement -----------------------------------------------------
-# High growth rates are generally not adviced but used here to save some memory.
 model.mesher.set_boundary_size(stripline, 0.5 * mm, growth_rate=10)
 model.mesher.set_face_size(p1, 0.5*mm)
 model.mesher.set_face_size(p2, 0.5*mm)

@@ -1,3 +1,4 @@
+# Last Cleanup: 2025-01-01
 """A Python based FEM solver.
 Copyright (C) 2025 Robert Fennis
 
@@ -34,7 +35,7 @@ warnings.filterwarnings(
 
 import os
 
-__version__ = "2.4.2"
+__version__ = "2.4.1"
 
 NTHREADS = "1"
 
