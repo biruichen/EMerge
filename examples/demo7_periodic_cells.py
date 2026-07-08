@@ -105,8 +105,8 @@ abc = model.mw.bc.AbsorbingBoundary(box.back)
 # The arguments of the function are θ,ϕ in degrees.
 periodic_cell.set_scanangle(30,45)
 model.view(bc=True)
+
 # And at last we run our simulation and view the results.
-model.set_solver(em.EMSolver.AASDS)
 data = model.mw.run_sweep()
 
 model.display.add_object(waveguide)
