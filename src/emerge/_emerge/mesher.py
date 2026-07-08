@@ -79,6 +79,7 @@ class Mesher:
         self.max_size: float = None
         self.periodic_cell: PeriodicCell = None
 
+        
     @property
     def edge_tags(self) -> list[int]:
         return [tag[1] for tag in gmsh.model.getEntities(1)]
@@ -244,7 +245,7 @@ class Mesher:
         for dimtag in dimtags:
             gmsh.model.mesh.setSizeFromBoundary(dimtag[0], dimtag[1], 0)
             
-    def set_boundary_size(self, boundary: GeoSurface | FaceSelection | Iterable, 
+    def set_boundary_size(self, boundary: GeoObject | Selection | Iterable, 
                           size:float,
                           growth_rate: float = 1.4,
                           max_size: float | None = None) -> None:
@@ -272,8 +273,10 @@ class Mesher:
         nodes = gmsh.model.getBoundary(dimtags, combined=False, oriented=False, recursive=False)
 
         disttag = gmsh.model.mesh.field.add("Distance")
-
-        gmsh.model.mesh.field.setNumbers(disttag, "CurvesList", [n[1] for n in nodes])
+        if boundary.dim==2:
+            gmsh.model.mesh.field.setNumbers(disttag, "CurvesList", [n[1] for n in nodes])
+        if boundary.dim==3:
+            gmsh.model.mesh.field.setNumbers(disttag,'SurfacesList', [n[1] for n in nodes])
         gmsh.model.mesh.field.setNumber(disttag, "Sampling", 100)
 
         thtag = gmsh.model.mesh.field.add("Threshold")
@@ -285,7 +288,7 @@ class Mesher:
     
         self.mesh_fields.append(thtag)
 
-    def set_domain_size(self, obj: GeoVolume | Selection, size: float):
+    def set_domain_size(self, obj: GeoObject | Selection, size: float):
         """Manually set the maximum element size inside a domain
 
         Args:

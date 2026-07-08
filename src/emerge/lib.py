@@ -29,7 +29,7 @@ GREY = "#bfbfbf"
 MET_ALUMINUM         = Material(cond=3.77e7,  color=GREY, opacity=0.5)
 MET_CARBON           = Material(cond=3.33e4,  color=GREY, opacity=0.5)
 MET_CHROMIUM         = Material(cond=5.56e6,  color=GREY, opacity=0.5)
-MET_COPPER           = Material(cond=5.8e7,   color="#62290c", opacity=0.5)
+MET_COPPER           = Material(cond=5.8e7,   color="#62290c", opacity=1.0)
 MET_GOLD             = Material(cond=4.10e7,  color=GREY, opacity=0.5)
 MET_INDIUM           = Material(cond=6.44e6,  color=GREY, opacity=0.5)
 MET_IRIDIUM          = Material(cond=2.13e7,  color=GREY, opacity=0.5)

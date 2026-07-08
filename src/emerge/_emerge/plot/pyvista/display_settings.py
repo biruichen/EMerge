@@ -22,3 +22,4 @@ class PVDisplaySettings:
         self.background_bottom: str = "#c0d2e8"
         self.background_top: str = "#ffffff"
         self.grid_line_color: str = "#8e8e8e"
+        self.z_boost: float = 1e-6

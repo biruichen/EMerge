@@ -432,6 +432,36 @@ def matinv(M: np.ndarray) -> np.ndarray:
         out = out*det
     return out
 
+@njit(f8[:,:](f8[:,:]), cache=True, nogil=True)
+def matinv_r(M: np.ndarray) -> np.ndarray:
+    """Optimized matrix inverse of 3x3 matrix
+
+    Args:
+        M (np.ndarray): Input matrix M of shape (3,3)
+
+    Returns:
+        np.ndarray: The matrix inverse inv(M)
+    """
+    out = np.zeros((3,3), dtype=np.float64)
+   
+    if M[0,1]==0 and M[0,2]==0 and M[1,0]==0 and M[1,2]==0 and M[2,0]==0 and M[2,1]==0:
+        out[0,0] = 1/M[0,0]
+        out[1,1] = 1/M[1,1]
+        out[2,2] = 1/M[2,2]
+    else:
+        det = M[0,0]*M[1,1]*M[2,2] - M[0,0]*M[1,2]*M[2,1] - M[0,1]*M[1,0]*M[2,2] + M[0,1]*M[1,2]*M[2,0] + M[0,2]*M[1,0]*M[2,1] - M[0,2]*M[1,1]*M[2,0]
+        out[0,0] = M[1,1]*M[2,2] - M[1,2]*M[2,1]
+        out[0,1] = -M[0,1]*M[2,2] + M[0,2]*M[2,1]
+        out[0,2] = M[0,1]*M[1,2] - M[0,2]*M[1,1]
+        out[1,0] = -M[1,0]*M[2,2] + M[1,2]*M[2,0]
+        out[1,1] = M[0,0]*M[2,2] - M[0,2]*M[2,0]
+        out[1,2] = -M[0,0]*M[1,2] + M[0,2]*M[1,0]
+        out[2,0] = M[1,0]*M[2,1] - M[1,1]*M[2,0]
+        out[2,1] = -M[0,0]*M[2,1] + M[0,1]*M[2,0]
+        out[2,2] = M[0,0]*M[1,1] - M[0,1]*M[1,0]
+        out = out*det
+    return out
+
 @njit(cache=True, nogil=True)
 def matmul(M: np.ndarray, vecs: np.ndarray):
     """Executes a basis transformation of vectors (3,N) with a basis matrix M

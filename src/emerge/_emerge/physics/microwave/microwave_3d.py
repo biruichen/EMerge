@@ -24,6 +24,7 @@ from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
+from ...mth.optimized import compute_distances
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -60,7 +61,7 @@ def run_job_multi(job: SimJob) -> SimJob:
     return job
 
 
-def _dimstring(data: list[float]) -> str:
+def _dimstring(data: list[float] | np.ndarray) -> str:
     """A String formatter for dimensions in millimeters
 
     Args:
@@ -99,6 +100,21 @@ def shortest_path(xyz1: np.ndarray, xyz2: np.ndarray, Npts: int) -> np.ndarray:
 
     return path
 
+def _pick_central(vertices: np.ndarray) -> np.ndarray:
+    """Computes the coordinate in the vertex set that has the shortest square distance to all other points.
+    
+
+    Args:
+        vertices (np.ndarray): The set of coordinates [3,:]
+
+    Returns:
+        np.ndarray: The most central point
+    """
+    Ds = compute_distances(vertices[0,:], vertices[1,:], vertices[2,:])
+    sumDs = np.sum(Ds**2, axis=1)
+    id_central = np.argwhere(sumDs==np.min(sumDs)).flatten()[0]
+    return vertices[:, id_central].squeeze()
+    
 class Microwave3D:
     """The Electrodynamics time harmonic physics class.
 
@@ -302,8 +318,8 @@ class Microwave3D:
         dotprod = xs*field_axis[0] + ys*field_axis[1] + zs*field_axis[2]
 
         start_id = points[np.argwhere(dotprod == np.min(dotprod))]
-
-        start = np.squeeze(np.mean(self.mesh.nodes[:,start_id],axis=1))
+        
+        start = _pick_central(self.mesh.nodes[:,start_id.flatten()])
         logger.info(f'Starting node = {_dimstring(start)}')
         end = start + port.Vdirection.np*port.height
 

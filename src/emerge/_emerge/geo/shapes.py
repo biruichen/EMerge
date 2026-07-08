@@ -210,6 +210,10 @@ class Cyllinder(GeoVolume):
             super().__init__(cyl)
         self._add_face_pointer('front', cs.origin, -cs.zax.np)
         self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
+        self._add_face_pointer('bottom', cs.origin, -cs.zax.np)
+        self._add_face_pointer('top', cs.origin+height*cs.zax.np, cs.zax.np)
+        self._add_face_pointer('left', cs.origin, -cs.zax.np)
+        self._add_face_pointer('right', cs.origin+height*cs.zax.np, cs.zax.np)
             
         self.cs: CoordinateSystem = cs
         self.radius = radius
@@ -273,6 +277,10 @@ class CoaxCyllinder(GeoVolume):
 
         self._add_face_pointer('front', cs.origin, -cs.zax.np)
         self._add_face_pointer('back', cs.origin+height*cs.zax.np, cs.zax.np)
+        self._add_face_pointer('bottom', cs.origin, -cs.zax.np)
+        self._add_face_pointer('top', cs.origin+height*cs.zax.np, cs.zax.np)
+        self._add_face_pointer('left', cs.origin, -cs.zax.np)
+        self._add_face_pointer('right', cs.origin+height*cs.zax.np, cs.zax.np)
 
         self.cs = cs
 
@@ -297,13 +305,28 @@ class HalfSphere(GeoVolume):
                  radius: float,
                  position: tuple = (0,0,0),
                  direction: tuple = (1,0,0)):
-        super().__init__([])
+        
         sphere = Sphere(radius, position=position)
         cx, cy, cz = position
 
-        box = Box(1.1*radius, 2.2*radius, 2.2*radius, position=(cx-radius*1.1,cy-radius*1.1, cz-radius*1.1))
+        dx, dy, dz = direction
+        fx = 0.5**dx
+        fy = 0.5**dy
+        fz = 0.5**dz
+        box = Box(2.2*radius*fx, 2.2*radius*fy, 2.2*radius*fz, position=(cx-radius*1.1*dx*0.5,cy-radius*1.1*dy*0.5, cz-radius*1.1*dz*0.5), alignment=Alignment.CENTER)
+        
+        dimtags, _ = gmsh.model.occ.cut(sphere.dimtags, box.dimtags)
+        
+        sphere._exists = False
+        box._exists = False
 
-        self.tag = subtract(sphere, box)[0].tag
+        super().__init__([dt[1] for dt in dimtags])
+        
+        self._add_face_pointer('front',np.array(position), np.array(direction))
+        self._add_face_pointer('back',np.array(position), np.array(direction))
+        self._add_face_pointer('bottom',np.array(position), np.array(direction))
+        self._add_face_pointer('face',np.array(position), np.array(direction))
+        
 
 
 
