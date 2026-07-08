@@ -26,7 +26,7 @@ extra = 100
 model = em.Simulation3D('Demo3', loglevel='DEBUG')
 
 
-mat = em.Material(3.55, color=(0.1,1.0,0.2), opacity=0.1)
+mat = em.Material(3.55, color="#488343", opacity=0.1)
 pcb = em.geo.PCBLayouter(th,unit=mil)
 
 pcb.new(0,140,w0,(1,0)).store('p1').straight(l0).turn(0).straight(l1*0.8)\
