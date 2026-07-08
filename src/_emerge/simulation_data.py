@@ -3,6 +3,7 @@ import numpy as np
 from loguru import logger
 from typing import TypeVar, Generic, Any, List, Union, Dict
 from collections import defaultdict
+from .solver import SolveReport
 
 T = TypeVar("T")
 M = TypeVar("M")
@@ -116,19 +117,39 @@ class PhysicsData:
     def __init__(self):
         self._variables: list[dict[str, float]] = []
         self._data: list[dict[str, Any]] = []
+        self._reports: dict[tuple[tuple[str, float]], SolveReport] = dict()
 
     @property
     def last(self) -> dict:
         """The latest dataset entry that was added"""
         return self._data[-1]
     
-    def new(self, **vars: float) -> dict:
-        """Generate a new data dictionary entry for the given parameter settings
+    def setreport(self, reports: list[SolveReport], **variables) -> None:
+        """Store a simulation report for a given simulation parameter setting
+
+        Args:
+            report (SolveReport): _description_
+        """
+        self._reports[tuple([(key, value) for key,value in variables.items()])] = reports
+
+    def getreport(self, **variables) -> list[SolveReport] | None:
+        """Return a simulation report for a given simulation setting
+
+        Returns:
+            SolveReport | None: _description_
+        """
+        self._reports.get(tuple([(key, value) for key,value in variables.items()]), None)
+
+    def get(self, **variables: float) -> dict:
+        """Return a dictionary entry for the given parameter settings to store information in
 
         Returns:
             dict: The data dictionary to be filled
         """
-        self._variables.append(vars)
+        dct = self.select(**variables)
+        if dct is not None:
+            return dct
+        self._variables.append(variables)
         datadict = dict()
         self._data.append(datadict)
         return datadict
@@ -144,18 +165,17 @@ class PhysicsData:
         """
         return self._data[index]
 
-    def select(self, **variables: float) -> dict:
+    def select(self, **variables: float) -> dict | None:
         """Returns the first data dictionary that satisfies all variable specifications.
 
         Returns:
             dict: The data dictionary
         """
-        index = next(
-            i
-            for i, var_map in enumerate(self._variables)
-            if all(var_map.get(k) == v for k, v in variables.items())
-        )
-        return self.get_entry(index)
+        for i, vrs in enumerate(self._variables):
+            if all(vrs.get(k) == v for k, v in variables.items()):
+                return self.get_entry(i)
+        
+        return None
 
 class BaseDataset(Generic[T,M]):
     def __init__(self, datatype: T, matrixtype: M, scalar: bool):

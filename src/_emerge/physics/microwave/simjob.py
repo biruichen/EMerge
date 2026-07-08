@@ -1,8 +1,7 @@
 import numpy as np
 import os
 from scipy.sparse import csr_matrix, save_npz, load_npz
-
-
+from ...solver import SolveReport
 class SimJob:
 
     def __init__(self, 
@@ -31,6 +30,7 @@ class SimJob:
         self._stored: bool = False
 
         self._active_port: int = None
+        self.reports: list[SolveReport] = []
 
         self.store_if_needed()
 
@@ -82,7 +82,7 @@ class SimJob:
         
         self.cleanup()
     
-    def submit_solution(self, solution):
+    def submit_solution(self, solution: np.ndarray, report: SolveReport):
         # Solve the Ax=b problem
 
         if self.has_periodic:
@@ -90,7 +90,7 @@ class SimJob:
         # From now reuse the factorization
 
         self._fields[self._active_port] = solution
-
+        self.reports.append(report)
         self.routine = None
     
     def cleanup(self):
