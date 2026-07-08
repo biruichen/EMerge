@@ -289,7 +289,9 @@ class Material:
                  cond: float | MatProperty = 0.0,
                  _neff: float | None = None,
                  color: str ="#BEBEBE",
-                 opacity: float = 1.0):
+                 opacity: float = 1.0,
+                 _metal: bool = False,
+                 name: str = 'unnamed'):
         
         if not isinstance(er, MatProperty):
             er = MatProperty(er)
@@ -300,6 +302,7 @@ class Material:
         if not isinstance(cond, MatProperty):
             cond = MatProperty(cond)
         
+        self.name: str = name
         self.er: MatProperty = er
         self.ur: MatProperty = ur
         self.tand: MatProperty = tand
@@ -313,6 +316,10 @@ class Material:
             self._neff: Callable = lambda f: _neff
         hex_str = self.color.lstrip('#')
         self._color_rgb = tuple(int(hex_str[i:i+2], 16)/255.0 for i in (0, 2, 4))
+        self._metal: bool = _metal
+
+    def __str__(self) -> str:
+        return f'Material({self.name})'
     
     def initialize(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, ids: np.ndarray):
         """Initializes the Material properties to be evaluated at xyz-coordinates for
@@ -364,5 +371,5 @@ class Material:
     def color_rgb(self) -> tuple[float,float,float]:
         return self._color_rgb
      
-AIR = Material(color="#4496f3", opacity=0.05)
-COPPER = Material(cond=5.8e7, color="#62290c")
+AIR = Material(color="#4496f3", opacity=0.05, name='Air')
+COPPER = Material(cond=5.8e7, color="#62290c", _metal=True, name='Copper')
