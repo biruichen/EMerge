@@ -18,8 +18,6 @@
 from numba import njit, f8, i8, types, c16
 import numpy as np
 
-
-
 _GAUSQUADTRI = {
     1: [(1, 1, 1/3, 1/3, 1/3),],
     2: [(3, 1/3, 2/3, 1/6, 1/6),],
@@ -246,30 +244,6 @@ def calc_area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
 def dot_c(a: np.ndarray, b: np.ndarray):
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 
-_FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
-    
-@njit(f8(i8, i8, i8, i8), cache=True, fastmath=True, nogil=True)
-def volume_coeff(a, b, c, d):
-    klmn = np.array([0,0,0,0,0,0,0])
-    klmn[a] += 1
-    klmn[b] += 1
-    klmn[c] += 1
-    klmn[d] += 1
-    output = (_FACTORIALS[klmn[1]]*_FACTORIALS[klmn[2]]*_FACTORIALS[klmn[3]]
-                  *_FACTORIALS[klmn[4]]*_FACTORIALS[klmn[5]]*_FACTORIALS[klmn[6]])/_FACTORIALS[(np.sum(klmn[1:])+3)]
-    return output
-
-@njit(f8(i8, i8, i8, i8), cache=True, fastmath=True, nogil=True)
-def area_coeff(a, b, c, d):
-    klmn = np.array([0,0,0,0,0,0,0])
-    klmn[a] += 1
-    klmn[b] += 1
-    klmn[c] += 1
-    klmn[d] += 1
-    output = 2*(_FACTORIALS[klmn[1]]*_FACTORIALS[klmn[2]]*_FACTORIALS[klmn[3]]
-                  *_FACTORIALS[klmn[4]]*_FACTORIALS[klmn[5]]*_FACTORIALS[klmn[6]])/_FACTORIALS[(np.sum(klmn[1:])+2)]
-    return output
-
 @njit(i8[:, :](i8[:], i8[:, :]), cache=True, nogil=True)
 def local_mapping(vertex_ids, triangle_ids):
     """
@@ -306,68 +280,6 @@ def local_mapping(vertex_ids, triangle_ids):
 
     return out
 
-
-@njit(types.Tuple((f8[:], f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
-def tet_coefficients(xs, ys, zs):
-    ## THIS FUNCTION WORKS
-    x1, x2, x3, x4 = xs
-    y1, y2, y3, y4 = ys
-    z1, z2, z3, z4 = zs
-
-    aas = np.empty((4,), dtype=np.float64)
-    bbs = np.empty((4,), dtype=np.float64)
-    ccs = np.empty((4,), dtype=np.float64)
-    dds = np.empty((4,), dtype=np.float64)
-
-    V = np.abs(-x1*y2*z3/6 + x1*y2*z4/6 + x1*y3*z2/6 - x1*y3*z4/6 - x1*y4*z2/6 + x1*y4*z3/6 + x2*y1*z3/6 - x2*y1*z4/6 - x2*y3*z1/6 + x2*y3*z4/6 + x2*y4*z1/6 - x2*y4*z3/6 - x3*y1*z2/6 + x3*y1*z4/6 + x3*y2*z1/6 - x3*y2*z4/6 - x3*y4*z1/6 + x3*y4*z2/6 + x4*y1*z2/6 - x4*y1*z3/6 - x4*y2*z1/6 + x4*y2*z3/6 + x4*y3*z1/6 - x4*y3*z2/6)
-    
-    aas[0] = x2*y3*z4 - x2*y4*z3 - x3*y2*z4 + x3*y4*z2 + x4*y2*z3 - x4*y3*z2
-    aas[1] = -x1*y3*z4 + x1*y4*z3 + x3*y1*z4 - x3*y4*z1 - x4*y1*z3 + x4*y3*z1
-    aas[2] = x1*y2*z4 - x1*y4*z2 - x2*y1*z4 + x2*y4*z1 + x4*y1*z2 - x4*y2*z1
-    aas[3] = -x1*y2*z3 + x1*y3*z2 + x2*y1*z3 - x2*y3*z1 - x3*y1*z2 + x3*y2*z1
-    bbs[0] = -y2*z3 + y2*z4 + y3*z2 - y3*z4 - y4*z2 + y4*z3
-    bbs[1] = y1*z3 - y1*z4 - y3*z1 + y3*z4 + y4*z1 - y4*z3
-    bbs[2] = -y1*z2 + y1*z4 + y2*z1 - y2*z4 - y4*z1 + y4*z2
-    bbs[3] = y1*z2 - y1*z3 - y2*z1 + y2*z3 + y3*z1 - y3*z2
-    ccs[0] = x2*z3 - x2*z4 - x3*z2 + x3*z4 + x4*z2 - x4*z3
-    ccs[1] = -x1*z3 + x1*z4 + x3*z1 - x3*z4 - x4*z1 + x4*z3
-    ccs[2] = x1*z2 - x1*z4 - x2*z1 + x2*z4 + x4*z1 - x4*z2
-    ccs[3] = -x1*z2 + x1*z3 + x2*z1 - x2*z3 - x3*z1 + x3*z2
-    dds[0] = -x2*y3 + x2*y4 + x3*y2 - x3*y4 - x4*y2 + x4*y3
-    dds[1] = x1*y3 - x1*y4 - x3*y1 + x3*y4 + x4*y1 - x4*y3
-    dds[2] = -x1*y2 + x1*y4 + x2*y1 - x2*y4 - x4*y1 + x4*y2
-    dds[3] = x1*y2 - x1*y3 - x2*y1 + x2*y3 + x3*y1 - x3*y2
-
-    return aas, bbs, ccs, dds, V
-
-@njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
-def tet_coefficients_bcd(xs, ys, zs):
-    ## THIS FUNCTION WORKS
-    x1, x2, x3, x4 = xs
-    y1, y2, y3, y4 = ys
-    z1, z2, z3, z4 = zs
-
-    bbs = np.empty((4,), dtype=np.float64)
-    ccs = np.empty((4,), dtype=np.float64)
-    dds = np.empty((4,), dtype=np.float64)
-
-    V = np.abs(-x1*y2*z3/6 + x1*y2*z4/6 + x1*y3*z2/6 - x1*y3*z4/6 - x1*y4*z2/6 + x1*y4*z3/6 + x2*y1*z3/6 - x2*y1*z4/6 - x2*y3*z1/6 + x2*y3*z4/6 + x2*y4*z1/6 - x2*y4*z3/6 - x3*y1*z2/6 + x3*y1*z4/6 + x3*y2*z1/6 - x3*y2*z4/6 - x3*y4*z1/6 + x3*y4*z2/6 + x4*y1*z2/6 - x4*y1*z3/6 - x4*y2*z1/6 + x4*y2*z3/6 + x4*y3*z1/6 - x4*y3*z2/6)
-    
-    bbs[0] = -y2*z3 + y2*z4 + y3*z2 - y3*z4 - y4*z2 + y4*z3
-    bbs[1] = y1*z3 - y1*z4 - y3*z1 + y3*z4 + y4*z1 - y4*z3
-    bbs[2] = -y1*z2 + y1*z4 + y2*z1 - y2*z4 - y4*z1 + y4*z2
-    bbs[3] = y1*z2 - y1*z3 - y2*z1 + y2*z3 + y3*z1 - y3*z2
-    ccs[0] = x2*z3 - x2*z4 - x3*z2 + x3*z4 + x4*z2 - x4*z3
-    ccs[1] = -x1*z3 + x1*z4 + x3*z1 - x3*z4 - x4*z1 + x4*z3
-    ccs[2] = x1*z2 - x1*z4 - x2*z1 + x2*z4 + x4*z1 - x4*z2
-    ccs[3] = -x1*z2 + x1*z3 + x2*z1 - x2*z3 - x3*z1 + x3*z2
-    dds[0] = -x2*y3 + x2*y4 + x3*y2 - x3*y4 - x4*y2 + x4*y3
-    dds[1] = x1*y3 - x1*y4 - x3*y1 + x3*y4 + x4*y1 - x4*y3
-    dds[2] = -x1*y2 + x1*y4 + x2*y1 - x2*y4 - x4*y1 + x4*y2
-    dds[3] = x1*y2 - x1*y3 - x2*y1 + x2*y3 + x3*y1 - x3*y2
-
-    return bbs, ccs, dds, V
-
 @njit(f8[:,:](f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def orthonormal_basis(xs, ys, zs):
     """
@@ -399,31 +311,6 @@ def orthonormal_basis(xs, ys, zs):
     B[:,1] = n2
     B[:,2] = nn
     return B
-
-@njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:]), cache = True, nogil=True)
-def tri_coefficients(vxs, vys):
-
-    x1, x2, x3 = vxs
-    y1, y2, y3 = vys
-
-    a1 = x2*y3-y2*x3
-    a2 = x3*y1-y3*x1
-    a3 = x1*y2-y1*x2
-    b1 = y2-y3
-    b2 = y3-y1
-    b3 = y1-y2
-    c1 = x3-x2
-    c2 = x1-x3
-    c3 = x2-x1
-
-    #A = 0.5*(b1*c2 - b2*c1)
-    sA = 0.5*(((x1-x3)*(y2-y1) - (x1-x2)*(y3-y1)))
-    sign = np.sign(sA)
-    A = np.abs(sA)
-    As = np.array([a1, a2, a3])*sign
-    Bs = np.array([b1, b2, b3])*sign
-    Cs = np.array([c1, c2, c3])*sign
-    return As, Bs, Cs, A
 
 @njit(f8[:,:](f8[:], f8[:], f8[:]), cache=True, nogil=True, fastmath=True)
 def compute_distances(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:

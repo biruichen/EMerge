@@ -316,18 +316,7 @@ class StripPath:
         Returns:
             StripPath: The current StripPath object.
         """
-        self.pcb.store(name, self.last.x, self.last.y)
-        return self
-
-    def name(self, name: str) -> StripPath:
-        """Store the current stripline section under the provided name
-
-        Args:
-            name (str): The stripline sectio name
-
-        Returns:
-            StripPath: The current StripPath object
-        """
+        self.pcb.store(name, self.end.x, self.end.y)
         self.pcb.stored_striplines[name] = self.end
         return self
     
@@ -540,7 +529,7 @@ class PCBLayouter:
         """
         self.stored_coords[name] = (x,y)
 
-    def ref(self, name: str) -> tuple[float, float] | StripLine:
+    def load(self, name: str) -> tuple[float, float] | StripLine:
         """Acquire the x,y, coordinate associated with the label name.
         
         Args:

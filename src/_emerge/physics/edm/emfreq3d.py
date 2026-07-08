@@ -19,25 +19,26 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...bc import BoundaryCondition, PEC, ModalPort, LumpedPort, PortBC
-from .emdata import EMSimData, EMDataSet
+from .emdata import EMSimData
 from ...elements.femdata import FEMBasis
-from .assembler import Assembler
+from .assembly.assembler import Assembler
 from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
 from ...selection import FaceSelection
 from ...mth.sparam import sparam_field_power, sparam_mode_power
 from ...coord import Line
 from .port_functions import compute_avg_power_flux
-from typing import Callable
+from .simjob import SimJob
+
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from loguru import logger
-from .simjob import SimJob
-import threading
-from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
+
 import time
+import threading
 
 class SimulationError(Exception):
     pass
-
 
 
 def _dimstring(data: list[float]):
@@ -246,8 +247,10 @@ class Electrodynamics3D:
                        nmodes: int = 6, 
                        direct: bool = True,
                        TEM: bool = False,
-                       target_kz=None,
-                       freq: float = None) -> EMSimData:
+                       target_kz = None,
+                       target_neff = None,
+                       freq: float = None,
+                       search: bool = False) -> EMSimData:
         ''' Execute a modal analysis on a given ModalPort boundary condition.
         
         Parameters:
@@ -262,12 +265,13 @@ class Electrodynamics3D:
                 Whether to estimate the propagation constant assuming its a TEM transmisison line.
             target_k0 : float
                 The expected propagation constant to find a mode for (direct = False).
-            diagonal_scaling : bool = False
-                Whether to use diagonal scaling for matrix conditioning. Might speed up solving with ARPACK.
-            static_condensation : bool = False
-                Uses a static condensation. Does not work. Do not turn on!
-            kz_range : bool = True
-                Wether to use ARPACK to look for modes in a given range.
+            target_neff : float
+                The expected effective mode index defined as kz/k0 (1.0 = free space, <1 = TE/TM, >1=slow wavees)
+            freq : float = None
+                The desired frequency at which the mode is solved. If None then it uses the lowest frequency of the provided range.
+            search : bool = False
+                Wether to use a search method (defaults to terative solver). This is faster for large face meshes when the expected
+                propagation constant is unknown. It will search between ½k0 and √εᵣ k0
         '''
         T0 = time.time()
         if self._bc_initialized is False:
@@ -313,17 +317,34 @@ class Electrodynamics3D:
 
         F = -1
 
+        if target_neff is not None:
+            target_kz = k0*target_neff
+        
         if target_kz is None:
             if TEM:
                 target_kz = ermean*urmean*1.1*k0
             else:
                 target_kz = ermean*urmean*0.65*k0
 
-        logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
+        if search:
+            k1 = 0.5*k0
+            k2 = np.sqrt(ermax)*k0
+            logger.debug(f'Searching in range {k1:.2f} to {k2:.2f} rad/m')
+            eigen_values = []
+            eigen_modes = []
+            for kz in np.geomspace(k1,k2,20):
+                sub_eigen_values, sub_eigen_modes = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, 1, False, kz)
+                eigen_values.append(sub_eigen_values)
+                eigen_modes.append(sub_eigen_modes)
+            eigen_values = np.concatenate(eigen_values)
+            eigen_modes = np.concatenate(eigen_modes, axis=1)
 
-        eigen_values, eigen_modes = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
-        
-        logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
+        else:
+            logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
+
+            eigen_values, eigen_modes = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
+            
+            logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
 
         port._er = er
         port._ur = ur
@@ -348,6 +369,8 @@ class Electrodynamics3D:
             P = compute_avg_power_flux(nlf, Emode, k0, ur, beta)
 
             mode = port.add_mode(Emode, portfE, portfH, beta, k0, residuals, TEM=TEM, freq=freq)
+            if mode is None:
+                continue
             mode.set_power(P)
 
             Ez = np.max(np.abs(Emode[nlf.n_xy:]))
@@ -367,7 +390,8 @@ class Electrodynamics3D:
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
                 mode.Z0 = voltage**2/(2*P)
                 logger.debug(f'Port Z0 = {mode.Z0}')
-            
+        
+        port.sort_modes()
         logger.info(f'Total of {port.nmodes} found')
         T2 = time.time()    
         logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')

@@ -19,10 +19,9 @@ from __future__ import annotations
 import numpy as np
 from ..mesh3d import SurfaceMesh
 from .femdata import FEMBasis
-from ..mth.tri import ned2_tri_interp_full, ned2_tri_interp_curl
+from .ned2_interp import ned2_tri_interp_full, ned2_tri_interp_curl
 from ..mth.optimized import matinv
 from ..cs import CoordinateSystem
-from typing import Callable
 
 
 ## TODO: TEMPORARY SOLUTION FIX THIS

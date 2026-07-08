@@ -19,8 +19,7 @@ from __future__ import annotations
 import numpy as np
 from ..mesh3d import Mesh3D
 from .femdata import FEMBasis
-from ..mth.tet import ned2_tet_interp, ned2_tet_interp_curl
-from ..mth.tri import ned2_tri_stiff_force, ned2_tri_stiff_mass, ned2_tri_surface_integral, ned2_tri_stiff
+from .ned2_interp import ned2_tet_interp, ned2_tet_interp_curl
 from ..mth.optimized import local_mapping
 
 
@@ -118,30 +117,16 @@ class Nedelec2(FEMBasis):
     #                              C_mass: float) -> tuple[np.ndarray, np.ndarray]:
     #     return ned2_tet_stiff_mass(tet_vertices, edge_lengths, local_edge_map, local_tri_map, C_stiffness, C_mass)
     
-    @staticmethod
-    def tri_stiff_mass_submatrix(tri_vertices: np.ndarray,
-                                 local_edge_map: np.ndarray,
-                                 C_stiffness: float, 
-                                 C_mass: float) -> tuple[np.ndarray, np.ndarray]:
-        return ned2_tri_stiff_mass(tri_vertices, local_edge_map, C_stiffness, C_mass)
-    
-    @staticmethod
-    def tri_stiff_vec_matrix(lcs_vertices: np.ndarray, 
-                             gamma: complex, 
-                             lcs_Uinc: np.ndarray, 
-                             DPTs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        return ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs)
-    
-    @staticmethod
-    def tri_stiff_matrix(lcs_vertices: np.ndarray, 
-                             edge_lengths: np.ndarray, 
-                             gamma: complex) -> tuple[np.ndarray, np.ndarray]:
-        return ned2_tri_stiff(lcs_vertices, edge_lengths, gamma)
-    
+    # @staticmethod
+    # def tri_stiff_vec_matrix(lcs_vertices: np.ndarray, 
+    #                          gamma: complex, 
+    #                          lcs_Uinc: np.ndarray, 
+    #                          DPTs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    #     return ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs)
 
-    @staticmethod
-    def tri_surf_integral(lcs_vertices: np.ndarray, 
-                          edge_lengths: np.ndarray, 
-                          lcs_Uinc: np.ndarray, 
-                          DPTs: np.ndarray) -> complex:
-        return ned2_tri_surface_integral(lcs_vertices, edge_lengths, lcs_Uinc, DPTs)
+    # @staticmethod
+    # def tri_surf_integral(lcs_vertices: np.ndarray, 
+    #                       edge_lengths: np.ndarray, 
+    #                       lcs_Uinc: np.ndarray, 
+    #                       DPTs: np.ndarray) -> complex:
+    #     return ned2_tri_surface_integral(lcs_vertices, edge_lengths, lcs_Uinc, DPTs)

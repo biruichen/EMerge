@@ -22,9 +22,9 @@ ly = em.geo.PCBLayouter(th, mm, em.GCS, em.lib.ROGERS_4350B)
 # The .via(...) method allows one to add a via geometry to the PCBLayouter that can be extracted later
 # A user may decide whether to proceed or not beyond the via. More information can be found in the 
 # docstring of the method. The vias can be created later.
-ly.new(0,0,2,(1,0), -th/2).name('p1').straight(10).turn(90).straight(10).turn(-90)\
+ly.new(0,0,2,(1,0), -th/2).store('p1').straight(10).turn(90).straight(10).turn(-90)\
     .straight(2).via(0, 0.5, True).straight(8).via(-th/2, 0.5).straight(2)\
-        .turn(-90).straight(10).turn(90).straight(10).name('p2')
+        .turn(-90).straight(10).turn(90).straight(10).store('p2')
 
 # As usual we compile the traces as a merger of polygons
 trace = ly.compile_paths(True)
@@ -36,8 +36,8 @@ vias = ly.generate_vias(True)
 # Here I use lumped ports instead of wave ports. I use the references made earlier to generate the port.
 # By default, all lumped port sheets will be shorted to z=-thickness. You can change this as an optional
 # argument.
-lp1 = ly.lumped_port(ly.ref('p1'))
-lp2 = ly.lumped_port(ly.ref('p2'))
+lp1 = ly.lumped_port(ly.load('p1'))
+lp2 = ly.lumped_port(ly.load('p2'))
 
 # Because lumped ports don't stop at the edge of our domain, we make sure to add some margins everywhere.
 ly.determine_bounds(5,5,5,5)

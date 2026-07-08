@@ -39,14 +39,14 @@ layouter = em.geo.PCBLayouter(th*2, unit=mil, material=pcbmat)
 # sequentially constructs our stripline trace. In this case, it is sipmly a sequence of straight
 # sections.
 
-layouter.new(0,0,W0, (1,0), z=-th).name('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
-    .straight(L2,W2).straight(L1,W1).straight(L0,W0).name('p2')
+layouter.new(0,0,W0, (1,0), z=-th).store('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
+    .straight(L2,W2).straight(L1,W1).straight(L0,W0).store('p2')
 
 # Next we generate a wave port surface to use for our simulation. A wave port can be automatically
 # generated for a given stripoline section. To easily reference it we use the .ref() method to 
 # recall the sections we created earlier.
-p1 = layouter.modal_port(layouter.ref('p1'), height=0)
-p2 = layouter.modal_port(layouter.ref('p2'), height=0)
+p1 = layouter.modal_port(layouter.load('p1'), height=0)
+p2 = layouter.modal_port(layouter.load('p2'), height=0)
 
 # Finally we compile the stirpline into a polygon. The compile_paths function will return
 # GeoSurface objects that form the polygon. Additionally, we may turn on the Merge feature
@@ -78,9 +78,9 @@ m.physics.set_frequency_range(0.2e9, 8e9, 51)
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
 # This is adviced for small stripline structures.
 # The growth_rate setting allows us to change how fast the mesh size will recover to the original size.
-m.mesher.set_boundary_size(polies, 1*mm, growth_rate=1.2)
-m.mesher.set_boundary_size(p1, 1*mm)
-m.mesher.set_boundary_size(p2, 1*mm)
+m.mesher.set_boundary_size(polies, 2*mm, growth_rate=1.2)
+m.mesher.set_boundary_size(p1, 2*mm)
+m.mesher.set_boundary_size(p2, 2*mm)
 
 # Finally we generate our mesh and view it
 m.generate_mesh()

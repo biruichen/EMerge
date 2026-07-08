@@ -1,5 +1,6 @@
 import emerge as em
-from emerge.pyvista import PVDisplay
+from emerge.plot import plot_sp
+import numpy as np
 
 mm = 0.001
 mil = 0.0254*mm
@@ -22,23 +23,20 @@ Dtot = 750
 
 extra = 100
 
-model = em.Simulation3D('Demo3', PVDisplay, loglevel='DEBUG')
+model = em.Simulation3D('Demo3', loglevel='DEBUG')
 
 
 mat = em.Material(3.55, color=(0.1,1.0,0.2), opacity=0.1)
 pcb = em.geo.PCBLayouter(th,unit=mil)
 
-pcb.new(0,140,w0,(1,0)).straight(l0).turn(0).straight(l1*0.8)\
+pcb.new(0,140,w0,(1,0)).store('p1').straight(l0).turn(0).straight(l1*0.8)\
     .straight(l1,w1, dy=abs(w1-w0)/2).jump(gap=g1, side='left', reverse=l1-e).straight(l1,w1)\
     .straight(l2,w2, dy=abs(w2-w1)/2).jump(gap=g2, side='left', reverse=l2-e).straight(l2,w2)\
     .straight(l3,w3).jump(gap=g3, side='left', reverse=l2-e).straight(l2,w3)\
     .straight(l3,w4).jump(gap=g4, side='left', reverse=l2-e).straight(l2,w4)\
     .straight(l2,w5).jump(gap=g5, side='left', reverse=l2-e).straight(l2,w5)\
     .straight(l1,w6, dy=abs(w2-w1)/2).jump(gap=g6, side='left', reverse=l1-e).straight(l1,w6)\
-    .turn(0).straight(l1*0.8, w0).store('p2').straight(l0,w0, dy=abs(w1-w0)/2)
-
-pcb.new(l0,140,10,(0,-1)).straight(60)
-pcb.new(*pcb.stored_coords['p2'],10, (0,1)).straight(60)
+    .turn(0).straight(l1*0.8, w0).straight(l0,w0, dy=abs(w1-w0)/2).store('p2')
 
 stripline = pcb.compile_paths(merge=True)
 
@@ -49,10 +47,10 @@ air = pcb.gen_air(4*th)
 
 diel.material = mat
 
-p1 = pcb.modal_port(pcb.paths[0].start, width_multiplier=5, height=4*th)
-p2 = pcb.modal_port(pcb.paths[-3].end, width_multiplier=5, height=4*th)
+p1 = pcb.modal_port(pcb.load('p1'), width_multiplier=5, height=4*th)
+p2 = pcb.modal_port(pcb.load('p2'), width_multiplier=5, height=4*th)
 
-model.physics.resolution = 0.2
+model.physics.set_resolution(0.2)
 
 model.physics.set_frequency_range(5.2e9,6.2e9,23)
 
@@ -69,23 +67,22 @@ pec = em.bc.PEC(stripline)
 
 model.physics.assign(port1, port2, pec)
 
-
 model.physics.modal_analysis(port1, 1, direct=True, TEM=True, freq=10e9)
 model.physics.modal_analysis(port2, 1, direct=True, TEM=True, freq=10e9)
 
-d = PVDisplay(model.mesh)
+d = model.display
 d.add_object(diel, color='green', opacity=0.5)
 d.add_object(stripline, color='red')
 d.add_object(p1, color='blue', opacity=0.3)
-d.add_portmode(port1, port1.modes[0].k0, 21)
-d.add_portmode(port2, port2.modes[0].k0, 21)
+d.add_portmode(port1, 21)
+d.add_portmode(port2, 21)
 d.show()
 
-data = model.physics.frequency_domain()
+data = model.physics.frequency_domain(parallel=True, njobs=4, frequency_groups=8)
 
-f, S11 = data.ax('freq').S(1,1)
-f, S21 = data.ax('freq').S(2,1)
+f = np.linspace(5.2e9, 6.2e9, 1001)
 
-from emerge.plot import plot_sp
+S11 = data.model_S(1,1)(f)
+S21 = data.model_S(2,1)(f)
 
 plot_sp(f/1e9, [S11, S21], labels=['S11','S21'])

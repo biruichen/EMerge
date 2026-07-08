@@ -17,7 +17,6 @@
 
 from ..bc import RobinBC
 import numpy as np
-from loguru import logger
 from typing import Callable
 from .integrals import surface_integral
 
