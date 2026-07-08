@@ -52,7 +52,7 @@ wg_box_new = em.geo.remove(wg_box, cutout)
 airbox = em.geo.Box(L/2, L, L, position=(0,-L/2, -L/2))
 
 # Now define the geometry
-model.define_geometry(wg_box_new, airbox)
+model.define_geometry()
 
 # Lets define a frequency range for our simulation. This is needed
 # If we want to mesh our model.

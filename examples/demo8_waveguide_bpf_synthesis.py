@@ -16,7 +16,7 @@ c0 = 299792458            # speed of light in vacuum (m/s)
 
 # --- Waveguide and frequency definitions --------------------------------
 wga = 22.86 * mm          # a-dimension of WR-90 waveguide
-wgb = 1*mm#10.16 * mm              # b-dimension (height) of waveguide
+wgb = 10.16 * mm              # b-dimension (height) of waveguide
 # frequency band for final filter response
 f1 = 9.5e9                # start frequency (Hz)
 f2 = 9.8e9                # stop frequency (Hz)
@@ -85,7 +85,7 @@ with em.Simulation3D('IrisSim', loglevel='DEBUG') as sim:
         iris = em.geo.Box(wgap, t_thickness, wgb, (-wgap/2, -t_thickness/2, 0))
         wg2 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, t_thickness/2, 0))
 
-        sim.define_geometry(wg1, iris, wg2)
+        sim.define_geometry()
         sim.mw.set_frequency(f0)
         sim.mw.set_resolution(0.1)
         sim.mesher.set_domain_size(iris, 2*mm)

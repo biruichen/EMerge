@@ -48,7 +48,7 @@ diel = ly.gen_pcb(True, merge=True)
 air = ly.gen_air(3)
 
 # The rest is as usual
-model.define_geometry(diel, lp1, lp2, trace, air, vias)
+model.define_geometry()
 
 model.view()
 

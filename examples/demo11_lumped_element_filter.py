@@ -72,7 +72,7 @@ diel = pcb.gen_pcb()                   # substrate dielectric block
 air = pcb.gen_air(Hair)                  # surrounding air block
 
 # Add all geometry to simulation
-m.define_geometry(diel, air, mp1, mp2, traces, LEs, vias)
+m.define_geometry()
 
 # --- Solver and mesh settings -------------------------------------------
 m.mw.set_frequency_range(0.05e9, 0.3e9, 51)       # 50–300 MHz sweep

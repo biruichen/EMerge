@@ -76,7 +76,6 @@ m.mw.set_frequency_range(90e9, 110e9, 11)  # 90–110 GHz sweep
 m.mw.set_resolution(0.3)                # mesh resolution fraction
 
 # --- Assemble geometry and mesh -----------------------------------------
-m.define_geometry(air2, horn_in, feed, pmls)
 m.generate_mesh()
 
 # --- Boundary conditions ------------------------------------------------

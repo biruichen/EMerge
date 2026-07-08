@@ -303,7 +303,7 @@ class XYPolygon:
             cs = GCS
         poly_fin = self._finalize(cs)
         zax = length*cs.zax.np
-        
+        poly_fin._exists = False
         volume = gmsh.model.occ.extrude(poly_fin.dimtags, zax[0], zax[1], zax[2])
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]

@@ -54,7 +54,7 @@ box = em.geo.Box(Lbox, a, b, position=(0,-a/2,0))
 # The modeler class allows us to create a parameter series using the modeler.series() method. We provid it with quantities.
 # We can do this for multiple at the same time (as you can also see with the position). The modeler class
 # will recognize the multiple quantities and simply create 5 different cyllinders, one for each parameter pair.
-stubs = model.geo.modeler.cyllinder(W/2, model.geo.modeler.series(C1, lr1, lr2, lr1, C1), position=(model.geo.modeler.series(x1, x2, x3, x4, x5), 0, 0), NPoly=10)
+stubs = model.modeler.cyllinder(W/2, model.modeler.series(C1, lr1, lr2, lr1, C1), position=(model.modeler.series(x1, x2, x3, x4, x5), 0, 0), NPoly=10)
 
 # Next we create the in and output feed cyllinders for the coaxial cable. We will use the Nsections feature in order to guarantee a better
 # adherence to the boundary.
@@ -68,11 +68,11 @@ for ro in stubs:
     box = em.geo.subtract(box, ro)
 box = em.geo.subtract(box, feed1in, remove_tool=False)
 box = em.geo.subtract(box, feed2in, remove_tool=False)
-feed1out = em.geo.subtract(feed1out, feed1in, remove_tool=True)
-feed2out = em.geo.subtract(feed2out, feed2in, remove_tool=True)
+feed1out = em.geo.subtract(feed1out, feed1in)
+feed2out = em.geo.subtract(feed2out, feed2in)
 
 # Finally we may define our geometry
-model.define_geometry(box, feed1out, feed2out)
+model.define_geometry()
 
 model.view()
 

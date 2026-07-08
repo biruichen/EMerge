@@ -66,7 +66,7 @@ layouter.determine_bounds(leftmargin=0, topmargin=200, rightmargin=0, bottommarg
 pcb = layouter.gen_pcb(True, merge=True)
 
 # We now pass all the geometries we have created to the .define_geometry() method.
-m.define_geometry(pcb, polies, p1, p2)
+m.define_geometry()
 
 # We set our desired resolution (fraction of the wavelength)
 m.mw.set_resolution(0.08)

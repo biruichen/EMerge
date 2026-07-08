@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 from .mesher import Mesher, unpack_lists
-from .geometry import GeoObject
+from .geometry import GeoObject, _GEOMANAGER
+from .geo.modeler import Modeler
 from .physics.microwave.microwave_3d import Microwave3D
 from .mesh3d import Mesh3D
 from .selection import Selector, FaceSelection, Selection
 from .logsettings import logger_format
-from .geo.builder import Builder
 from .plot.display import BaseDisplay
 from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
@@ -79,11 +79,11 @@ class Simulation3D:
         self.modelname = modelname
         self.modelpath = base_path / (modelname.lower()+'_data')
         self.mesher: Mesher = Mesher()
+        self.modeler: Modeler = Modeler()
         
         self.mesh: Mesh3D = Mesh3D(self.mesher)
         self.select: Selector = Selector()
         self.display: PVDisplay = None
-        self.geo: Builder = Builder()
         self.set_loglevel(loglevel)
 
         ## STATES
@@ -252,7 +252,10 @@ class Simulation3D:
         system behaves if only a part of all geometries are included.
 
         """
-        geometries = unpack_lists(geometries + tuple(self.geo.all_geometries()) + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
+        if not geometries:
+            geometries = _GEOMANAGER.all_geometries()
+        else:
+            geometries = unpack_lists(geometries + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
         self.data.sim['geometries'] = geometries
         self.mesher.submit_objects(geometries)
         self._defined_geometries = True
@@ -346,6 +349,7 @@ class Simulation3D:
                 logger.info('Cleaning up mesh.')
                 gmsh.clear()
                 mesh = Mesh3D(self.mesher)
+                _GEOMANAGER.reset(self.modelname)
                 self.set_mesh(mesh)
                 self.mw.reset()
             
@@ -400,6 +404,8 @@ class Simulation3D:
     def _initialize_simulation(self):
         """Initializes the Simulation data and GMSH API with proper shutdown routines.
         """
+        _GEOMANAGER.sign_in(self.modelname)
+        
         # If GMSH is not yet initialized (Two simulation in a file)
         if gmsh.isInitialized() == 0:
             logger.debug('Initializing GMSH')
