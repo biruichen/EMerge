@@ -79,13 +79,7 @@ freqs, S11 = data.ax('freq').S(1,1)
 plot_sp(freqs/1e9, S11)
 smith(freqs, S11)
 
-# topsurf = model.mesh.boundary_surface(boundary_selection.tags, (0,0,0))
 
-# Ein, Hin = data.item(0).interpolate(*topsurf.exyz).EH
-
-# theta = np.linspace(-np.pi, 1*np.pi, 201)
-# phi = 0*theta
-# E, H = em.stratton_chu(Ein, Hin, topsurf, theta, phi, data.item(0).k0)
 theta, E, H = data.find(freq=1.6324e9).farfield_2d((0,0,1),(1,0,0), boundary_selection)
 plot_ff(theta, em.norm(E))
 plot_ff_polar(theta, em.norm(E))
