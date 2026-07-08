@@ -39,10 +39,10 @@ from .simmodel import Simulation3D
 from .material import Material, FR4, AIR, VACUUM, COPPER
 from . import physics
 from . import bc
-from .solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverSP
+from .solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
 from .cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
 from .coord import Line
 from . import plot
-from . import modeling
+from . import geo
 from .selection import Selection, FaceSelection, DomainSelection, EdgeSelection
 from .mth.common_functions import norm

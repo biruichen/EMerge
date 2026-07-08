@@ -15,13 +15,13 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from ..geo3d import GMSHVolume
+from ..geometry import GeoVolume
 from ..cs import CoordinateSystem
 from ..selection import FaceSelection
 
 import gmsh
 
-class Horn(GMSHVolume):
+class Horn(GeoVolume):
 
     def __init__(self,
                  start_aperture: tuple[float, float],

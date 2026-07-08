@@ -40,15 +40,15 @@ L = 50*mm
 with em.Simulation3D('Test Mode', PVDisplay) as m:
 
     # first lets define a WR90 waveguide
-    wg_box = em.modeling.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
+    wg_box = em.geo.Box(L, wga, wgb, position=(-L, -wga/2, -wgb/2))
     # Then define a capacitive iris cutout
-    cutout = em.modeling.Box(2*mm, wga, wgb/2, position=(-L/2, -wga/2, -wgb/2))
+    cutout = em.geo.Box(2*mm, wga, wgb/2, position=(-L/2, -wga/2, -wgb/2))
 
     # remove the cutout from the box
-    wg_box = em.modeling.remove(wg_box, cutout)
+    wg_box = em.geo.remove(wg_box, cutout)
 
     # define an air-box to radiat in.
-    airbox = em.modeling.Box(L/2, L, L, position=(0,-L/2, -L/2))
+    airbox = em.geo.Box(L/2, L, L, position=(0,-L/2, -L/2))
 
     # Now define the geometry
     m.define_geometry(wg_box, airbox)

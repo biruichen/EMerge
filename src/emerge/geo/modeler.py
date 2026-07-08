@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Callable, Iterable, Any
 from .shapes import Box, Sphere, Cyllinder, CoaxCyllinder, Alignment
-from ..geo3d import GMSHVolume, GMSHObject, GMSHSurface
+from ..geometry import GeoVolume, GeoObject, GeoSurface
 from .operations import rotate, mirror, translate, add, subtract, embed
 from numbers import Number
 from functools import reduce
@@ -72,7 +72,7 @@ def unpack(*args):
     N = get_count(args)
     return tuple(zip(*[[get_item(a,n) for a in args] for n in range(N)]))
 
-ObjectTransformer = Callable[[GMSHObject,], GMSHObject]
+ObjectTransformer = Callable[[GeoObject,], GeoObject]
 
 class PartialFunction:
 
@@ -115,7 +115,7 @@ class PartialFunction:
             kwargset.append(kwargs)
         self.kwargset = kwargset
 
-    def __call__(self, objects: list[GMSHObject], index: int) -> list[GMSHObject]:
+    def __call__(self, objects: list[GeoObject], index: int) -> list[GeoObject]:
         
         kwargs = self.kwargset[index]
         if kwargs is None:
@@ -233,7 +233,7 @@ class Modeler:
 
         self.pre_transforms: list[PartialFunction] = []
         self.post_transforms: list[PartialFunction] = []
-        self.last_object: GMSHObject = None
+        self.last_object: GeoObject = None
         self.ndimcont: NDimContainer = NDimContainer()
         self._and: bool = False
 
@@ -274,19 +274,19 @@ class Modeler:
     def nvars(self) -> int:
         return self.ndimcont.Nop
     
-    def _merge_object(self, objs: list[GMSHObject]) -> GMSHObject:
-        """Merges a list of GMSHObjects into a single GMSHObject.
+    def _merge_object(self, objs: list[GeoObject]) -> GeoObject:
+        """Merges a list of GeoObjects into a single GeoObject.
 
         Args:
-            objs (list[GMSHObject]): A list of GMSH objects
+            objs (list[GeoObject]): A list of GMSH objects
 
         Returns:
-            GMSHObject: A single GMSHObject
+            GeoObject: A single GeoObject
         """
         tags = []
         for obj in objs:
             tags.extend(obj.tags)
-        gmshobj = GMSHObject.from_dimtags(objs[0].dim, tags)
+        gmshobj = GeoObject.from_dimtags(objs[0].dim, tags)
         for obj in objs:
             gmshobj._take_tools(obj)
         return gmshobj
@@ -304,7 +304,7 @@ class Modeler:
         self._add_dim(function.N)
         self.pre_transforms.append(function)
 
-    def _apply_presteps(self, objects: list[GMSHObject]) -> list[GMSHObject]:
+    def _apply_presteps(self, objects: list[GeoObject]) -> list[GeoObject]:
         self.ndimcont._init()
         for func in self.pre_transforms:
             func._compile()
@@ -417,7 +417,7 @@ class Modeler:
             height: float | Series,
             position: tuple[float | Series, float | Series, float | Series],
             alignment: Alignment = Alignment.CORNER,
-            merge: bool = False) -> list[GMSHVolume] | GMSHVolume:
+            merge: bool = False) -> list[GeoVolume] | GeoVolume:
         """Create a box object which will be transformed by the transformation pipeline.
 
         Args:
@@ -426,10 +426,10 @@ class Modeler:
             height (float): The box's height (Z direction)
             position (tuple[float, float, float]): The position of the box object.
             alignment (Alignment, optional): Where to alight the box. Defaults to Alignment.CORNER.
-            merge (bool): Whether to merge the final result into a single GMSHVolume object.
+            merge (bool): Whether to merge the final result into a single GeoVolume object.
 
         Returns:
-            list[GMSHVolume]: A list of GMSHVolume objects for each box.
+            list[GeoVolume]: A list of GeoVolume objects for each box.
         """
         N_objects = self.nvars()
         Ws, Ds, Hs, Ps = unpack(width, depth, height, position)

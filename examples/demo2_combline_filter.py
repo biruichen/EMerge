@@ -1,8 +1,7 @@
 import emerge as em
 import numpy as np
-import pyescher as pe
 from emerge.plotting.pyvista import PVDisplay
-
+import matplotlib.pyplot as plt
 """ DEMO: COMBLINE FILTER
 
 In this demo we will look at the design of a combline filter in EMerge. The filter design was taken from
@@ -47,7 +46,7 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
 
     # The filter consists of quarter lamba cylindrical pins inside an airbox.
     # First we create the airbox
-    box = em.modeling.Box(Lbox, a, b, position=(0,-a/2,0))
+    box = em.geo.Box(Lbox, a, b, position=(0,-a/2,0))
 
 
     # Next we create 5 cyllinders using the Modeler class.
@@ -59,18 +58,18 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
 
     # Next we create the in and output feed cyllinders for the coaxial cable. We will use the Nsections feature in order to guarantee a better
     # adherence to the boundary.
-    feed1out = em.modeling.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=12)
-    feed1in = em.modeling.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=8)
-    feed2out = em.modeling.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox, 0, h])), Nsections=12)
-    feed2in = em.modeling.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox-wi-W/2, 0, h])), Nsections=8)
+    feed1out = em.geo.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=12)
+    feed1in = em.geo.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=8)
+    feed2out = em.geo.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox, 0, h])), Nsections=12)
+    feed2in = em.geo.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox-wi-W/2, 0, h])), Nsections=8)
     
     # Next we subtract the stubs and the center conductor from the box and feedline.
     for ro in stubs:
-        box = em.modeling.subtract(box, ro)
-    box = em.modeling.subtract(box, feed1in, remove_tool=False)
-    box = em.modeling.subtract(box, feed2in, remove_tool=False)
-    feed1out = em.modeling.subtract(feed1out, feed1in, remove_tool=True)
-    feed2out = em.modeling.subtract(feed2out, feed2in, remove_tool=True)
+        box = em.geo.subtract(box, ro)
+    box = em.geo.subtract(box, feed1in, remove_tool=False)
+    box = em.geo.subtract(box, feed2in, remove_tool=False)
+    feed1out = em.geo.subtract(feed1out, feed1in, remove_tool=True)
+    feed2out = em.geo.subtract(feed2out, feed2in, remove_tool=True)
     
     # Finally we may define our geometry
     m.define_geometry(box, feed1out, feed2out)
@@ -107,12 +106,13 @@ with em.Simulation3D('Combline_DEMO', PVDisplay, loglevel='DEBUG') as m:
     f, S11 = data.ax('freq').S(1,1)
     f, S21 = data.ax('freq').S(2,1)
 
-    pe.plot_lines(pe.Line(f/1e9, S11, label='S11'), pe.Line(f/1e9,S21,label='S21'), show_marker=True, 
-                  transformation=pe.dB,
-                  grid=True,
-                  xlabel='Frequency (GHz)',
-                  ylabel='S-parameters (dB)',
-                  ylim=[-50,5],marker_size=2)
+    plt.plot(f/1e9, 20*np.log10(np.abs(S11)))
+    plt.plot(f/1e9, 20*np.log10(np.abs(S21)))
+    plt.legend(['S11','S21'])
+    plt.xlabel('Frequency (GHz)')
+    plt.ylabel('Sparam (dB)')
+    plt.grid(True)
+    plt.show()
     
     # We can also plot the fild inside. First we create a grid of sample point coordinates
     xs = np.linspace(0, Lbox, 41)

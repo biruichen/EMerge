@@ -17,7 +17,7 @@
 from __future__ import annotations
 import numpy as np
 from ..cs import CoordinateSystem, GCS
-from ..geo3d import GMSHVolume, Polygon, FaceNames
+from ..geometry import GeoVolume, GeoPolygon
 from .shapes import Alignment
 import gmsh
 from typing import Generator, Callable
@@ -81,13 +81,13 @@ def _discretize_curve(xfunc, yfunc, t0, t1, tol=1e-3, max_depth=20):
 
     return np.vstack(pts)
 
-class Prism(GMSHVolume):
-    """The prism class generalizes the GMSHVolume for extruded convex polygons.
+class GeoPrism(GeoVolume):
+    """The GepPrism class generalizes the GeoVolume for extruded convex polygons.
     Besides having a volumetric definitions, the class offers a .front_face 
     and .back_face property that selects the respective faces.
 
     Args:
-        GMSHVolume (_type_): _description_
+        GeoVolume (_type_): _description_
     """
     def __init__(self,
                  volume_tag: int,
@@ -156,6 +156,15 @@ class XYPolygon:
         self.fillets: list[tuple[float, int]] = []
 
     def extend(self, xpts: list[float], ypts: list[float]) -> XYPolygon:
+        """Adds a series for x and y coordinates to the existing polygon.
+
+        Args:
+            xpts (list[float]): The list of x-coordinates
+            ypts (list[float]): The list of y-coordinates
+
+        Returns:
+            XYPolygon: The same XYpolygon object
+        """
         self.x = np.hstack([self.x, np.array(xpts)])
         self.y = np.hstack([self.y, np.array(ypts)])
         return self
@@ -166,10 +175,29 @@ class XYPolygon:
             yield (self.x[i], self.y[i])
 
     def fillet(self, radius: float, *indices: int) -> None:
+        """Add a fillet rounding with a given radius to the provided nodes.
+
+        Example:
+         >>> my_polygon.fillet(0.05, 2, 3, 4, 6)
+
+        Args:
+            radius (float): The radius
+            *indices (int): The indices for which to apply the fillet.
+        """
         for i in indices:
             self.fillets.append((radius, i))
 
-    def finalize(self, cs: CoordinateSystem = None) -> Polygon:
+    def _finalize(self, cs: CoordinateSystem = None) -> GeoPolygon:
+        """Turns the XYPolygon object into a GeoPolygon that is embedded in 3D space.
+
+        The polygon will be placed in the XY-plane of the provided coordinate center.
+
+        Args:
+            cs (CoordinateSystem, optional): The coordinate system in which to put the polygon. Defaults to None.
+
+        Returns:
+            GeoPolygon: The resultant 3D GeoPolygon object.
+        """
         ptags = []
         xg, yg, zg = cs.in_global_cs(self.x, self.y, 0*self.x)
 
@@ -191,12 +219,12 @@ class XYPolygon:
 
         wiretag = gmsh.model.occ.add_wire(lines)
         surftag = gmsh.model.occ.add_plane_surface([wiretag,])
-        poly = Polygon([surftag,])
+        poly = GeoPolygon([surftag,])
         poly.points = ptags
         poly.lines = lines
         return poly
     
-    def extrude(self, length: float, cs: CoordinateSystem = None) -> Prism:
+    def extrude(self, length: float, cs: CoordinateSystem = None) -> GeoPrism:
         """Extrues the polygon along the Z-axis.
         The z-coordinates go from z1 to z2 (in meters). Then the extrusion
         is either provided by a maximum dz distance (in meters) or a number
@@ -206,19 +234,19 @@ class XYPolygon:
             length (length): The length of the extrusion.
 
         Returns:
-            GMSHVolume: The resultant Volumetric object.
+            GeoVolume: The resultant Volumetric object.
         """
         if cs is None:
             cs = GCS
-        poly_fin = self.finalize(cs)
+        poly_fin = self._finalize(cs)
         zax = length*cs.zax.np
         
         volume = gmsh.model.occ.extrude(poly_fin.dimtags, zax[0], zax[1], zax[2])
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]
-        return Prism(tags, surftags[0], surftags)
+        return GeoPrism(tags, surftags[0], surftags)
     
-    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> Prism:
+    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> GeoPrism:
         """Applies a revolution to the XYPolygon along the coordinate system Z-axis
 
         Args:
@@ -226,11 +254,11 @@ class XYPolygon:
             angle (float, optional): _description_. Defaults to 360.0.
 
         Returns:
-            Prism: _description_
+            Prism: The resultant 
         """
         if cs is None:
             cs = GCS
-        poly_fin = self.finalize(cs)
+        poly_fin = self._finalize(cs)
         
         x,y,z = origin
         ax, ay, az = axis
@@ -238,7 +266,7 @@ class XYPolygon:
         volume = gmsh.model.occ.revolve(poly_fin.dimtags, x,y,z, ax, ay, az, angle*np.pi/180)
         tags = [t for d,t in volume if d==3]
         surftags = [t for d,t in volume if d==2]
-        return Prism(tags, surftags[0], surftags)
+        return GeoPrism(tags, surftags[0], surftags)
 
     @staticmethod
     def circle(radius: float, 

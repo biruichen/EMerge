@@ -34,7 +34,7 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     # supply it with a thickness, the desired air-box height, the units at which we supply
     # the dimensions and the PCB material.
 
-    layouter = em.modeling.PCBLayouter(th*2, unit=mil, material=pcbmat)
+    layouter = em.geo.PCBLayouter(th*2, unit=mil, material=pcbmat)
 
     # We will route our PCB using the "method chaining" syntax. First we call the .new() method
     # to start a new trace. This will returna StripPath object on which we may call methods that
@@ -51,8 +51,8 @@ with em.Simulation3D('Demo1_SIF', loglevel='DEBUG') as m:
     p2 = layouter.modal_port(layouter.ref('p2'), height=0)
     
     # Finally we compile the stirpline into a polygon. The compile_paths function will return
-    # GMSHSurface objects that form the polygon. Additionally, we may turn on the Merge feature
-    # which will then return a single GMSHSurface type object that we can use later.
+    # GeoSurface objects that form the polygon. Additionally, we may turn on the Merge feature
+    # which will then return a single GeoSurface type object that we can use later.
     polies = layouter.compile_paths(True)
 
     # We can manually define blocks for the dielectric or air or let the PCBLayouter do it for us.

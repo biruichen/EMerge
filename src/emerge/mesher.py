@@ -1,4 +1,3 @@
-
 # EMerge is an open source Python based FEM EM simulation module.
 # Copyright (C) 2025  Robert Fennis.
 
@@ -18,7 +17,7 @@
 
 import gmsh
 from .material import Material, AIR
-from .geo3d import GMSHVolume, GMSHObject, GMSHSurface
+from .geometry import GeoVolume, GeoObject, GeoSurface
 from .selection import Selection, FaceSelection
 import numpy as np
 from typing import Iterable, Callable
@@ -65,7 +64,7 @@ def unpack_lists(_list: list[list], collector: list = None) -> list:
 class Mesher:
 
     def __init__(self):
-        self.objects: list[GMSHObject] = []
+        self.objects: list[GeoObject] = []
         self.size_definitions: list[tuple[int, float]] = []
         self.mesh_fields: list[int] = []
         self.min_size: float = None
@@ -84,8 +83,8 @@ class Mesher:
         return [tag[1] for tag in gmsh.model.getEntities(0)]
     
     @property
-    def volumes(self) -> list[GMSHVolume]:
-        return [obj for obj in self.objects if isinstance(obj, GMSHVolume)]
+    def volumes(self) -> list[GeoVolume]:
+        return [obj for obj in self.objects if isinstance(obj, GeoVolume)]
     
     @property
     def domain_boundary_face_tags(self) -> list[int]:
@@ -105,11 +104,11 @@ class Mesher:
             raise MeshError('Either maximum or minimum mesh size is undefined. Make sure \
                             to set the simulation frequency range before calling mesh instructions.')
     
-    def submit_objects(self, objects: list[GMSHObject]) -> None:
-        """Takes al ist of GMSHObjects and computes the fragment. 
+    def submit_objects(self, objects: list[GeoObject]) -> None:
+        """Takes al ist of GeoObjects and computes the fragment. 
 
         Args:
-            objects (list[GMSHObject]): The set of GMSHObjects
+            objects (list[GeoObject]): The set of GeoObjects
         """
         if not isinstance(objects, list):
             objects = [objects,]
@@ -188,7 +187,7 @@ class Mesher:
         for dimtag in dimtags:
             gmsh.model.mesh.setSizeFromBoundary(dimtag[0], dimtag[1], 0)
             
-    def set_boundary_size(self, object: GMSHSurface | FaceSelection, 
+    def set_boundary_size(self, object: GeoSurface | FaceSelection, 
                           size:float,
                           growth_rate: float = 1.1,
                           max_size: float = None):

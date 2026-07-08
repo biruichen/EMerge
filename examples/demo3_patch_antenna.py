@@ -25,25 +25,23 @@ er = 3.38
 f1 = 1.54e9
 f2 = 1.6e9
 
-em.solver.superlu_info()
-
 with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
-    dielectric = em.modeling.Box(wsub, hsub, th, position=(-wsub/2, -hsub/2, -th))
+    dielectric = em.geo.Box(wsub, hsub, th, position=(-wsub/2, -hsub/2, -th))
 
-    air = em.modeling.Box(wsub, hsub, Hair, position=(-wsub/2, -hsub/2, 0))
+    air = em.geo.Box(wsub, hsub, Hair, position=(-wsub/2, -hsub/2, 0))
     
-    rpatch = em.modeling.XYPlate(Wpatch, Lpatch, position=(-Wpatch/2, -Lpatch/2, 0))
+    rpatch = em.geo.XYPlate(Wpatch, Lpatch, position=(-Wpatch/2, -Lpatch/2, 0))
     
-    cutout1 = em.modeling.XYPlate(wstub, lstub, position=(-wline/2-wstub, -Lpatch/2, 0))
-    cutout2 = em.modeling.XYPlate(wstub, lstub, position=(wline/2, -Lpatch/2, 0))
+    cutout1 = em.geo.XYPlate(wstub, lstub, position=(-wline/2-wstub, -Lpatch/2, 0))
+    cutout2 = em.geo.XYPlate(wstub, lstub, position=(wline/2, -Lpatch/2, 0))
 
-    line = em.modeling.XYPlate(wline, lstub, position=(-wline/2, -Lpatch/2, 0))
+    line = em.geo.XYPlate(wline, lstub, position=(-wline/2, -Lpatch/2, 0))
 
-    port = em.modeling.Plate(np.array([-wline/2, -Lpatch/2, -th]), np.array([wline, 0, 0]), np.array([0, 0, th]))
+    port = em.geo.Plate(np.array([-wline/2, -Lpatch/2, -th]), np.array([wline, 0, 0]), np.array([0, 0, th]))
 
-    rpatch = em.modeling.remove(rpatch, cutout1)
-    rpatch = em.modeling.remove(rpatch, cutout2)
-    rpatch = em.modeling.add(rpatch, line)
+    rpatch = em.geo.remove(rpatch, cutout1)
+    rpatch = em.geo.remove(rpatch, cutout2)
+    rpatch = em.geo.add(rpatch, line)
     
     rpatch.material = em.COPPER # Only for viewing
 
@@ -59,7 +57,7 @@ with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
 
     model.generate_mesh()
     
-    model.view(selections=[port,], use_gmsh=False)
+    #model.view(selections=[port,], use_gmsh=False)
 
     port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, active=True, Z0=50)
 
@@ -70,7 +68,7 @@ with em.Simulation3D('MySimulation', PVDisplay, loglevel='DEBUG') as model:
     pec = em.bc.PEC(rpatch)
 
     model.physics.assign(port, pec, abc)
-    
+    model.physics.solveroutine.direct_solver = em.solver.SolverSuperLU()
     data = model.physics.frequency_domain()
 
     xs, ys, zs = em.YAX.pair(em.ZAX).span(wsub, Hair, 31, (0, -wsub/2, -th))

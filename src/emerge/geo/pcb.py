@@ -21,7 +21,7 @@ import numpy as np
 import gmsh
 
 from ..cs import CoordinateSystem, GCS
-from ..geo3d import Polygon, GMSHVolume, GMSHSurface
+from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cyllinder
 from .operations import change_coordinate_system
@@ -459,8 +459,8 @@ class PCBLayouter:
         if self.cs is None:
             self.cs = GCS
 
-        self.traces: list[Polygon] = []
-        self.ports: list[Polygon] = []
+        self.traces: list[GeoPolygon] = []
+        self.ports: list[GeoPolygon] = []
         self.vias: list[Via] = []
 
         self.xs: list[float] = []
@@ -485,11 +485,11 @@ class PCBLayouter:
         return None
     
     @property
-    def trace(self) -> Polygon:
+    def trace(self) -> GeoPolygon:
         tags = []
         for trace in self.traces:
             tags.extend(trace.tags)
-        return Polygon(tags)
+        return GeoPolygon(tags)
 
     def store(self, name: str, x: float, y:float):
         """Store the x,y coordinate pair one label provided by name
@@ -524,7 +524,7 @@ class PCBLayouter:
         return self.paths[path_nr]
 
     @property
-    def all_objects(self) -> list[Polygon]:
+    def all_objects(self) -> list[GeoPolygon]:
         return self.traces + self.ports
     
     def determine_bounds(self, 
@@ -557,11 +557,11 @@ class PCBLayouter:
     def gen_pcb(self, 
                 split_z: bool = True,
                 layer_tolerance: float = 1e-6,
-                merge: bool = True) -> GMSHVolume:
+                merge: bool = True) -> GeoVolume:
         """Generate the PCB Block object
 
         Returns:
-            GMSHVolume: The PCB Block
+            GeoVolume: The PCB Block
         """
         x0, y0, z0 = self.origin*self.unit
 
@@ -583,7 +583,7 @@ class PCBLayouter:
                 box = change_coordinate_system(box, self.cs)
                 boxes.append(box)
             if merge:
-                return GMSHVolume.merged(boxes)
+                return GeoVolume.merged(boxes)
             return boxes
         
         box = Box(self.width*self.unit, 
@@ -594,14 +594,14 @@ class PCBLayouter:
         box = change_coordinate_system(box, self.cs)
         return box
 
-    def gen_air(self, height: float) -> GMSHVolume:
+    def gen_air(self, height: float) -> GeoVolume:
         """Generate the Air Block object
 
         This requires that the width, depth and origin are deterimed. This 
         can either be done manually or via the .determine_boudns() method.
 
         Returns:
-            GMSHVolume: The PCB Block
+            GeoVolume: The PCB Block
         """
         x0, y0, z0 = self.origin*self.unit
         box = Box(self.width*self.unit, 
@@ -673,7 +673,7 @@ class PCBLayouter:
         
         tag_wire = gmsh.model.occ.addWire(ltags)
         planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-        poly = Polygon([planetag,])
+        poly = GeoPolygon([planetag,])
         poly._aux_data['width'] = stripline.width*self.unit
         poly._aux_data['height'] = height*self.unit
         poly._aux_data['dir'] = self.cs.zax
@@ -682,8 +682,8 @@ class PCBLayouter:
     def modal_port(self,
                   point: StripLine,
                   width_multiplier: float = 5.0,
-                  height: float = None) -> GMSHSurface:
-        """Generate a wave-port as a GMSHSurface.
+                  height: float = None) -> GeoSurface:
+        """Generate a wave-port as a GeoSurface.
 
         The port is placed at the coordinate of the provided stripline. The width
         is determined as a multiple of the stripline width. The height will be 
@@ -695,7 +695,7 @@ class PCBLayouter:
             height (float, optional): The height of the port. Defaults to None.
 
         Returns:
-            GMSHSurface: The GMSHSurface object that can be used for the waveguide.
+            GeoSurface: The GeoSurface object that can be used for the waveguide.
         """
         
         height = (self.thickness + height)
@@ -732,10 +732,10 @@ class PCBLayouter:
             vias.append(cyl)
         if merge:
             
-            return GMSHVolume.merged(vias)
+            return GeoVolume.merged(vias)
         return vias   
 
-    def compile_paths(self, merge: bool = False) -> list[Polygon] | GMSHSurface:
+    def compile_paths(self, merge: bool = False) -> list[GeoPolygon] | GeoSurface:
         """Compiles the striplines and returns a list of polygons or asingle one.
 
         The Z=0 argument determines the height of the striplines. Z=0 corresponds to the top of
@@ -745,7 +745,7 @@ class PCBLayouter:
             merge (bool, optional): Whether to merge the Polygons into a single. Defaults to False.
 
         Returns:
-            list[Polygon] | GMSHSUrface: The output stripline polygons possibly merged if merge = True.
+            list[Polygon] | GeoSurface: The output stripline polygons possibly merged if merge = True.
         """
         polys = []
         allx = []
@@ -783,7 +783,7 @@ class PCBLayouter:
             
             tag_wire = gmsh.model.occ.addWire(ltags)
             planetag = gmsh.model.occ.addPlaneSurface([tag_wire,])
-            poly = Polygon([planetag,])
+            poly = GeoPolygon([planetag,])
             poly.material = COPPER
             polys.append(poly)
 
@@ -795,7 +795,7 @@ class PCBLayouter:
             tags = []
             for p in polys:
                 tags.extend(p.tags)
-            polys = GMSHSurface(tags)
+            polys = GeoSurface(tags)
             polys.material = COPPER
         return polys
                 

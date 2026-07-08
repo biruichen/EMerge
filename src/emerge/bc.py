@@ -23,7 +23,7 @@ from typing import Callable, Literal
 from .selection import Selection, FaceSelection
 from .cs import CoordinateSystem, Axis, GCS
 from .coord import Line
-from .geo3d import GMSHSurface, GMSHObject
+from .geometry import GeoSurface, GeoObject
 from dataclasses import dataclass
 
 class BCDimension(Enum):
@@ -42,7 +42,7 @@ class BoundaryCondition:
     """A generalized class for all boundary condition objects.
     """
     
-    def __init__(self, assignment: GMSHObject | Selection):
+    def __init__(self, assignment: GeoObject | Selection):
 
         self.dimension: BCDimension = BCDimension.ANY
         self.indices: list[int] = []
@@ -50,7 +50,7 @@ class BoundaryCondition:
         self.edge_indices: list[int] = []
         
         
-        if isinstance(assignment, GMSHObject):
+        if isinstance(assignment, GeoObject):
             assignment = assignment.select
         
         self.selection: Selection = assignment
@@ -135,13 +135,13 @@ class BoundaryCondition:
 class PEC(BoundaryCondition):
     
     def __init__(self,
-                 face: FaceSelection | GMSHSurface):
+                 face: FaceSelection | GeoSurface):
         """The general perfect electric conductor boundary condition.
 
         The physics compiler will by default always turn all exterior faces into a PEC.
 
         Args:
-            face (FaceSelection | GMSHSurface): The boundary surface
+            face (FaceSelection | GeoSurface): The boundary surface
         """
         super().__init__(face)
 
@@ -151,7 +151,7 @@ class RobinBC(BoundaryCondition):
     _include_mass: bool = False
     _include_force: bool = False
 
-    def __init__(self, selection: GMSHSurface | Selection):
+    def __init__(self, selection: GeoSurface | Selection):
         """A Generalization of any boundary condition of the third kind (Robin).
 
         This should not be created directly. A robin boundary condition is the generalized type behind
@@ -159,7 +159,7 @@ class RobinBC(BoundaryCondition):
         are assembled the same, this class is used during assembly.
 
         Args:
-            selection (GMSHSurface | Selection): The boundary surface.
+            selection (GeoSurface | Selection): The boundary surface.
         """
         super().__init__(selection)
         self.v_integration: bool = False
@@ -177,14 +177,14 @@ class RobinBC(BoundaryCondition):
 class PortBC(RobinBC):
     Zvac: float = 376.730313412
 
-    def __init__(self, face: FaceSelection | GMSHSurface):
+    def __init__(self, face: FaceSelection | GeoSurface):
         """(DO NOT USE) A generalization of the Port boundary condition.
         
         DO NOT USE THIS TO DEFINE PORTS. This class is only indeded for 
         class inheritance and type checking. 
 
         Args:
-            face (FaceSelection | GMSHSurface): The port face
+            face (FaceSelection | GeoSurface): The port face
         """
         super().__init__(face)
         self.port_number: int = None
@@ -258,7 +258,7 @@ class AbsorbingBoundary(RobinBC):
     _include_force: bool = False
 
     def __init__(self,
-                 face: FaceSelection | GMSHSurface,
+                 face: FaceSelection | GeoSurface,
                  order: int = 1,
                  origin: tuple = None):
         """Creates an AbsorbingBoundary condition.
@@ -268,7 +268,7 @@ class AbsorbingBoundary(RobinBC):
         the out-of-plane phase constant. For now it always assumes the free-space propagation (normal).
 
         Args:
-            face (FaceSelection | GMSHSurface): The absorbing boundary face(s)
+            face (FaceSelection | GeoSurface): The absorbing boundary face(s)
             order (int, optional): The order (only 1 is supported). Defaults to 1.
             origin (tuple, optional): The radiation origin. Defaults to None.
         """
@@ -333,14 +333,14 @@ class ModalPort(PortBC):
     _include_force: bool = True
 
     def __init__(self,
-                 face: FaceSelection | GMSHSurface,
+                 face: FaceSelection | GeoSurface,
                  port_number: int, 
                  active: bool = False,
                  cs: CoordinateSystem = None,
                  power: float = 1):
         """Generes a ModalPort boundary condition for a port that requires eigenmode solutions for the mode.
 
-        The boundary condition requires a FaceSelection (or GMSHSurface related) object for the face and a port
+        The boundary condition requires a FaceSelection (or GeoSurface related) object for the face and a port
         number. 
         If the face coordinate system is not provided a local coordinate system will be derived automatically
         by finding the plane that spans the face nodes with minimial out-of-plane error. 
@@ -349,7 +349,7 @@ class ModalPort(PortBC):
         the port mode. 
 
         Args:
-            face (FaceSelection, GMSHSurface): The port mode face
+            face (FaceSelection, GeoSurface): The port mode face
             port_number (int): The port number as an integer
             active (bool, optional): Whether the port is set active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system of the port face. Defaults to None.
@@ -500,7 +500,7 @@ class RectangularWaveguide(PortBC):
     _include_force: bool = True
 
     def __init__(self, 
-                 face: FaceSelection | GMSHSurface,
+                 face: FaceSelection | GeoSurface,
                  port_number: int, 
                  active: bool = False,
                  cs: CoordinateSystem = None,
@@ -515,7 +515,7 @@ class RectangularWaveguide(PortBC):
         The information on the derived coordiante system will be shown in the DEBUG level logs.
 
         Args:
-            face (FaceSelection, GMSHSurface): The port boundary face selection
+            face (FaceSelection, GeoSurface): The port boundary face selection
             port_number (int): The port number
             active (bool, optional): Ther the port is active. Defaults to False.
             cs (CoordinateSystem, optional): The local coordinate system. Defaults to None.
@@ -624,7 +624,7 @@ class LumpedPort(PortBC):
     _include_force: bool = True
 
     def __init__(self, 
-                 face: FaceSelection | GMSHSurface,
+                 face: FaceSelection | GeoSurface,
                  port_number: int, 
                  width: float = None,
                  height: float = None,
@@ -641,7 +641,7 @@ class LumpedPort(PortBC):
         its the circumpherance.
 
         Args:
-            face (FaceSelection, GMSHSurface): The port surface
+            face (FaceSelection, GeoSurface): The port surface
             port_number (int): The port number
             width (float): The port width (meters).
             height (float): The port height (meters).
@@ -653,7 +653,7 @@ class LumpedPort(PortBC):
         super().__init__(face)
 
         if width is None:
-            if not isinstance(face, GMSHObject):
+            if not isinstance(face, GeoObject):
                 raise ValueError(f'The width, height and direction must be defined. Information cannot be extracted from {face}')
             width, height, direction = face._data('width','height','dir')
             if width is None or height is None or direction is None:
