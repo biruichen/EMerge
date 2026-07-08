@@ -255,9 +255,10 @@ class Assembler:
             logger.debug('    Implementing Robin Boundary Conditions.')
         
         gauss_points = gaus_quad_tri(4)
+
         for bc in robin_bcs:
             for tag in bc.tags:
-                face_tags = [tag,]#bc.tags
+                face_tags = [tag,]
 
                 tri_ids = mesh.get_triangles(face_tags)
                 nodes = mesh.get_nodes(face_tags)

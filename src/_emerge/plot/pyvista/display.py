@@ -412,7 +412,6 @@ class PVDisplay(BaseDisplay):
                  clim: tuple[float, float] = None,
                  opacity: float = 1.0,
                  symmetrize: bool = True,
-                 animate: bool = False,
                  _fieldname: str = None,
                  **kwargs,):
         """Add a surface plot to the display
@@ -469,10 +468,36 @@ class PVDisplay(BaseDisplay):
             self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update))
         
         
+    def add_title(self, title: str) -> None:
+        """Adds a title
 
+        Args:
+            title (str): The title name
+        """
+        self._plot.add_text(
+            title,
+            position='upper_edge',
+            font_size=18)
+
+    def add_text(self, text: str, 
+                 color: str = 'black', 
+                 position: Literal['lower_left', 'lower_right', 'upper_left', 'upper_right', 'lower_edge', 'upper_edge', 'right_edge', 'left_edge']='upper_right',
+                 abs_position: tuple[float, float, float] = None):
+        viewport = False
+        if abs_position is not None:
+            position = abs_position
+            viewport = True
+        self._plot.add_text(
+            text,
+            position=position,
+            color=color,
+            font_size=18,
+            viewport=viewport)
+        
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,
               scale: float = 1,
+              color: tuple[float, float, float] = None,
               scalemode: Literal['lin','log'] = 'lin'):
         """Add a quiver plot to the display
 
@@ -503,7 +528,11 @@ class PVDisplay(BaseDisplay):
             Vec[:,0] = dx
             Vec[:,1] = dy
             Vec[:,2] = dz
-        pl = self._plot.add_arrows(Coo, Vec, scalars=None, clim=None, cmap=None)
+        
+        kwargs = dict()
+        if color is not None:
+            kwargs['color'] = color
+        pl = self._plot.add_arrows(Coo, Vec, scalars=None, clim=None, cmap=None, **kwargs)
 
     def add_contour(self,
                      X: np.ndarray,

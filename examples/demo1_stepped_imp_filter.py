@@ -15,7 +15,7 @@ mil = 0.0254*mm
 L0, L1, L2, L3 = 400, 660, 660, 660 # The lengths of the sections in mil's
 W0, W1, W2, W3 = 50, 128, 8, 224 # The widths of the sections in mil's
 
-th = 31 # The PCB Thickness
+th = 62 # The PCB Thickness
 er = 2.2 # The Dielectric constant
 
 Hair = 60
@@ -33,14 +33,14 @@ m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
 # supply it with a thickness, the desired air-box height, the units at which we supply
 # the dimensions and the PCB material.
 
-layouter = em.geo.PCBLayouter(th*2, unit=mil, material=pcbmat)
+layouter = em.geo.PCBLayouter(th, unit=mil, material=pcbmat, layers=3)
 
 # We will route our PCB using the "method chaining" syntax. First we call the .new() method
 # to start a new trace. This will returna StripPath object on which we may call methods that
 # sequentially constructs our stripline trace. In this case, it is sipmly a sequence of straight
 # sections.
 
-layouter.new(0,0,W0, (1,0), z=-th).store('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
+layouter.new(0,0,W0, (1,0), z=layouter.z(2)).store('p1').straight(L0, W0).straight(L1,W1).straight(L2,W2).straight(L3,W3)\
     .straight(L2,W2).straight(L1,W1).straight(L0,W0).store('p2')
 
 # Next we generate a wave port surface to use for our simulation. A wave port can be automatically
@@ -64,13 +64,12 @@ layouter.determine_bounds(leftmargin=0, topmargin=200, rightmargin=0, bottommarg
 # We can now generate the PCB and air box. The material assignment is automatic!
 
 pcb = layouter.gen_pcb(True, merge=True)
-#air = layouter.gen_air(Hair)
 
 # We now pass all the geometries we have created to the .define_geometry() method.
 m.define_geometry(pcb, polies, p1, p2)
 
 # We set our desired resolution (fraction of the wavelength)
-m.mw.set_resolution(0.15)
+m.mw.set_resolution(0.08)
 
 # And we define our frequency range
 m.mw.set_frequency_range(0.2e9, 8e9, 41)
@@ -79,14 +78,14 @@ m.mw.set_frequency_range(0.2e9, 8e9, 41)
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
 # This is adviced for small stripline structures.
 # The growth_rate setting allows us to change how fast the mesh size will recover to the original size.
-m.mesher.set_boundary_size(polies, 2*mm, growth_rate=1.2)
-m.mesher.set_boundary_size(p1, 2*mm)
-m.mesher.set_boundary_size(p2, 2*mm)
+m.mesher.set_boundary_size(polies, 1*mm, growth_rate=1.2)
+m.mesher.set_face_size(p1, 1*mm)
+m.mesher.set_face_size(p2, 1*mm)
 
 # Finally we generate our mesh and view it
 m.generate_mesh()
 
-m.view()
+#m.view(use_gmsh=True)
 
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)
@@ -144,3 +143,7 @@ smith(f,S11)
 
 plot_sp(f/1e9, [S11, S21], labels=['S11','S21'], dblim=[-40,6], logx=True)
 
+m.display.add_object(pcb, opacity=0.1)
+m.display.add_object(polies, opacity=0.5)
+m.display.add_surf(*sol.field.find(freq=1e9).cutplane(1*mm, z=-0.75*th*mil).scalar('Ez','real'))
+m.display.show()

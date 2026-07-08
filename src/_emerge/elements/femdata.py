@@ -21,7 +21,7 @@ import numpy as np
 from typing import Callable
 from scipy.sparse import coo_matrix, csr_matrix
 
-
+from ..mth.optimized import matmul
 
 class FEMBasis:
 
@@ -56,8 +56,8 @@ class FEMBasis:
         ibasis = np.linalg.pinv(basis)
         def func(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndarray:
             xyz = np.array([xs, ys, zs]) + origin[:, np.newaxis]
-            xyzg = basis @ xyz
-            return ibasis @ np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids))
+            xyzg = matmul(basis, xyz)
+            return matmul(ibasis, np.array(self.interpolate(field, xyzg[0,:], xyzg[1,:], xyzg[2,:], tetids)))
         return func
     
     def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

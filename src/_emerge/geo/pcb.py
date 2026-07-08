@@ -25,12 +25,21 @@ from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cyllinder
+from .extrude import XYPolygon
 from .operations import change_coordinate_system
 from .pcb_tools.macro import parse_macro
+from .pcb_tools.calculator import PCBCalculator
 from loguru import logger
-from typing import Literal
+from typing import Literal, Callable
 from dataclasses import dataclass
 import math
+
+
+SizeNames = Literal['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']
+_SMD_SIZE_DICT = {x: (float(x[:2])*0.05, float(x[2:])*0.1) for x in ['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']}
+
+def approx(a,b):
+    return abs(a-b) < 1e-8
 
 def normalize(vector: np.ndarray) -> np.ndarray:
     norm = np.linalg.norm(vector)
@@ -76,7 +85,16 @@ class RouteElement:
         self.width: float = None
         self.x: float = None
         self.y: float = None
-        self.direction: float = np.ndarray
+        self.direction: np.ndarray = None
+        self.dirright: np.ndarray = None
+    
+    @property
+    def nr(self) -> tuple[float,float]:
+        return (self.x + self.dirright[0]*self.width/2, self.y + self.dirright[1]*self.width/2)
+    
+    @property
+    def nl(self) -> tuple[float,float]:
+        return (self.x - self.dirright[0]*self.width/2, self.y - self.dirright[1]*self.width/2)
     
     @property
     def right(self) -> list[tuple[float, float]]:
@@ -85,7 +103,10 @@ class RouteElement:
     @property
     def left(self) -> list[tuple[float, float]]:
         pass
-
+    
+    def __eq__(self, other: RouteElement) -> bool:
+        return approx(self.x, other.x) and approx(self.y, other.y) and (1-abs(np.sum(self.direction*other.direction)))<1e-8
+    
 class StripLine(RouteElement):
 
     def __init__(self,
@@ -142,6 +163,9 @@ class StripTurn(RouteElement):
             self.x = x - width/2 * self.dirright[0] + turnvec[0]
             self.y = y - width/2 * self.dirright[1] + turnvec[1]
 
+    def __str__(self) -> str:
+        return f'StripTurn[{self.x},{self.y},w={self.width},d=({self.direction})]'
+    
     @property
     def right(self) -> list[tuple[float, float]]:
         if self.angle > 0:
@@ -221,7 +245,6 @@ class StripPath:
     def __init__(self, pcb: PCBLayouter):
         self.pcb: PCBLayouter = pcb
         self.path: list[RouteElement] = []
-        self.last: RouteElement = None
         self.z: float = 0
 
     def _has(self, element: RouteElement) -> bool:
@@ -247,6 +270,11 @@ class StripPath:
         """ The end of the stripline """
         return self.path[-1]
     
+    def _check_loops(self) -> None:
+        if self.path[0]==self.path[-1]:
+            raise RouteException('Loops are currently not supported. To fix this problem, implement a single .cut() call before a .straight() call to break the loop.')
+        return None
+    
     def init(self, 
              x: float, 
              y: float, 
@@ -261,7 +289,7 @@ class StripPath:
     def _add_element(self, element: RouteElement) -> StripPath:
         """ Adds the provided RouteElement to the path. """
         self.path.append(element)
-        self.last = element
+        self._check_loops()
         return self
     
     def straight(self, distance: 
@@ -285,10 +313,10 @@ class StripPath:
             StripPath: The current StripPath object.
         """
         
-        x = self.path[-1].x + dx
-        y = self.path[-1].y + dy
+        x = self.end.x + dx
+        y = self.end.y + dy
 
-        dx_2, dy_2 = self.path[-1].direction
+        dx_2, dy_2 = self.end.direction
         x1 = x + distance * dx_2
         y1 = y + distance * dy_2
 
@@ -297,7 +325,6 @@ class StripPath:
                 self._add_element(StripLine(x, y, width, (dx_2, dy_2)))
 
         self._add_element(StripLine(x1, y1, self.end.width, (dx_2, dy_2)))
-        
         return self
     
     def taper(self, distance: float, 
@@ -319,10 +346,10 @@ class StripPath:
             StripPath: The current StripPath object.
         """
         
-        x = self.path[-1].x 
-        y = self.path[-1].y 
+        x = self.end.x 
+        y = self.end.y 
 
-        dx_2, dy_2 = self.path[-1].direction
+        dx_2, dy_2 = self.end.direction
         x1 = x + distance * dx_2
         y1 = y + distance * dy_2
 
@@ -347,14 +374,14 @@ class StripPath:
         Returns:
             StripPath: The current StripPath object
         """
-        x, y = self.path[-1].x, self.path[-1].y
-        dx, dy = self.path[-1].direction
+        x, y = self.end.x, self.end.y
+        dx, dy = self.end.direction
         
         if width is not None:
             if width != self.end.width:
                 self._add_element(StripLine(x, y, width, (dx, dy)))
         else:
-            width=self.last.width
+            width=self.end.width
         self._add_element(StripTurn(x, y, width, (dx, dy), angle, corner_type))
         return self
     
@@ -386,14 +413,77 @@ class StripPath:
             list[StripPath]: A list of new StripPath objects
         """
         if width is None:
-            width = self.last.width
+            width = self.end.width
         if direction is None:
-            direction = self.last.direction
-        x = self.last.x
-        y = self.last.y
+            direction = self.end.direction
+        x = self.end.x
+        y = self.end.y
         z = self.z
         paths = self.pcb.new(x,y,width, direction, z)
         self.pcb._checkpoint = self
+        return paths
+
+    def lumped_element(self, impedance_function: Callable, size: SizeNames | tuple) -> StripPath:
+        """Adds a lumped element to the PCB.
+
+        The first argument should be the impedance function as function of frequency. For a capacitor this would be:
+        Z(f) = 1/(j2πfC).
+        The second argument specifies the size of the element (length x width) as a tuple or it can be a string for a
+        package. For example "0402". The size of the lumped component does not inlcude the footprint.
+
+        For example a 0602 pacakge has timensions: length=0.6mm, width=0.3mm. The actual length of the component
+        not overlapping with the solder pad is 0.3mm (always half) so the component size added is 0.3mm x 0.3mm.
+        
+        After creation, the trace continues after the lumped component.
+        
+        You can add the components to your model as following:
+
+        >>> lumped_elements = pcb.lumped_elments
+        for le in lumped_elements:
+            model.mw.bc.LumpedElement(le)
+        
+        The impedance function and geometry is automatically passed on with the lumped element added.
+
+        Args:
+            impedance_function (Callable): A function that computes the component impedance as a function of frequency.
+            size (SizeNames | tuple): The dimensions of the lumped element on PCB.
+
+        Returns:
+            StripPath: The same strip path object
+        """
+        if size in _SMD_SIZE_DICT:
+            length, width = _SMD_SIZE_DICT[size]
+        else:
+            length, width = size
+        
+        dx, dy = self.end.direction
+        x, y = self.end.x, self.end.y
+        rx, ry = self.end.dirright
+        wh = width/2
+        xs = np.array([x+rx*wh, x+rx*wh+length*dx, x-rx*wh+length*dx, x-rx*wh])*self.pcb.unit
+        ys = np.array([y+ry*wh, y+ry*wh+length*dy, y-ry*wh+length*dy, y-ry*wh])*self.pcb.unit
+        poly = XYPolygon(xs, ys)
+        
+        self.pcb._lumped_element(poly, impedance_function, width, length)
+        return self.pcb.new(x+dx*length, y+dy*length, self.end.width, self.end.direction, self.z)
+
+
+    def cut(self) -> StripPath:
+        """Split the current path in N new paths given by a new departure direction
+
+        Args:
+            directions (list[tuple[float, float]]): a list of directions example: [(1,0),(-1,0)]
+            widths (list[float], optional): The width for each new path. Defaults to None.
+
+        Returns:
+            list[StripPath]: A list of new StripPath objects
+        """
+        width = self.end.width
+        direction = self.end.direction
+        x = self.end.x
+        y = self.end.y
+        z = self.z
+        paths = self.pcb.new(x,y,width, direction, z)
         return paths
     
     def stub(self, direction: tuple[float, float],
@@ -401,9 +491,9 @@ class StripPath:
              length: float, 
              mirror: bool = False) -> StripPath:
         """ Add a single rectangular strip line section at the current coordinate"""
-        self.pcb.new(self.last.x, self.last.y, width, direction, self.z).straight(length)
+        self.pcb.new(self.end.x, self.end.y, width, direction, self.z).straight(length)
         if mirror:
-            self.pcb.new(self.last.x, self.last.y, width, (-direction[0], -direction[1]), self.z).straight(length)
+            self.pcb.new(self.end.x, self.end.y, width, (-direction[0], -direction[1]), self.z).straight(length)
         return self
     
     def merge(self) -> StripPath:
@@ -458,6 +548,10 @@ class StripPath:
             return self.pcb.new(x-dx, y-dy, width, direction, z2)
         return self
     
+    def short(self) -> StripPath:
+        self.via(self.pcb.z(1), self.end.width/3, False)
+        return self
+
     def jump(self, 
              dx: float = None,
              dy: float = None,
@@ -697,8 +791,8 @@ class PCBLayouter:
         self.polies: list[PCBPoly] = []
 
         self.lumped_ports: list[StripLine] = []
+        self.lumped_elements: list[GeoPolygon] = []
 
-        self.last: StripPath = None
         self.unit = unit
 
         self.cs: CoordinateSystem = cs
@@ -716,13 +810,16 @@ class PCBLayouter:
         self.stored_coords: dict[str,tuple[float, float]] = dict()
         self.stored_striplines: dict[str, StripLine] = dict()
         self._checkpoint: StripPath = None
-    
+
+        self.calc: PCBCalculator = PCBCalculator(self.thickness, self._zs, self.material, self.unit)
+
     @property
     def trace(self) -> GeoPolygon:
         tags = []
         for trace in self.traces:
             tags.extend(trace.tags)
         return GeoPolygon(tags)
+    
     
     @property
     def all_objects(self) -> list[GeoPolygon]:
@@ -946,7 +1043,6 @@ class PCBLayouter:
         path = StripPath(self)
         path.init(x, y, width, direction, z=z)
         self.paths.append(path)  
-        self.last = path
         return path
     
     def lumped_port(self, stripline: StripLine, z_ground: float = None) -> GeoPolygon:
@@ -988,6 +1084,15 @@ class PCBLayouter:
         poly._aux_data['idir'] = Axis(self.cs.xax.np*stripline.dirright[0] + self.cs.yax.np*stripline.dirright[1])
         
         return poly
+
+    def _lumped_element(self, poly: XYPolygon, function: Callable, width: float, length: float) -> None:
+
+        geopoly = poly._finalize(self.cs)
+        geopoly._aux_data['func'] = function
+        geopoly._aux_data['width'] = width
+        geopoly._aux_data['height'] = length
+        self.lumped_elements.append(geopoly)
+
 
     def modal_port(self,
                   point: StripLine,
@@ -1137,12 +1242,3 @@ class PCBLayouter:
             polys.material = COPPER
         return polys
                 
-    def microstrip_W(self, Z0: float, thickness: float = None) -> float:
-
-        if thickness is None:
-            thickness = self.thickness
-        
-        er = self.material.er
-        u = 1
-        a = 1 + 1/49 * np.log((u**4 + (u/52)**2)/(u**4 + 0.432)) + 1/18.7 * np.log(1 + (u/18.1)**3)
-        pass

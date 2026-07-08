@@ -30,6 +30,6 @@ version_update.txt
 *.s4p
 *.snp
 *.csv
-
+*.fig
 
 manual_scripts/
