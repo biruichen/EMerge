@@ -533,7 +533,7 @@ def plot_ff(
     dB: bool = False,
     labels: Optional[List[str]] = None,
     xlabel: str = "Theta (rad)",
-    ylabel: str = "|E|",
+    ylabel: str = "",
     linestyles: Union[str, List[str]] = "-",
     linewidth: float = 2.0,
     markers: Optional[Union[str, List[Optional[str]]]] = None,

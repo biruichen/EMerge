@@ -64,7 +64,7 @@ class FEMBasis:
     def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         raise NotImplementedError()
     
-    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, constants: np.ndarray, tetids: np.ndarray | None = None, usenan: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
         """
@@ -151,7 +151,8 @@ class FEMBasis:
     def interpolate_index(self, xs: np.ndarray,
                     ys: np.ndarray,
                     zs: np.ndarray,
-                    tetids: np.ndarray | None = None) -> np.ndarray:
+                    tetids: np.ndarray | None = None,
+                    usenan: bool = True) -> np.ndarray:
         raise NotImplementedError()
     
     def map_edge_to_field(self, edge_ids: np.ndarray) -> np.ndarray:

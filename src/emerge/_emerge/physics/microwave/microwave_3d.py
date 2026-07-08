@@ -269,7 +269,7 @@ class Microwave3D:
             Callable: The discretizer function
         """
         def disc(material: Material):
-            return 299792458/(max(self.frequencies) * np.real(material.neff))
+            return 299792458/(max(self.frequencies) * np.real(material.neff(max(self.frequencies))))
         return disc
     
     def _initialize_field(self):
@@ -467,10 +467,25 @@ class Microwave3D:
             raise SimulationError('Cannot proceed, the current basis class is undefined.')
 
         logger.debug('Retreiving material properties.')
-        ertet = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        urtet = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        condtet = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+        
+        if freq is None:
+            freq = self.frequencies[0]
+        
+        materials = self.mesh.retreive(self.mesher.volumes)
 
+        ertet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
+        tandtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
+        urtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
+        condtet = np.zeros((3,3,self.mesh.n_tets), dtype=np.complex128)
+        
+        for mat in materials:
+            ertet = mat.er(freq, ertet)
+            tandtet = mat.tand(freq, tandtet)
+            urtet = mat.ur(freq, urtet)
+            condtet = mat.cond(freq, condtet)
+        
+        ertet = ertet * (1-1j*tandtet)
+        
         er = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
         ur = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
         cond = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
@@ -479,7 +494,7 @@ class Microwave3D:
             itet = self.mesh.tri_to_tet[0,itri]
             er[:,:,itri] = ertet[:,:,itet]
             ur[:,:,itri] = urtet[:,:,itet]
-            cond[itri] = condtet[itet]
+            cond[itri] = condtet[0,0,itet]
 
         itri_port = self.mesh.get_triangles(port.tags)
 
@@ -488,11 +503,7 @@ class Microwave3D:
         ermax = np.max(er[:,:,itri_port].flatten())
         urmax = np.max(ur[:,:,itri_port].flatten())
 
-        if freq is None:
-            freq = self.frequencies[0]
-        
         k0 = 2*np.pi*freq/299792458
-        kmax = k0*np.sqrt(ermax.real*urmax.real)
         
         Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.bc)
         
@@ -511,8 +522,7 @@ class Microwave3D:
             else:
                 
                 target_kz = ermean*urmean*0.7*k0
-
-    
+                
         logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
         eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz, sign=-1)
@@ -550,12 +560,10 @@ class Microwave3D:
             Ez = np.max(np.abs(Efz))
             Exy = np.max(np.abs(Efxy))
             
-            # Exy = np.max(np.max(Emode))
-            # Ez = 0
-            if Ez/Exy < 1e-3 and not TEM:
+            if Ez/Exy < 1e-1 and not TEM:
                 logger.debug('Low Ez/Et ratio detected, assuming TE mode')
                 mode.modetype = 'TE'
-            elif Ez/Exy > 1e-3 and not TEM:
+            elif Ez/Exy > 1e-1 and not TEM:
                 logger.debug('High Ez/Et ratio detected, assuming TM mode')
                 mode.modetype = 'TM'
             elif TEM:
@@ -621,9 +629,7 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
 
-        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+        materials = self.mesh.retreive(self.mesher.volumes)
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
@@ -674,7 +680,8 @@ class Microwave3D:
             freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
 
         results: list[SimJob] = []
-
+        matset: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        
         ## Single threaded
         job_id = 1
 
@@ -691,7 +698,7 @@ class Microwave3D:
                     logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                     if automatic_modal_analysis:
                         self._compute_modes(freq)
-                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
+                    job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
                                                             self.bc.boundary_conditions, 
                                                             freq, 
                                                             cache_matrices=self.cache_matrices)
@@ -700,6 +707,7 @@ class Microwave3D:
                     job.id = job_id
                     job_id += 1
                     jobs.append(job)
+                    matset.append(mats)
                 
                 logger.info(f'Starting single threaded solve of {len(jobs)} jobs.')
                 group_results = [run_job_single(job) for job in jobs]
@@ -716,7 +724,7 @@ class Microwave3D:
                         logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
-                        job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
+                        job, mats = self.assembler.assemble_freq_matrix(self.basis, materials, 
                                                                 self.bc.boundary_conditions, 
                                                                 freq, 
                                                                 cache_matrices=self.cache_matrices)
@@ -725,6 +733,7 @@ class Microwave3D:
                         job.id = job_id
                         job_id += 1
                         jobs.append(job)
+                        matset.append(mats)
                     
                     logger.info(f'Starting distributed solve of {len(jobs)} jobs with {njobs} threads.')
                     group_results = list(executor.map(run_job, jobs))
@@ -749,8 +758,8 @@ class Microwave3D:
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
                         
-                        job = self.assembler.assemble_freq_matrix(
-                            self.basis, er, ur, cond,
+                        job, mats = self.assembler.assemble_freq_matrix(
+                            self.basis, materials,
                             self.bc.boundary_conditions,
                             freq,
                             cache_matrices=self.cache_matrices
@@ -761,6 +770,7 @@ class Microwave3D:
                         job.id = job_id
                         job_id += 1
                         jobs.append(job)
+                        matset.append(mats)
 
                     logger.info(
                         f'Starting distributed solve of {len(jobs)} jobs '
@@ -783,7 +793,7 @@ class Microwave3D:
 
         self.solveroutine.reset()
         ### Compute S-parameters and return
-        self._post_process(results, er, ur, cond)
+        self._post_process(results, matset)
         return self.data
     
     def eigenmode(self, search_frequency: float,
@@ -817,19 +827,21 @@ class Microwave3D:
         if self.basis is None:
             raise SimulationError('Cannot proceed. The simulation basis class is undefined.')
 
-        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+        materials = self.mesh.retreive(self.mesher.volumes)
+        
+        # er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+        # ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        # cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
             
         logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
         
-        job = self.assembler.assemble_eig_matrix(self.basis, er, ur, cond, 
+        job, matset = self.assembler.assemble_eig_matrix(self.basis, materials, 
                                                             self.bc.boundary_conditions, search_frequency)
         
-
+        er, ur, cond = matset
         logger.info('Solving complete')
 
         A, C, solve_ids = job.yield_AC()
@@ -870,7 +882,7 @@ class Microwave3D:
         
         return self.data
 
-    def _post_process(self, results: list[SimJob], er: np.ndarray, ur: np.ndarray, cond: np.ndarray):
+    def _post_process(self, results: list[SimJob], materials: list[tuple[np.ndarray, np.ndarray, np.ndarray]]):
         """Compute the S-parameters after Frequency sweep
 
         Args:
@@ -888,18 +900,19 @@ class Microwave3D:
 
         logger.info('Computing S-parameters')
         
-        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
-        for itri in range(self.mesh.n_tris):
-            itet = self.mesh.tri_to_tet[0,itri]
-            ertri[:,:,itri] = er[:,:,itet]
-            urtri[:,:,itri] = ur[:,:,itet]
-            condtri[itri] = cond[itet]
+        for freq, job, mats in zip(self.frequencies, results, materials):
+            er, ur, cond = mats
+            ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+            urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+            condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
-        for freq, job in zip(self.frequencies, results):
-
+            for itri in range(self.mesh.n_tris):
+                itet = self.mesh.tri_to_tet[0,itri]
+                ertri[:,:,itri] = er[:,:,itet]
+                urtri[:,:,itri] = ur[:,:,itet]
+                condtri[itri] = cond[0,0,itet]
+                
             k0 = 2*np.pi*freq/299792458
 
             scalardata = self.data.scalar.new(freq=freq, **self._params)

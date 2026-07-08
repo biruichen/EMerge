@@ -245,13 +245,20 @@ class Simulation:
         vM, vm, vp = [float(x) for x in version.split('.')]
         cM, cm, cp = [float(x) for x in __version__.split('.')]
         if vM != cM:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
         if vm != cm:
-            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            raise VersionError(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}. \n You can upgrade your version of emerge with: pip --upgrade emerge")
         if vp != cp:
-            logger.warning(f"You are running a script designed for version {version} with a possibly incompatible version of EMerge {__version__}")
+            logger.warning("You are running a script designed for a different version of EMerge.")
+            logger.warning(f"The script version: {version}")
+            logger.warning(f"EMerge version:     {__version__}")
+            logger.warning("Usually EMerge works without a problem but Errors may occur.")
+            logger.warning("You can upgrade your version of emerge with: pip --upgrade emerge")
             logger.warning("You may suppress this error by removing the call to .check_version().")
-            input('Press enter to proceed...')
+            logger.warning("Press Ctrl+C to abort.")
+            ans = input('Press enter to proceed or [Q] to quit:')
+            if ans.lower().strip()=='q':
+                quit()
 
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
@@ -458,7 +465,7 @@ class Simulation:
 
             logger.info(f'Iterating: {params}')
             if len(dims_flat)==1:
-                yield (dims_flat[0][i_iter],)
+                yield dims_flat[0][i_iter]
             else:
                 yield (dim[i_iter] for dim in dims_flat) # type: ignore
         self.mw.cache_matrices = True

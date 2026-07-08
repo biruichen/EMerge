@@ -289,10 +289,14 @@ class Solver:
 
     def __init__(self):
         self.own_preconditioner: bool = False
+        self.initialized: bool = False
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'
     
+    def initialize(self) -> None:
+        return None
+
     def duplicate(self) -> Solver:
         return self.__class__()
 
@@ -323,6 +327,9 @@ class EigSolver:
 
     def __init__(self):
         self.own_preconditioner: bool = False
+
+    def initialize(self) -> None:
+        return None
 
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'
@@ -513,7 +520,19 @@ class SolverUMFPACK(Solver):
         super().__init__()
         self.A: np.ndarray = None
         self.b: np.ndarray = None
-        self.umfpack: um.UmfpackContext = um.UmfpackContext('zl')
+        
+        self.umfpack: um.UmfpackContext | None = None
+        
+        # SETTINGS
+        self._pivoting_threshold: float = 0.001
+
+        self.fact_symb: bool = False
+        self.initalized: bool = False
+
+    def initialize(self):
+        if self.initalized:
+            return
+        self.umfpack = um.UmfpackContext('zl')
         self.umfpack.control[um.UMFPACK_PRL] = 0 # ty: ignore
         self.umfpack.control[um.UMFPACK_IRSTEP] = 2 # ty: ignore
         self.umfpack.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC # ty: ignore
@@ -522,21 +541,16 @@ class SolverUMFPACK(Solver):
         self.umfpack.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = 0.001 # ty: ignore
         self.umfpack.control[um.UMFPACK_BLOCK_SIZE] = 64 # ty: ignore
         self.umfpack.control[um.UMFPACK_FIXQ] = -1 # ty: ignore
-        
-        # SETTINGS
-        self._pivoting_threshold: float = 0.001
-
-        self.fact_symb: bool = False
-
+        self.initalized = True
     def reset(self) -> None:
         self.fact_symb = False
     
-    def set_options(self,
-                    pivoting_threshold: float | None = None) -> None:
-            if pivoting_threshold is not None:
-                self.umfpack.control[um.UMFPACK_PIVOT_TOLERANCE] = pivoting_threshold # ty: ignore
-                self.umfpack.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = pivoting_threshold # ty: ignore
-                self._pivoting_threshold = pivoting_threshold
+    def set_options(self, pivoting_threshold: float | None = None) -> None:
+        self.initialize()
+        if pivoting_threshold is not None:
+            self.umfpack.control[um.UMFPACK_PIVOT_TOLERANCE] = pivoting_threshold # ty: ignore
+            self.umfpack.control[um.UMFPACK_SYM_PIVOT_TOLERANCE] = pivoting_threshold # ty: ignore
+            self._pivoting_threshold = pivoting_threshold
 
     def duplicate(self) -> Solver:
         new_solver = self.__class__()
@@ -568,11 +582,17 @@ class SolverPardiso(Solver):
 
     def __init__(self):
         super().__init__()
-        self.solver: PardisoInterface = PardisoInterface()
+        self.solver: PardisoInterface | None = None
         self.fact_symb: bool = False
         self.A: np.ndarray = None
         self.b: np.ndarray = None
 
+    def initialize(self) -> None:
+        if self.initialized:
+            return
+        self.solver = PardisoInterface()
+        self.initialized = True
+        
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, SolveReport]:
         logger.info(f'[ID={id}] Calling Pardiso Solver')
         if self.fact_symb is False:
@@ -594,11 +614,18 @@ class SolverPardiso(Solver):
 class CuDSSSolver(Solver):
     real_only = False
     def __init__(self):
-        self._cudss = CuDSSInterface()
+        super().__init__()
+        self._cudss: CuDSSInterface | None = None
         self.fact_symb: bool = False
         self.fact_numb: bool = False
+        
+    def initialize(self) -> None:
+        if self.initialized:
+            return
+        self._cudss = CuDSSInterface()
         self._cudss._PRES = 2
-
+        self.initialized = True
+        
     def reset(self) -> None:
         self.fact_symb = False
         self.fact_numb = False
@@ -1085,7 +1112,7 @@ class SolveRoutine:
             np.ndarray: The resultant solution.
         """
         solver: Solver = self._get_solver(A, b)
-
+        solver.initialize()
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
@@ -1178,7 +1205,7 @@ class SolveRoutine:
             SolveReport: The solution report
         """
         solver = self._get_eig_solver_bma(A, B, direct=direct)
-
+        solver.initialize()
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
