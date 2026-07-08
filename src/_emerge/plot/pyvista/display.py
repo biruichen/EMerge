@@ -34,6 +34,10 @@ col3 = np.array([33, 33, 33, 255])/255
 col4 = np.array([173, 76, 7, 255])/255
 col5 = np.array([250, 75, 148, 255])/255
 
+cmap_names = Literal['bgy','bgyw','kbc','blues','bmw','bmy','kgy','gray','dimgray','fire','kb','kg','kr',
+                     'bkr','bky','coolwarm','gwv','bjy','bwy','cwr','colorwheel','isolum','rainbow','fire',
+                     'cet_fire','gouldian','kbgyw','cwr','CET_CBL1','CET_CBL3','CET_D1A']
+
 def gen_cmap(mesh, N: int = 256):
     # build a linear grid of data‐values (not strictly needed for pure colormap)
     vmin, vmax = mesh['values'].min(), mesh['values'].max()
@@ -282,6 +286,7 @@ class PVDisplay(BaseDisplay):
                  z: np.ndarray,
                  field: np.ndarray,
                  opacity: float = 1.0,
+                 symmetrize: bool = True,
                  **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
@@ -295,8 +300,16 @@ class PVDisplay(BaseDisplay):
         """
         
         grid = pv.StructuredGrid(x,y,z)
-        grid['values'] = field.flatten(order='F')
-        kwargs = setdefault(kwargs, cmap=gen_cmap(grid))
+        field_flat = field.flatten(order='F')
+        fmin = np.min(field_flat)
+        fmax = np.max(field_flat)
+        if symmetrize:
+            lim = max(abs(fmin),abs(fmax))
+            clim = (-lim, lim)
+        else:
+            clim = (fmin, fmax)
+        grid['values'] = field_flat
+        kwargs = setdefault(kwargs, cmap='coolwarm', clim=clim)
         self._plot.add_mesh(grid, opacity=opacity, **kwargs)
 
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,

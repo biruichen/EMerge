@@ -806,7 +806,7 @@ class Electrodynamics3D:
             k = np.arange(Npts)
             xk = -np.cos((2*k+1)/(2*Npts)*np.pi)        # Chebyshev-L1
             f_points = 0.5*((f_max-f_min)*xk + (f_max+f_min))
-            self.frequencies = f_points
+            self.frequencies = np.geomspace(f_min, f_max, Npts)
         if parallel:
             return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups)
         else:

@@ -277,7 +277,7 @@ def smith(f: np.ndarray, S: np.ndarray) -> None:
     plt.show()
 
 def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray, 
-                      dblim=[-80, 5], 
+                      dblim=[-40, 5], 
                     xunit="GHz", 
                     levelindicator: int | float =None, 
                     noise_floor=-150, 
@@ -389,3 +389,158 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
         plt.show()
     if filename is not None:
         fig.savefig(filename)
+
+    
+def plot_ff(
+    theta: np.ndarray,
+    E: Union[np.ndarray, Sequence[np.ndarray]],
+    grid: bool = True,
+    labels: Optional[List[str]] = None,
+    xlabel: str = "Theta (rad)",
+    ylabel: str = "|E|",
+    linestyles: Union[str, List[str]] = "-",
+    linewidth: float = 2.0,
+    markers: Optional[Union[str, List[Optional[str]]]] = None,
+    xlim: Optional[Tuple[float, float]] = None,
+    ylim: Optional[Tuple[float, float]] = None,
+    title: Optional[str] = None
+) -> None:
+    """
+    Far-field rectangular plot of E-field magnitude vs angle.
+
+    Parameters
+    ----------
+    theta : np.ndarray
+        Angle array (radians).
+    E : np.ndarray or sequence of np.ndarray
+        Complex E-field samples; magnitude will be plotted.
+    grid : bool
+        Show grid.
+    labels : list of str, optional
+        Series labels.
+    xlabel, ylabel : str
+        Axis labels.
+    linestyles, linewidth, markers : styling parameters.
+    xlim, ylim : tuple, optional
+        Axis limits.
+    title : str, optional
+        Plot title.
+    """
+    # Prepare data series
+    if isinstance(E, np.ndarray):
+        E_list = [E]
+    else:
+        E_list = list(E)
+    n_series = len(E_list)
+
+    # Style broadcasting
+    def _broadcast(param, default):
+        if isinstance(param, list):
+            if len(param) != n_series:
+                raise ValueError(f"List length of `{param}` must match number of series")
+            return param
+        else:
+            return [param] * n_series
+
+    linestyles = _broadcast(linestyles, "-")
+    markers = _broadcast(markers, None) if markers is not None else [None] * n_series
+
+    fig, ax = plt.subplots()
+    for i, Ei in enumerate(E_list):
+        mag = np.abs(Ei)
+        ax.plot(
+            theta, mag,
+            linestyle=linestyles[i],
+            linewidth=linewidth,
+            marker=markers[i],
+            label=(labels[i] if labels else None)
+        )
+
+    ax.grid(grid)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+    if xlim:
+        ax.set_xlim(*xlim)
+    if ylim:
+        ax.set_ylim(*ylim)
+    if labels:
+        ax.legend()
+
+    plt.show()
+
+
+def plot_ff_polar(
+    theta: np.ndarray,
+    E: Union[np.ndarray, Sequence[np.ndarray]],
+    labels: Optional[List[str]] = None,
+    linestyles: Union[str, List[str]] = "-",
+    linewidth: float = 2.0,
+    markers: Optional[Union[str, List[Optional[str]]]] = None,
+    zero_location: str = 'N',
+    clockwise: bool = False,
+    rlabel_angle: float = 45,
+    title: Optional[str] = None
+) -> None:
+    """
+    Far-field polar plot of E-field magnitude vs angle.
+
+    Parameters
+    ----------
+    theta : np.ndarray
+        Angle array (radians).
+    E : np.ndarray or sequence of np.ndarray
+        Complex E-field samples; magnitude will be plotted.
+    labels : list of str, optional
+        Series labels.
+    linestyles, linewidth, markers : styling parameters.
+    zero_location : str
+        Theta zero location (e.g. 'N', 'E').
+    clockwise : bool
+        If True, theta increases clockwise.
+    rlabel_angle : float
+        Position (deg) of radial labels.
+    title : str, optional
+        Plot title.
+    """
+    # Prepare data series
+    if isinstance(E, np.ndarray):
+        E_list = [E]
+    else:
+        E_list = list(E)
+    n_series = len(E_list)
+
+    # Style broadcasting
+    def _broadcast(param, default):
+        if isinstance(param, list):
+            if len(param) != n_series:
+                raise ValueError(f"List length of `{param}` must match number of series")
+            return param
+        else:
+            return [param] * n_series
+
+    linestyles = _broadcast(linestyles, "-")
+    markers = _broadcast(markers, None) if markers is not None else [None] * n_series
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location(zero_location)
+    ax.set_theta_direction(-1 if clockwise else 1)
+    ax.set_rlabel_position(rlabel_angle)
+
+    for i, Ei in enumerate(E_list):
+        mag = np.abs(Ei)
+        ax.plot(
+            theta, mag,
+            linestyle=linestyles[i],
+            linewidth=linewidth,
+            marker=markers[i],
+            label=(labels[i] if labels else None)
+        )
+
+    if title:
+        ax.set_title(title, va='bottom')
+    if labels:
+        ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
+
+    plt.show()
