@@ -30,11 +30,9 @@ class Alignment(Enum):
     CENTER = 1
     CORNER = 2
 
+
 class Box(GeoVolume):
-    """ A class that represents a box shaped volume
-
-    """
-
+    """3D box geometry."""
     def __init__(self, 
                  width: float, 
                  depth: float, 
@@ -91,10 +89,10 @@ class Box(GeoVolume):
         
         tags = list(reduce(lambda a,b: a+b, tagslist))
         return FaceSelection(tags)
-
+    
     
 class Sphere(GeoVolume):
-
+    """3D sphere geometry."""
     def __init__(self, 
                  radius: float,
                  position: tuple = (0,0,0)):
@@ -108,7 +106,9 @@ class Sphere(GeoVolume):
         x,y,z = position
         self.tags: list[int] = [gmsh.model.occ.addSphere(x,y,z,radius),]
 
+
 class XYPlate(GeoSurface):
+    """2D plate in the XY-plane."""
     def __init__(self, 
                  width: float, 
                  depth: float, 
@@ -134,7 +134,7 @@ class XYPlate(GeoSurface):
 
 
 class Plate(GeoSurface):
-        
+    """A generalized 2D rectangular plate in XYZ-space."""
     def __init__(self,
                 origin: tuple[float, float, float],
                 u: tuple[float, float, float],
@@ -172,8 +172,9 @@ class Plate(GeoSurface):
         tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
         super().__init__(tags)
 
-class Cylinder(GeoVolume):
 
+class Cylinder(GeoVolume):
+    """3D cylinder geometry."""
     def __init__(self, 
                  radius: float,
                  height: float,
@@ -233,14 +234,14 @@ class Cylinder(GeoVolume):
         xo, yo, zo = self.cs.in_global_cs(x.flatten(), y.flatten(), z.flatten())
         return xo, yo, zo
 
+
 class CoaxCylinder(GeoVolume):
     """A coaxial cylinder with an inner and outer radius."""
-    
     def __init__(self, 
                  rout: float,
                  rin: float,
                  height: float,
-                 cs: CoordinateSystem = None,
+                 cs: CoordinateSystem = GCS,
                  Nsections: int = None):
         """Generates a Coaxial cylinder object in 3D space.
         The coaxial cylinder will always be placed in the origin of the provided CoordinateSystem.
@@ -255,11 +256,9 @@ class CoaxCylinder(GeoVolume):
         Args:
             radius (float): The radius of the Cylinder
             height (float): The height of the Cylinder
-            cs (CoordinateSystem, optional): The coordinate system. Defaults to None.
+            cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
-        if cs is None:
-            cs = GCS
         if rout <= rin:
             raise ValueError("Outer radius must be greater than inner radius.")
         
@@ -297,10 +296,10 @@ class CoaxCylinder(GeoVolume):
 
         xo, yo, zo = self.cs.in_global_cs(x.flatten(), y.flatten(), z.flatten())
         return xo, yo, zo
-        return super().boundary()
+    
     
 class HalfSphere(GeoVolume):
-
+    """A half sphere volume."""
     def __init__(self,
                  radius: float,
                  position: tuple = (0,0,0),
@@ -326,8 +325,6 @@ class HalfSphere(GeoVolume):
         self._add_face_pointer('back',np.array(position), np.array(direction))
         self._add_face_pointer('bottom',np.array(position), np.array(direction))
         self._add_face_pointer('face',np.array(position), np.array(direction))
-        
-
 
 
 class OldBox(GeoVolume):
@@ -353,8 +350,6 @@ class OldBox(GeoVolume):
             alignment (Alignment, optional): Which point of the box is placed at the position. 
                 Defaults to Alignment.CORNER.
         """
-        
-
         if alignment is Alignment.CORNER:
             position = (position[0]+width/2, position[1]+depth/2, position[2])
         elif alignment is Alignment.CENTER:
@@ -436,7 +431,6 @@ class OldBox(GeoVolume):
         self._add_face_pointer('right', pc + width/2*wax, wax)
         self._add_face_pointer('top', pc + height/2*hax, hax)
         self._add_face_pointer('bottom', pc - height/2*hax, -hax)
-        
     
     def outside(self, *exclude: Literal['bottom','top','right','left','front','back']) -> FaceSelection:
         """Select all outside faces except for the once specified by outside
@@ -449,8 +443,9 @@ class OldBox(GeoVolume):
         tags = list(reduce(lambda a,b: a+b, tagslist))
         return FaceSelection(tags)
 
+
 class Cone(GeoVolume):
-    
+    """3D cone geometry."""
     def __init__(self, p0: tuple[float, float, float],
                  direction: tuple[float, float, float],
                  r1: float,
