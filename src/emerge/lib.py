@@ -12,7 +12,7 @@
 ║  Verify critical values independently before use.                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
-from ._emerge.material import Material, AIR, COPPER
+from ._emerge.material import Material, AIR, COPPER, PEC
 from ._emerge.const import C0, Z0, PI, EPS0, MU0
 
 EISO: float = (Z0/(2*PI))**0.5

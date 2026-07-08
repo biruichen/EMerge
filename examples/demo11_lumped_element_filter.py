@@ -98,10 +98,6 @@ p2 = m.mw.bc.ModalPort(mp2, 2, TEM=True)
 # Add lumped element BCs for each element
 for le in LEs:
     m.mw.bc.LumpedElement(le)
-    
-# Perfect conductor on copper traces and vias
-m.mw.bc.PEC(traces)
-m.mw.bc.PEC(vias.boundary())
 
 # --- Run frequency-domain simulation ------------------------------------
 data = m.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)

@@ -37,12 +37,13 @@ Dtot = 750              # total clearance (mil)
 extra = 100             # extra margin (mil)
 
 # --- Simulation setup ----------------------------------------------------
-model = em.Simulation('Demo3')
+model = em.Simulation('Demo3', loglevel='DEBUG')
 model.check_version("0.6.11") # Checks version compatibility.
 # --- Material and layouter -----------------------------------------------
-mat = em.Material(er=3.55, color="#488343", opacity=0.1)
+mat = em.Material(er=3.55, color="#488343", opacity=0.4)
+
 # Create PCB layouter with given substrate thickness and units
-pcb = em.geo.PCB(th, unit=mil)
+pcb = em.geo.PCB(th, unit=mil, material=mat)
 
 # --- Route coupled-line trace --------------------------------------------
 # start at (0,140) with width w0
@@ -71,8 +72,8 @@ pcb.new(0, 140, w0, (1, 0)) \
     .jump(gap=g6, side='left', reverse=l1 - e) \
     .straight(l1, w6) \
     .turn(0) \
-    .straight(l1 * 0.8, w0) \
-    .straight(l0, w0, dy=abs(w1 - w0) / 2) \
+    .straight(l1 * 0.8, w0, dy=abs(w1 - w0) / 2) \
+    .straight(l0, w0) \
     .store('p2')                        # label output port
 
 # Compile the routed paths into a single GeoSurface
@@ -84,38 +85,28 @@ pcb.determine_bounds(topmargin=150, bottommargin=150)
 # --- Generate dielectric and air blocks ----------------------------------
 diel = pcb.generate_pcb()                     # substrate dielectric block
 air = pcb.generate_air(4 * th)               # surrounding air box
-# assign our custom material to the dielectric block
-diel.material = mat
 
 # --- Define ports for simulation ----------------------------------------
 p1 = pcb.modal_port(pcb.load('p1'), width_multiplier=5, height=4 * th)
 p2 = pcb.modal_port(pcb.load('p2'), width_multiplier=5, height=4 * th)
 
 # --- Solver settings -----------------------------------------------------
-model.mw.set_resolution(0.2)            # mesh density: fraction of wavelength
+model.mw.set_resolution(0.15)            # mesh density: fraction of wavelength
 model.mw.set_frequency_range(5.2e9, 6.2e9, 31)  # 5.2–6.2 GHz, 31 points
 
 # --- Assemble geometry into simulation -----------------------------------
-model.commit_geometry(stripline, diel, p1, p2, air)
+model.commit_geometry()
 
 # --- Mesh refinement -----------------------------------------------------
-model.mesher.set_boundary_size(stripline, 0.5 * mm)
+model.mesher.set_boundary_size(stripline, 1 * mm, 1.2)
 
 # --- Mesh generation and view --------------------------------------------
 model.generate_mesh()                    # build mesh
-model.view(use_gmsh=True)                # visualize with Gmsh viewer
+model.view()                             # visualize with Gmsh viewer
 
 # --- Boundary conditions ------------------------------------------------
 port1 = model.mw.bc.ModalPort(p1, 1, TEM=True)
 port2 = model.mw.bc.ModalPort(p2, 2, TEM=True)
-pec = model.mw.bc.PEC(stripline)
-
-# --- Display setup -------------------------------------------------------
-d = model.display
-# show dielectric block translucent green and stripline in red
-d.add_object(diel, color='green', opacity=0.5)
-d.add_object(stripline)
-d.show()
 
 # --- Run frequency-domain solver ----------------------------------------
 data = model.mw.run_sweep(parallel=True, njobs=4, frequency_groups=8)
@@ -131,3 +122,12 @@ f_fit = np.linspace(5.2e9, 6.2e9, 1001)
 S11_fit = data.scalar.grid.model_S(1, 1, f_fit)
 S21_fit = data.scalar.grid.model_S(2, 1, f_fit)
 plot_sp(f_fit, [S11_fit, S21_fit], labels=['S11', 'S21'])
+
+
+field = data.field.find(freq=5.433e9)
+model.display.add_portmode(port1, k0=field.k0)
+model.display.add_portmode(port2, k0=field.k0)
+model.display.add_object(diel)
+model.display.add_object(stripline)
+model.display.add_surf(*field.cutplane(1*mm, z=-0.5*th*mil).scalar('Ez','real'))
+model.display.show()

@@ -446,13 +446,13 @@ class PVDisplay(BaseDisplay):
         
         # Default render settings
         metallic = 0.05
-        roughness = 0.5
+        roughness = 0.0
         pbr = False
         
         if metal:
             pbr = True
             metallic = 0.8
-            roughness = 0.3
+            roughness = self.set.metal_roughness
         
         # Default keyword arguments when plotting Mesh mode.
         if mesh is True:
@@ -482,10 +482,16 @@ class PVDisplay(BaseDisplay):
         if obj.dim==3:
             mapper = actor.GetMapper()
             mapper.SetResolveCoincidentTopology(1)
-            mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(1,1)
+            mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(1,0.5)
         
         self._plot.add_mesh(self._volume_edges(_select(obj)), color='#000000', line_width=2, show_edges=True)
 
+    def add_objects(self, *objects, **kwargs) -> None:
+        """Add a series of objects provided as a list of arguments
+        """
+        for obj in objects:
+            self.add_object(obj, **kwargs)
+        
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         """Adds a scatter point cloud
 
@@ -569,10 +575,10 @@ class PVDisplay(BaseDisplay):
                  z: np.ndarray,
                  field: np.ndarray,
                  scale: Literal['lin','log','symlog'] = 'lin',
-                 cmap: cmap_names = 'coolwarm',
+                 cmap: cmap_names = 'viridis',
                  clim: tuple[float, float] | None = None,
                  opacity: float = 1.0,
-                 symmetrize: bool = True,
+                 symmetrize: bool = False,
                  _fieldname: str | None = None,
                  **kwargs,):
         """Add a surface plot to the display

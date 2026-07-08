@@ -27,7 +27,7 @@ pcbmat = em.Material(er=er, color="#217627", opacity=0.2)
 
 # We start by creating our simulation object.
 
-m = em.Simulation('Demo1_SIF', loglevel='INFO')
+m = em.Simulation('Demo1_SIF')
 m.check_version("0.6.11") # Checks version compatibility.
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -90,7 +90,6 @@ m.view()
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)
 port2 = m.mw.bc.ModalPort(p2, 2, TEM=True)
-pec = m.mw.bc.PEC(polies)
 
 ## OPTIONAL
 # If we want to view the port mode we have to first know it. The modes are computed using a modal analysis.

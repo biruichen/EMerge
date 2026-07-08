@@ -19,12 +19,14 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
+from ...geometry import GeoSurface
 from ...elements.femdata import FEMBasis
 from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
 from ...mth.optimized import compute_distances
+from ...settings import Settings
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -122,16 +124,16 @@ class Microwave3D:
     formulation.
 
     """
-    def __init__(self, mesher: Mesher, mwdata: MWData, order: int = 2):
+    def __init__(self, mesher: Mesher, settings: Settings, mwdata: MWData, order: int = 2):
         self.frequencies: list[float] = []
         self.current_frequency = 0
         self.order: int = order
         self.resolution: float = 1
-
+        self._settings: Settings = settings
         self.mesher: Mesher = mesher
         self.mesh: Mesh3D = Mesh3D(self.mesher)
 
-        self.assembler: Assembler = Assembler()
+        self.assembler: Assembler = Assembler(self._settings)
         self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
         self.basis: Nedelec2 | None = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
@@ -190,14 +192,28 @@ class Microwave3D:
         return sorted(self.bc.oftype(PortBC), key=lambda x: x.number) # type: ignore
     
     
-    def _initialize_bcs(self) -> None:
+    def _initialize_bcs(self, surfaces: list[GeoSurface]) -> None:
         """Initializes the boundary conditions to set PEC as all exterior boundaries.
         """
         logger.debug('Initializing boundary conditions.')
 
         tags = self.mesher.domain_boundary_face_tags
+        
+        # Assigning surface impedance boundary condition
+        if self._settings.mw_2dbc:
+            for surf in surfaces:
+                if surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_peclim:
+                    logger.debug(f'Assinging PEC to {surf}')
+                    self.bc.PEC(surf)
+                elif surf.material.cond.scalar(1e9) > self._settings.mw_2dbc_lim:
+                    logger.debug(f'Assigning SurfaceImpedance to {surf}')
+                    self.bc.SurfaceImpedance(surf, surf.material)
+                
+        
         tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
+        
         self.bc.PEC(FaceSelection(tags))
+        
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
         if self.mesher.periodic_cell is not None:
             self.mesher.periodic_cell.generate_bcs()
@@ -292,6 +308,7 @@ class Microwave3D:
         ''' Initializes auxilliary required boundary condition information before running simulations.
         '''
         logger.debug('Initializing boundary conditions')
+        self.bc.cleanup()
         for port in self.bc.oftype(LumpedPort):
             self.define_lumped_port_integration_points(port)
     
@@ -572,10 +589,10 @@ class Microwave3D:
             elif TEM:
                 G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
-                mode.modetype='TEM'
+                mode.modetype = 'TEM'
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
                 voltage = np.sum(Ex*dls[0,:] + Ey*dls[1,:] + Ez*dls[2,:])
-                mode.Z0 = voltage**2/(2*P)
+                mode.Z0 = abs(voltage**2/(2*P))
                 logger.debug(f'Port Z0 = {mode.Z0}')
 
             mode.set_power(P*port._qmode(k0)**2)
