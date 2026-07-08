@@ -1,3 +1,4 @@
+from typing import Literal
 
 class PVDisplaySettings:
 
@@ -22,4 +23,6 @@ class PVDisplaySettings:
         self.background_bottom: str = "#c0d2e8"
         self.background_top: str = "#ffffff"
         self.grid_line_color: str = "#8e8e8e"
-        self.z_boost: float = 1e-6
+        self.z_boost: float = 0#1e-9
+        self.depth_peeling: bool = True
+        self.anti_aliassing: Literal["msaa","ssaa",'fxaa'] = "msaa"

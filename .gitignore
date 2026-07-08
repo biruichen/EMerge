@@ -42,7 +42,7 @@ manual_scripts/
 tests/
 trial_scripts/
 wheelhouse/
-
+benchmarks/
 .pytest_cache/
 
 .vscode/

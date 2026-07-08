@@ -80,8 +80,8 @@ for mode_index in range(Nmodes):
     field = data.field[mode_index].grid(0.2 * inch)
     # Show enclosure, support, and resonator transparently
     model.display.add_object(box, opacity=0.1)
-    model.display.add_object(support, opacity=0.3)
-    model.display.add_object(resonator, opacity=0.3)
+    model.display.add_object(support, opacity=0.9)
+    model.display.add_object(resonator, opacity=0.9)
     # Plot E-field vectors in red and H-field vectors in blue
     Evec = field.vector('E', 'real')
     Hvec = field.vector('H', 'real')
