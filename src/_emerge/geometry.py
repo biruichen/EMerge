@@ -190,8 +190,8 @@ class GeoObject:
         self._priority: int = 10
 
     @property
-    def color(self) -> tuple[int,int,int]:
-        return self.material.color
+    def color_rgb(self) -> tuple[int,int,int]:
+        return self.material.color_rgb
     
     @property
     def opacity(self) -> float:

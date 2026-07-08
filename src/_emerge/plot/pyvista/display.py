@@ -295,8 +295,8 @@ class PVDisplay(BaseDisplay):
 
     ## OBLIGATORY METHODS
     def add_object(self, obj: GeoObject | Selection | Iterable, *args, **kwargs):
-        kwargs = setdefault(kwargs, color=obj.color, opacity=obj.opacity)
-        self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
+        kwargs = setdefault(kwargs, color=obj.color_rgb, opacity=obj.opacity, silhouette=True)
+        self._plot.add_mesh(self.mesh(obj), pickable=True, *args, **kwargs)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         """Adds a scatter point cloud

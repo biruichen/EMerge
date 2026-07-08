@@ -19,7 +19,7 @@ from __future__ import annotations
 import gmsh
 import numpy as np
 from scipy.spatial import ConvexHull
-from .cs import Axis, Plane, CoordinateSystem, _parse_vector
+from .cs import Axis, CoordinateSystem, _parse_vector
 from typing import Callable
 
 def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np.ndarray]:
@@ -34,7 +34,7 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
     """
     
     # 1. centroid
-    O = np.squeeze(np.mean(pts3d, axis=0))
+    Omat = np.squeeze(np.mean(pts3d, axis=0))
 
     # 2. build e_x, e_y
     n = np.squeeze(normal/np.linalg.norm(normal))
@@ -46,7 +46,7 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
     e_y = np.cross(n, e_x)
 
     # 3. project into 2D
-    pts2d = np.vstack([[(p-O).dot(e_x), (p-O).dot(e_y)] for p in pts3d])
+    pts2d = np.vstack([[(p-Omat).dot(e_x), (p-Omat).dot(e_y)] for p in pts3d])
 
     # 4. convex hull
     hull = ConvexHull(pts2d)
@@ -58,21 +58,21 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
         p0 = hull_pts[i]
         p1 = hull_pts[(i+1)%len(hull_pts)]
         edge = p1 - p0
-        θ = -np.arctan2(edge[1], edge[0])  # rotate so edge aligns with +X
-        R = np.array([[np.cos(θ), -np.sin(θ)],
-                      [np.sin(θ),  np.cos(θ)]])
+        theta = -np.arctan2(edge[1], edge[0])  # rotate so edge aligns with +X
+        R = np.array([[np.cos(theta), -np.sin(theta)],
+                      [np.sin(theta),  np.cos(theta)]])
         rot = hull_pts.dot(R.T)
         xmin, ymin = rot.min(axis=0)
         xmax, ymax = rot.max(axis=0)
         area = (xmax-xmin)*(ymax-ymin)
         if area < best[1]:
-            best = (θ, area, (xmin,xmax,ymin,ymax), R)
+            best = (theta, area, (xmin,xmax,ymin,ymax), R)
 
-    θ, _, (xmin,xmax,ymin,ymax), R = best
+    theta, _, (xmin,xmax,ymin,ymax), R = best
 
     # 6. rectangle axes in 3D
-    u =  np.cos(-θ)*e_x + np.sin(-θ)*e_y
-    v = -np.sin(-θ)*e_x + np.cos(-θ)*e_y
+    u =  np.cos(-theta)*e_x + np.sin(-theta)*e_y
+    v = -np.sin(-theta)*e_x + np.cos(-theta)*e_y
 
     # corner points in 3D:
     corners = []
@@ -80,11 +80,11 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
         for b in (ymin, ymax):
             # back-project to the original 2D frame:
             p2 = np.array([a, b]).dot(R)  # rotate back
-            P3 = O + p2[0]*e_x + p2[1]*e_y
+            P3 = Omat + p2[0]*e_x + p2[1]*e_y
             corners.append(P3)
 
     return {
-      "origin": O,
+      "origin": Omat,
       "axes": (u, v, n),
       "corners": np.array(corners).reshape(4,3)
     }
@@ -103,7 +103,7 @@ class Selection:
             self.tags = tags
 
     @property
-    def color(self) -> tuple[int,int,int]:
+    def color_rgb(self) -> tuple[int,int,int]:
         return (0.5,0.5,1.0)
     
     @property

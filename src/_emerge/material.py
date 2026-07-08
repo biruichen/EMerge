@@ -37,9 +37,18 @@ class Material:
     _neff: float = None
     _fer: callable = None
     _fur: callable = None
-    color: tuple[int,int,int] = (0.9,0.9,1)
+    color: str = "#BEBEBE"
+    _color_rgb: tuple[int,int,int] = None
     opacity: float = 1.0
 
+    def __post_init__(self):
+        hex_str = self.color.lstrip('#')
+        self._color_rgb = tuple(int(hex_str[i:i+2], 16)/255.0 for i in (0, 2, 4))
+
+    @property
+    def color_rgb(self) -> tuple[float,float,float]:
+        return self._color_rgb
+    
     @property
     def ermat(self) -> np.ndarray:
         if isinstance(self.er, (float, complex, int, np.float64, np.complex128)):
@@ -105,5 +114,5 @@ class Material:
         else:
             return self._fur
         
-AIR = Material(color=(0.8,0.9,1.0), opacity=0.2)
-COPPER = Material(cond=5.8e7, color=(0.6, 0.2, 0.1))
+AIR = Material(color="#4496f3", opacity=0.05)
+COPPER = Material(cond=5.8e7, color="#62290c")
