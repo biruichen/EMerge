@@ -79,11 +79,11 @@ wheels = [
 
 [[package]]
 name = "colorama"
-version = "0.4.8"
+version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.8.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.8-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
 ]
 
 [[package]]
@@ -170,6 +170,7 @@ dependencies = [
     { name = "gmsh" },
     { name = "joblib" },
     { name = "loguru" },
+    { name = "matplotlib" },
     { name = "numba" },
     { name = "numba-progress" },
     { name = "numpy" },
@@ -179,9 +180,15 @@ dependencies = [
 
 [package.optional-dependencies]
 pypardiso = [
-    { name = "pypardiso" },
+    { name = "pypardiso", marker = "platform_machine == 'AMD64' or platform_machine == 'x86_64'" },
 ]
 umfpack = [
+    { name = "scikit-umfpack", marker = "sys_platform != 'win32'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pipdeptree" },
     { name = "scikit-umfpack" },
 ]
 
@@ -190,15 +197,22 @@ requires-dist = [
     { name = "gmsh", specifier = ">=4.13.1" },
     { name = "joblib", specifier = ">=1.5.1" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "numba", specifier = ">=0.61.2" },
+    { name = "matplotlib", specifier = ">=3.8.0" },
+    { name = "numba", specifier = ">=0.57.0" },
     { name = "numba-progress", specifier = ">=1.1.3" },
-    { name = "numpy", specifier = ">=2.2.6" },
-    { name = "pypardiso", marker = "extra == 'pypardiso'" },
+    { name = "numpy", specifier = ">=1.24,<2.3" },
+    { name = "pypardiso", marker = "(platform_machine == 'AMD64' and extra == 'pypardiso') or (platform_machine == 'x86_64' and extra == 'pypardiso')" },
     { name = "pyvista", specifier = ">=0.45.2" },
-    { name = "scikit-umfpack", marker = "extra == 'umfpack'" },
-    { name = "scipy", specifier = ">=1.15.3" },
+    { name = "scikit-umfpack", marker = "sys_platform != 'win32' and extra == 'umfpack'" },
+    { name = "scipy", specifier = ">=1.14.0" },
 ]
 provides-extras = ["pypardiso", "umfpack"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pipdeptree", specifier = ">=2.28.0" },
+    { name = "scikit-umfpack", specifier = ">=0.4.2" },
+]
 
 [[package]]
 name = "fonttools"
@@ -682,6 +696,28 @@ wheels = [
 ]
 
 [[package]]
+name = "pip"
+version = "25.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/16/650289cd3f43d5a2fadfd98c68bd1e1e7f2550a1a5326768cddfbcedb2c5/pip-25.2.tar.gz", hash = "sha256:578283f006390f85bb6282dffb876454593d637f5d1be494b5202ce4877e71f2", size = 1840021, upload-time = "2025-07-30T21:50:15.401Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/3f/945ef7ab14dc4f9d7f40288d2df998d1837ee0888ec3659c813487572faa/pip-25.2-py3-none-any.whl", hash = "sha256:6d67a2b4e7f14d8b31b8b52648866fa717f45a1eb70e83002f4331d07e953717", size = 1752557, upload-time = "2025-07-30T21:50:13.323Z" },
+]
+
+[[package]]
+name = "pipdeptree"
+version = "2.28.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pip" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/61/0e855474eee22f06d8508aad787c1bb3f9fff28759e758c0da44f8549998/pipdeptree-2.28.0.tar.gz", hash = "sha256:bae533e30249b1aa6d9cb315ef6f1c039e9adaa55d5b25438395cace5716eaa6", size = 42583, upload-time = "2025-07-20T19:47:26.737Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/84/d5e9403c11f6440dcb127afbb15b34dda7408dcbcefcaf6e0aa9e9a4730f/pipdeptree-2.28.0-py3-none-any.whl", hash = "sha256:a4ce80e7fdf93dfc6d99809d9bbe0115a13902b1f0498775abeafe56c77bdd3d", size = 33840, upload-time = "2025-07-20T19:47:25.282Z" },
+]
+
+[[package]]
 name = "platformdirs"
 version = "4.3.8"
 source = { registry = "https://pypi.org/simple" }
@@ -706,16 +742,16 @@ wheels = [
 
 [[package]]
 name = "pypardiso"
-version = "0.4.8"
+version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mkl" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/01/8b/a88f8ee0b4a98d15737b728d6306682a1c8aaa588600a906ccde35965361/pypardiso-0.4.8.tar.gz", hash = "sha256:ff13eff486a2246d9c5bc9cec9f5bc8009f1b8831b2d10767787d768d98afa06", size = 15545, upload-time = "2024-03-28T21:32:54.668Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/8b/a88f8ee0b4a98d15737b728d6306682a1c8aaa588600a906ccde35965361/pypardiso-0.4.6.tar.gz", hash = "sha256:ff13eff486a2246d9c5bc9cec9f5bc8009f1b8831b2d10767787d768d98afa06", size = 15545, upload-time = "2024-03-28T21:32:54.668Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/e8/29b96e539ff24c3425e90003e69a24296009ac8c6280665ea1a08bdd61f6/pypardiso-0.4.8-py3-none-any.whl", hash = "sha256:43d370a91ab97062bce1862e76387def1732ad944c5882024c5c3be2c6e9e77c", size = 10744, upload-time = "2024-03-28T21:32:48.311Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/e8/29b96e539ff24c3425e90003e69a24296009ac8c6280665ea1a08bdd61f6/pypardiso-0.4.6-py3-none-any.whl", hash = "sha256:43d370a91ab97062bce1862e76387def1732ad944c5882024c5c3be2c6e9e77c", size = 10744, upload-time = "2024-03-28T21:32:48.311Z" },
 ]
 
 [[package]]
