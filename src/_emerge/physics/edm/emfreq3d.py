@@ -204,7 +204,7 @@ class Electrodynamics3D:
         """
         if condutivity < 0:
             logger.warning('Conductivity values must be above 0. Ignoring assignment')
-            
+
         self.assembler.conductivity_limit = condutivity
     def get_discretizer(self) -> Callable:
         """Returns a discretizer function that defines the maximum mesh size.
@@ -286,7 +286,7 @@ class Electrodynamics3D:
             itet = self.mesh.tri_to_tet[0,itri]
             er[:,:,itri] = ertet[:,:,itet]
             ur[:,:,itri] = urtet[:,:,itet]
-            cond[itri] = condtet[:,:,itet]
+            cond[itri] = condtet[itet]
 
         ermean = np.mean(er[er>0].flatten())
         urmean = np.mean(ur[ur>0].flatten())
