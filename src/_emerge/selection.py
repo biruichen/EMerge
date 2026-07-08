@@ -19,7 +19,7 @@ from __future__ import annotations
 import gmsh
 import numpy as np
 from scipy.spatial import ConvexHull
-from .cs import Axis, CoordinateSystem, _parse_vector
+from .cs import Axis, CoordinateSystem, _parse_vector, Plane
 from typing import Callable, TypeVar
 
 def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np.ndarray]:
@@ -244,7 +244,7 @@ class Selection:
                 maxz = max(maxz, z1)
             return (minx, miny, minz), (maxx, maxy, maxz)
         
-    def exclude(self, xyz_excl_function: Callable) -> Selection:
+    def exclude(self, xyz_excl_function: Callable = lambda x,y,z: True, plane: Plane = None, axis: Axis = None) -> Selection:
         """Exclude points by evaluating a function(x,y,z)-> bool
 
         This modifies the selection such that the selection does not contain elements
@@ -258,7 +258,32 @@ class Selection:
         """
         include = [~xyz_excl_function(*gmsh.model.occ.getCenterOfMass(*tag)) for tag in self.dimtags]
         
+        if axis is not None:
+            norm = axis.np
+            include2 = [abs(gmsh.model.getNormal(tag, np.array([0,0]))@norm)<0.9 for tag in self.tags]
+            include = [i1 for i1, i2 in zip(include, include2) if i1 and i2]
         self._tags = [t for incl, t in zip(include, self._tags) if incl]
+        return self
+    
+    def isolate(self, xyz_excl_function: Callable = lambda x,y,z: True, plane: Plane = None, axis: Axis = None) -> Selection:
+        """Include points by evaluating a function(x,y,z)-> bool
+
+        This modifies the selection such that the selection does not contain elements
+        of this selection of which the center of mass is excluded by the exclusion function.
+
+        Args:
+            xyz_excl_function (Callable): A callable for (x,y,z) that returns True if the point should be excluded.
+
+        Returns:
+            Selection: This Selection modified without the excluded points.
+        """
+        include1 = [xyz_excl_function(*gmsh.model.occ.getCenterOfMass(*tag)) for tag in self.dimtags]
+        
+        if axis is not None:
+            norm = axis.np
+            include2 = [(gmsh.model.getNormal(tag, np.array([0,0]))@norm)>0.99 for tag in self.tags]
+            include1 = [i1 for i1, i2 in zip(include1, include2) if i1 and i2]
+        self._tags = [t for incl, t in zip(include1, self._tags) if incl]
         return self
 
     def __operable__(self, other: Selection) -> None:
