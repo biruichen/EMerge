@@ -44,10 +44,12 @@ dfeed = 5*mm                    # straight feed length before the helix starts
 #   (x0,y1)               
 
 # We add the porth height + half of the startfeed distance to the total height to put the helix in the right spot.
-h_curve = em.geo.Curve.helix_lh((0,0,porth+dfeed/2), (0,0,porth+dfeed/2+L), rad0, 13, r_end=0.8*rad0, startfeed=dfeed)
+h_curve = em.geo.Curve.helix_lh((0,0,porth+dfeed/2), (0,0,porth+dfeed/2+L), rad0, 13, r_end=0.8*rad0)
+
+cross_section = em.geo.XYPolygon.circle(radw, Nsections=6)
 
 # Sweep a circular cross-section along the curve to make a metallic pipe
-helix = h_curve.pipe(em.geo.XYPolygon.circle(radw, Nsections=6)).set_material(em.lib.MET_COPPER)
+helix = h_curve.pipe(cross_section).set_material(em.lib.MET_COPPER)
 
 # Optional preview of current scene (geometry only at this point)
 model.view()

@@ -1026,4 +1026,4 @@ class Microwave3D:
         """DEPRICATED VERSION: Use run_sweep() instead.
         """
         logger.warning('This function is depricated. Please use run_sweep() instead')
-        self.run_sweep(*args, **kwargs)
+        return self.run_sweep(*args, **kwargs)
