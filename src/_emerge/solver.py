@@ -26,7 +26,6 @@ from functools import partial
 from dataclasses import dataclass
 import numpy as np
 from loguru import logger
-from threadpoolctl import threadpool_info
 import platform
 import time
 
@@ -66,21 +65,6 @@ try:
     _UMFPACK_AVAILABLE = True
 except ModuleNotFoundError as e:
     logger.debug('UMFPACK not found, defaulting to SuperLU')
-
-def superlu_info() -> None:
-    """Prints relevant SuperLU backend information
-    """
-    infos = threadpool_info()
-    for info in infos:
-        print('   Library info:')
-        print(f'     - user API: {info["user_api"]}')
-        print(f'     - Internal API: {info["internal_api"]}')
-        print(f'     - Num threads: {info["num_threads"]}')
-    blas_dep = show_config(mode='dicts')['Build Dependencies']['blas']
-    print('')
-    print('   Scipy BLAS Build Dependencies info:')
-    for key in blas_dep:
-        print(f'     - {key}: {blas_dep[key]}')
 
 def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax):
     """
