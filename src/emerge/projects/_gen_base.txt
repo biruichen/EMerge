@@ -14,7 +14,7 @@ wga = 22.86*mm
 wgb = 10.16*mm
 wgl = 50*mm
 
-with em.Simulation3D('myfile', PVDisplay, save_file=True) as m:
+with em.Simulation3D(#FILE#, PVDisplay, save_file=True) as m:
     m['box'] = em.geo.Box(wga,wgl,wgb,(0,0,0))
     
     m.define_geometry()
@@ -27,7 +27,7 @@ with em.Simulation3D('myfile', PVDisplay, save_file=True) as m:
 
     # Set boundary conditions
     port1 = em.bc.RectangularWaveguide(m['box'].face('front'), 1)
-    port2 = em.bc.RectangularWaveguide(m['box'].face('back'), 1)
+    port2 = em.bc.RectangularWaveguide(m['box'].face('back'), 2)
     
 
     # Assign boundary conditions
