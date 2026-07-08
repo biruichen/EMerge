@@ -19,15 +19,16 @@
 from __future__ import annotations
 from scipy.sparse import lil_matrix, csc_matrix
 from scipy.sparse.csgraph import reverse_cuthill_mckee
-from scipy.sparse.linalg import bicgstab, gmres, spsolve, gcrotmk, eigs, splu
+from scipy.sparse.linalg import bicgstab, gmres, gcrotmk, eigs, splu
 from scipy.linalg import eig
-from scipy import sparse, show_config
-from functools import partial
+from scipy import sparse
 from dataclasses import dataclass
 import numpy as np
 from loguru import logger
 import platform
 import time
+from typing import Literal
+from enum import Enum
 
 _PARDISO_AVAILABLE = False
 _UMFPACK_AVAILABLE = False
@@ -66,7 +67,7 @@ try:
 except ModuleNotFoundError as e:
     logger.debug('UMFPACK not found, defaulting to SuperLU')
 
-def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax):
+def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax, sign):
     """
     Given arrays of eigenvalues `eigvals` and eigenvectors `eigvecs` (cols of shape (N,)),
     and a free‐space wavenumber k0, return only those eigenpairs whose eigenvalue can
@@ -90,19 +91,19 @@ def filter_real_modes(eigvals, eigvecs, k0, ermax, urmax):
     filtered_vecs : 2D ndarray
         Columns of `eigvecs` corresponding to `filtered_vals`.
     """
-    tol = -1
-    upper_bound = -(k0**2) * ermax * urmax * 2
-
-    mask = (eigvals <= tol) & (eigvals >= upper_bound)
+    minimum = 1
+    extremum = (k0**2) * ermax * urmax * 2
+    
+    mask = (sign*eigvals <= extremum) & (sign*eigvals >= minimum)
     filtered_vals = eigvals[mask]
     filtered_vecs = eigvecs[:, mask]
-    k0vals = np.sqrt(-filtered_vals)
-    order = np.argsort(np.abs(k0vals - k0))   # ascending distance
+    k0vals = np.sqrt(sign*filtered_vals)
+    order = np.argsort(np.abs(k0vals))# ascending distance
     filtered_vals = filtered_vals[order]             # reorder eigenvalues
     filtered_vecs = filtered_vecs[:, order] 
     return filtered_vals, filtered_vecs
 
-def filter_unique_eigenpairs(eigen_values, eigen_vectors, tol=-3):
+def filter_unique_eigenpairs(eigen_values: list[complex], eigen_vectors: list[np.ndarray], tol=-3) -> tuple[list[complex], list[np.ndarray]]:
     """
     Filters eigenvectors by orthogonality using dot-product tolerance.
     
@@ -117,9 +118,9 @@ def filter_unique_eigenpairs(eigen_values, eigen_vectors, tol=-3):
     """
     selected = []
     indices = []
-    for i in range(eigen_vectors.shape[0]):
+    for i in range(len(eigen_vectors)):
         
-        vec = eigen_vectors[i,:]
+        vec = eigen_vectors[i]
         vec = vec / np.linalg.norm(vec)  # Normalize
 
         # Check orthogonality against selected vectors
@@ -127,8 +128,8 @@ def filter_unique_eigenpairs(eigen_values, eigen_vectors, tol=-3):
             selected.append(vec)
             indices.append(i)
 
-    unique_values = eigen_values[indices]
-    unique_vectors = eigen_vectors[indices,:]
+    unique_values = [eigen_values[i] for i in indices]
+    unique_vectors = [eigen_vectors[i] for i in indices]
 
     return unique_values, unique_vectors
 
@@ -208,6 +209,27 @@ class Solver:
     def solve(self, A: lil_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False, id: int = -1) -> tuple[np.ndarray, int]:
         raise NotImplementedError("This classes Ax=B solver method is not implemented.")
     
+    def reset(self) -> None:
+        """Reset state variables like numeric and symbollic factorizations."""
+        pass
+
+class EigSolver:
+    """ A generic class representing a solver for the eigenvalue problem Ax=λBx
+    
+    A solver class has two class attributes.
+     - real_only: defines if the solver can only deal with real numbers. In this case
+    the solve routine will automatically provide A and b in real number format.
+     - req_sorter: defines if this solver requires the use of a sorter algorithm. By setting
+     it to False, the SolveRoutine will not use the default sorting algorithm.
+    """
+    real_only: bool = False
+    req_sorter: bool = False
+    def __init__(self):
+        self.own_preconditioner: bool = False
+
+    def __str__(self) -> str:
+        return f'{self.__class__.__name__}'
+    
     def eig(self, A: lil_matrix, B: np.ndarray, nmodes: int = 6, target_k0: float = None, which: str = 'LM', sign: float = 1.):
         raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
     
@@ -215,7 +237,8 @@ class Solver:
         """Reset state variables like numeric and symbollic factorizations."""
         pass
 
-## SORTERS
+
+## -----  SORTERS ----------------------------------------------
 @dataclass
 class SolveReport:
     solver: str
@@ -247,7 +270,7 @@ class ReverseCuthillMckee(Sorter):
         logger.debug('Reversing Reverse Cuthill-Mckee sorting.')
         return  x[self.inv_perm]
     
-## Preconditioners
+## -----  PRECONS ----------------------------------------------
 
 class ILUPrecon(Preconditioner):
     """ Implements the incomplete LU preconditioner on matrix A. """
@@ -262,9 +285,8 @@ class ILUPrecon(Preconditioner):
         self.ilu = sparse.linalg.spilu(A, drop_tol=1e-2, fill_factor=self.fill_factor, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001, options=self.options)
         self.M = sparse.linalg.LinearOperator(A.shape, self.ilu.solve)
 
-## Solvers
+## ----- ITERATIVE SOLVERS -------------------------------------
 
-# Iterative
 class SolverBicgstab(Solver):
     """ Implements the Bi-Conjugate Gradient Stabilized method"""
     def __init__(self):
@@ -337,7 +359,8 @@ class SolverGMRES(Solver):
             x, info = gmres(A, b, atol=self.atol, callback=self.callback, restart=500, callback_type='pr_norm')
         return x, info
 
-# Direct
+## -----  DIRECT SOLVERS ----------------------------------------
+
 class SolverSuperLU(Solver):
     """ Implements Scipi's direct SuperLU solver."""
     req_sorter: bool = False
@@ -360,7 +383,6 @@ class SolverSuperLU(Solver):
 
         return x, 0
 
-
 class SolverUMFPACK(Solver):
     """ Implements the UMFPACK Sparse SP solver."""
     req_sorter = False
@@ -371,7 +393,7 @@ class SolverUMFPACK(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         self.up: um.UmfpackContext = um.UmfpackContext('zi')
-        self.up.control[um.UMFPACK_PRL] = 0
+        self.up.control[um.UMFPACK_PRL] = 0  #less terminal printing
         self.up.control[um.UMFPACK_IRSTEP] = 2
         self.up.control[um.UMFPACK_STRATEGY] = um.UMFPACK_STRATEGY_SYMMETRIC
         self.up.control[um.UMFPACK_ORDERING] = 3
@@ -421,8 +443,8 @@ class SolverPardiso(Solver):
             print(_PARDISO_ERROR_CODES)
         return x, 0
     
-## Direct EIGENMODE solvers
-class SolverLAPACK(Solver):
+## -----  DIRECT EIG SOLVERS --------------------------------------
+class SolverLAPACK(EigSolver):
 
     def __init__(self):
         super().__init__()
@@ -452,10 +474,12 @@ class SolverLAPACK(Solver):
         """
         logger.debug('Calling LAPACK eig solver')
         lam, vecs = eig(A.toarray(), B.toarray(), overwrite_a=True, overwrite_b=True, check_finite=False)
-        lam, vecs = filter_real_modes(lam, vecs, target_k0, 2, 2)
+        lam, vecs = filter_real_modes(lam, vecs, target_k0, 2, 2, sign=sign)
         return lam, vecs
     
-class SolverARPACK(Solver):
+## -----  ITER EIG SOLVERS ---------------------------------------
+
+class SolverARPACK(EigSolver):
     """ Implements the Scipy ARPACK iterative eigenmode solver."""
     def __init__(self):
         super().__init__()
@@ -472,7 +496,7 @@ class SolverARPACK(Solver):
         eigen_values, eigen_modes = eigs(A, k=nmodes, M=B, sigma=sigma, which=which)
         return eigen_values, eigen_modes
 
-class SmartARPACK_BMA(Solver):
+class SmartARPACK_BMA(EigSolver):
     """ Implements the Scipy ARPACK iterative eigenmode solver with automatic search.
     
     The Solver searches in a geometric range around the target wave constant.
@@ -504,16 +528,15 @@ class SmartARPACK_BMA(Solver):
                 tot_eigen_values.append(eigen_values[0])
                 tot_eigen_modes.append(eigen_modes.flatten())
                 energies.append(energy)
-            if i==0:
-                continue
-            # Below target k0
-            sigma = sign*((target_k0/q)**2)
-            eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
-            energy = np.mean(np.abs(eigen_modes.flatten())**2)
-            if energy > self.energy_limit:
-                tot_eigen_values.append(eigen_values[0])
-                tot_eigen_modes.append(eigen_modes.flatten())
-                energies.append(energy)
+            if i!=0:
+                # Below target k0
+                sigma = sign*((target_k0/q)**2)
+                eigen_values, eigen_modes = eigs(A, k=1, M=B, sigma=sigma, which=which)
+                energy = np.mean(np.abs(eigen_modes.flatten())**2)
+                if energy > self.energy_limit:
+                    tot_eigen_values.append(eigen_values[0])
+                    tot_eigen_modes.append(eigen_modes.flatten())
+                    energies.append(energy)
         
         #Sort solutions on mode energy
         val, mode, energy = zip(*sorted(zip(tot_eigen_values,tot_eigen_modes,energies), key=lambda x: x[2], reverse=True))
@@ -522,14 +545,14 @@ class SmartARPACK_BMA(Solver):
 
         return eigen_values, eigen_modes
     
-class SmartARPACK(Solver):
+class SmartARPACK(EigSolver):
     """ Implements the Scipy ARPACK iterative eigenmode solver with automatic search.
     
     The Solver searches in a geometric range around the target wave constant.
     """
     def __init__(self):
         super().__init__()
-        self.symmetric_steps: int = 11
+        self.symmetric_steps: int = 3
         self.search_range: float = 2.0
         self.energy_limit: float = 1e-4
 
@@ -548,20 +571,23 @@ class SmartARPACK(Solver):
             # Above target k0
             sigma = sign*((q*target_k0)**2)
             eigen_values, eigen_modes = eigs(A, k=6, M=B, sigma=sigma, which=which)
-            for i in range(eigen_values.shape[0]):
-                if eigen_values[i]<(sigma/self.search_range):
+            for j in range(eigen_values.shape[0]):
+                if eigen_values[j]<(sigma/self.search_range):
                     continue
-                tot_eigen_values.append(eigen_values[i])
-                tot_eigen_modes.append(eigen_modes[:,i])
-            # Below target k0
-            sigma = sign*((target_k0/q)**2)
-            eigen_values, eigen_modes = eigs(A, k=6, M=B, sigma=sigma, which=which)
-            for i in range(eigen_values.shape[0]):
-                if eigen_values[i]<(sigma/self.search_range):
-                    continue
-                tot_eigen_values.append(eigen_values[i])
-                tot_eigen_modes.append(eigen_modes[:,i])
-        
+                tot_eigen_values.append(eigen_values[j])
+                tot_eigen_modes.append(eigen_modes[:,j])
+            if i!=0:
+                # Below target k0
+                sigma = sign*((target_k0/q)**2)
+                eigen_values, eigen_modes = eigs(A, k=6, M=B, sigma=sigma, which=which)
+                for j in range(eigen_values.shape[0]):
+                    if eigen_values[j]<(sigma/self.search_range):
+                        continue
+                    tot_eigen_values.append(eigen_values[j])
+                    tot_eigen_modes.append(eigen_modes[:,j])
+            tot_eigen_values, tot_eigen_modes = filter_unique_eigenpairs(tot_eigen_values, tot_eigen_modes)
+            if len(tot_eigen_values)>nmodes:
+                break
         #Sort solutions on mode energy
         val, mode = filter_unique_eigenpairs(np.array(tot_eigen_values), np.array(tot_eigen_modes))
         val, mode = zip(*sorted(zip(val,mode), key=lambda x: x[0], reverse=False))
@@ -570,7 +596,41 @@ class SmartARPACK(Solver):
 
         return eigen_values, eigen_modes
 
-### ROUTINE
+
+## ----- SOLVE ENUMS ---------------------------------------------
+
+class EMSolver(Enum):
+    SUPERLU = 1
+    UMFPACK = 2
+    PARDISO = 3
+    LAPACK = 4
+    ARPACK = 5
+    SMART_ARPACK = 6
+    SMART_ARPACK_BMA = 7
+
+    def get_solver(self) -> Solver:
+        if self==EMSolver.SUPERLU:
+            return SolverSuperLU()
+        elif self==EMSolver.UMFPACK:
+            if _UMFPACK_AVAILABLE is False:
+                return SolverSuperLU()
+            else:
+                return SolverUMFPACK()
+        elif self==EMSolver.PARDISO:
+            if _PARDISO_AVAILABLE is False:
+                return SolverSuperLU()
+            else:
+                return SolverPardiso()
+        elif self==EMSolver.LAPACK:
+            return SolverLAPACK()
+        elif self==EMSolver.ARPACK:
+            return SolverARPACK()
+        elif self==EMSolver.SMART_ARPACK:
+            return SmartARPACK()
+        elif self==EMSolver.SMART_ARPACK_BMA:
+            return SmartARPACK_BMA()
+    
+## -----  SOLVE ROUTINES -----------------------------------------
 
 class SolveRoutine:
     """ A generic class describing a solve routine.
@@ -578,19 +638,15 @@ class SolveRoutine:
     and goes through a sequence of steps to solve a linear system or find eigenmodes.
 
     """
-    def __init__(self, direct_solver: Solver):
+    def __init__(self):
         
         self.sorter: Sorter = ReverseCuthillMckee()
         self.precon: Preconditioner = ILUPrecon()
+        self.solvers: dict[EMSolver, Solver] = {slv: slv.get_solver() for slv in EMSolver}
 
-        self.iterative_solver: Solver = SolverBicgstab()
-        self.direct_solver: Solver = direct_solver
-        self.fast_direct_solver: Solver = SolverSuperLU()
-
-        self.iterative_eig_solver: Solver = SolverARPACK()
-        self.smart_iterative_eig_solver_BMA: Solver = SmartARPACK_BMA()
-        self.smart_iterative_eig_solver: Solver = SmartARPACK()
-        self.direct_eig_solver: Solver = SolverLAPACK()
+        self.parallel: Literal['SI','MT','MP'] = 'SI'
+        self.smart_search: bool = False
+        self.forced_solver: list[Solver] = []
 
         self.use_sorter: bool = False
         self.use_preconditioner: bool = False
@@ -599,13 +655,58 @@ class SolveRoutine:
     def __str__(self) -> str:
         return f'SolveRoutine({self.sorter},{self.precon},{self.iterative_solver}, {self.direct_solver})'
     
+    def duplicate(self) -> SolveRoutine:
+        """Creates a copy of this SolveRoutine class object.
+
+        Returns:
+            SolveRoutine: The copied version
+        """
+        new_routine = self.__class__()
+        new_routine.parallel = self.parallel
+        new_routine.smart_search = self.smart_search
+        new_routine.forced_solver = self.forced_solver
+        return new_routine
+    
+    def set_solver(self, *solver: EMSolver | EigSolver | Solver) -> None:
+        """Set a given Solver class instance as the main solver. Solvers will be checked on validity for the given problem.
+
+        Args:
+            solver (EMSolver | Solver): The solver objects
+        """
+        if isinstance(solver, EMSolver):
+            self.forced_solver.append(solver.get_solver())
+        else:
+            self.forced_solver.append(solver)
+        
+    def configure(self, 
+                  parallel: Literal['SI','MT','MP'] = 'SI', smart_search: bool = False) -> SolveRoutine:
+        """Configure the solver with the given settings
+
+        Args:
+            parallel (Literal['SI','MT','MP'], optional): 
+                The solver parallism, Defaults to 'SI'.
+                    - "SI" = Single threaded
+                    - "MT" = Multi threaded
+                    - "MP" = Multi-processing,
+            smart_search (bool, optional): Wether to use smart-search solvers for eigenmode problems. Defaults to False.
+
+        Returns:
+            SolveRoutine: The same SolveRoutine object.
+        """
+        self.parallel = parallel
+        self.smart_search = smart_search
+        return self
+
     def reset(self) -> None:
         """Reset all solver states"""
-        self.direct_solver.reset()
-        self.fast_direct_solver.reset()
+        for solver in self.solvers.values():
+            solver.reset()
         self.sorter.reset()
+        self.parallel: Literal['SI','MT','MP'] = 'SI'
+        self.smart_search: bool = False
+        self.forced_solver = []
 
-    def get_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
+    def _get_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
 
         This is the default implementation for the SolveRoutine Class.
@@ -618,9 +719,28 @@ class SolveRoutine:
             Solver: Returns the direct solver
 
         """
-        return self.fast_direct_solver
+        for solver in self.forced_solver:
+            if isinstance(solver, Solver):
+                return solver
+        return self.pick_solver(A,b)
+        
     
-    def get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None, smart: bool = False) -> Solver:
+    def pick_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
+        """Returns the relevant Solver object given a certain matrix and source vector
+
+        This is the default implementation for the SolveRoutine Class.
+        
+        Args:
+            A (np.ndarray): The Matrix to solve for
+            b (np.ndarray): the vector to solve for
+
+        Returns:
+            Solver: Returns the direct solver
+
+        """
+        return self.solvers[EMSolver.SUPERLU]
+    
+    def _get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
 
         This is the default implementation for the SolveRoutine Class.
@@ -634,15 +754,15 @@ class SolveRoutine:
             Solver: Returns the solver object
 
         """
+        for solver in self.forced_solver:
+            if isinstance(solver, EigSolver):
+                return solver
         if direct or A.shape[0] < 1000:
-            return self.direct_eig_solver
+            return self.solvers[EMSolver.LAPACK]
         else:
-            if smart:
-                return self.smart_iterative_eig_solver
-            else:
-                return self.iterative_eig_solver
+            return self.solvers[EMSolver.SMART_ARPACK]
             
-    def get_eig_solver_bma(self, A: lil_matrix, b: lil_matrix, direct: bool = None, smart: bool = False) -> Solver:
+    def _get_eig_solver_bma(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
 
         This is the default implementation for the SolveRoutine Class.
@@ -656,13 +776,14 @@ class SolveRoutine:
             Solver: Returns the solver object
 
         """
+        for solver in self.forced_solver:
+            if isinstance(solver, EigSolver):
+                return solver
+        
         if direct or A.shape[0] < 1000:
-            return self.direct_eig_solver
+            return self.solvers[EMSolver.LAPACK]
         else:
-            if smart:
-                return self.smart_iterative_eig_solver_BMA
-            else:
-                return self.iterative_eig_solver
+            return self.solvers[EMSolver.ARPACK]
     
     def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
               b: np.ndarray, 
@@ -684,7 +805,7 @@ class SolveRoutine:
         Returns:
             np.ndarray: The resultant solution.
         """
-        solver = self.get_solver(A, b)
+        solver = self._get_solver(A, b)
 
         NF = A.shape[0]
         NS = solve_ids.shape[0]
@@ -747,8 +868,11 @@ class SolveRoutine:
             nmodes: int = 6,
             direct: bool = None,
             target_k0: float = None,
-            which: str = 'LM') -> tuple[np.ndarray, np.ndarray, SolveReport]:
-        """ Find the eigenmodes for the system Ax = lambda^2 Bx for a boundary mode problem
+            which: str = 'LM', 
+            sign: float=-1) -> tuple[np.ndarray, np.ndarray, SolveReport]:
+        """ Find the eigenmodes for the system Ax = λBx for a boundary mode problem
+
+        For generalized eigenvalue problems of boundary mode analysis studies, the equation is: Ae = -β²Be
 
         Args:
             A (csc_matrix): The Stiffness matrix
@@ -758,13 +882,14 @@ class SolveRoutine:
             direct (bool): If the direct solver should be used (always). Defaults to False
             target_k0 (float): The k0 value to search around
             which (str): The search method. Defaults to 'LM' (Largest Magnitude)
+            sign (float): The sign of the eigenvalue expression. Defaults to -1
 
         Returns:
             np.ndarray: The eigen values
             np.ndarray: The eigen vectors
             SolveReport: The solution report
         """
-        solver = self.get_eig_solver_bma(A, B, direct=direct, smart=True)
+        solver = self._get_eig_solver_bma(A, B, direct=direct)
 
         NF = A.shape[0]
         NS = solve_ids.shape[0]
@@ -775,7 +900,7 @@ class SolveRoutine:
         Bsel = B[np.ix_(solve_ids, solve_ids)]
         
         start = time.time()
-        eigen_values, eigen_modes = solver.eig(Asel, Bsel, nmodes, target_k0, which, sign=-1)
+        eigen_values, eigen_modes = solver.eig(Asel, Bsel, nmodes, target_k0, which, sign=sign)
         end = time.time()
 
         simtime = end-start
@@ -788,14 +913,23 @@ class SolveRoutine:
             nmodes: int = 6,
             direct: bool = None,
             target_f0: float = None,
-            which: str = 'LM',
-            smart_search: bool = True) -> tuple[np.ndarray, np.ndarray, SolveReport]:
+            which: str = 'LM') -> tuple[np.ndarray, np.ndarray, SolveReport]:
         """
-
+        Find the eigenmodes for the system Ax = λBx for a boundary mode problem
+        
+        Args:
+            A (csc_matrix): The Stiffness matrix
+            B (csc_matrix): The mass matrix
+            solve_ids (np.ndarray): The free nodes (non PEC)
+            nmodes (int): The number of modes to solve for. Defaults to 6
+            direct (bool): If the direct solver should be used (always). Defaults to False
+            target_k0 (float): The k0 value to search around
+            which (str): The search method. Defaults to 'LM' (Largest Magnitude)
+            sign (float): The sign of the eigenvalue expression. Defaults to -1\
         Returns:
             np.ndarray: The resultant solution.
         """
-        solver = self.get_eig_solver(A, B, direct=direct, smart=smart_search)
+        solver = self._get_eig_solver(A, B, direct=direct)
 
         NF = A.shape[0]
         NS = solve_ids.shape[0]
@@ -822,7 +956,7 @@ class AutomaticRoutine(SolveRoutine):
     """ Defines the Automatic Routine for EMerge.
     """
         
-    def get_solver(self, A: np.ndarray, b: np.ndarray) -> Solver:
+    def pick_solver(self, A: np.ndarray, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
 
         The current implementation only looks at matrix size to select the best solver. Matrices 
@@ -837,75 +971,23 @@ class AutomaticRoutine(SolveRoutine):
             Solver: A solver object appropriate for solving the problem.
 
         """
-        N = A.shape[0]
+        N = b.shape[0]
         if N < 10_000:
-            self.use_preconditioner = False
-            return self.fast_direct_solver
-        if N > 5_000_000 or not self.use_direct:
-            logger.warning('Using Iterative Solver due to large matrix size.' \
-            'This simulation likely wont converge due to a lack of good preconditioner support.')
-            self.use_preconditioner = False
-            return self.iterative_solver
-        else:
-            self.use_preconditioner = False
-            return self.direct_solver
-
-### DEFAULTS
-
-if not _PARDISO_AVAILABLE:
-    if not _UMFPACK_AVAILABLE:
-        DIRECT_SOLVER_SINGLE = SolverSuperLU()
-    else:
-        DIRECT_SOLVER_SINGLE = SolverUMFPACK()
-else:
-    DIRECT_SOLVER_SINGLE = SolverPardiso()
-
-
-
-if not _UMFPACK_AVAILABLE:
-    DIRECT_SOLVER_PAR = SolverSuperLU()
-else:
-    DIRECT_SOLVER_PAR = SolverUMFPACK()
-
-
-DEFAULT_ROUTINE = AutomaticRoutine(DIRECT_SOLVER_SINGLE)
-
-
-class ParallelRoutine(SolveRoutine):
-    """ Defines the Parallel solve routine to be used in the multithreaded environment.
-    """
-    def __init__(self, multi_process: bool):
-        self.sorter: Sorter = ReverseCuthillMckee()
-        self.precon: Preconditioner = None
-
-        self.iterative_solver: Solver = None
-        if multi_process:
-            self.direct_solver: Solver = DIRECT_SOLVER_PAR
-        else:
-            self.direct_solver: Solver = SolverSuperLU()
-        #self.direct_solver._limit = 1
-
-        self.iterative_eig_solver: Solver = None
-        self.direct_eig_solver: Solver = None
-
-        self.use_sorter: bool = True
-        self.use_preconditioner: bool = False
-        self.use_direct: bool = True
-
-    def get_solver(self, A: np.ndarray, b: np.ndarray) -> Solver:
-        """Returns the relevant Solver object given a certain matrix and source vector
-
-        The current implementation only looks at matrix size to select the best solver. Matrices 
-        with a large size will use iterative solvers while smaller sizes will use either Pardiso
-        for medium sized problems or SPSolve for small ones.
-        
-        Args:
-            A (np.ndarray): The Matrix to solve for
-            b (np.ndarray): the vector to solve for
-
-        Returns:
-            Solver: A solver object appropriate for solving the problem.
-
-        """
-        return self.direct_solver
+            return self.solvers[EMSolver.SUPERLU]
+        if self.parallel=='SI':
+            if _PARDISO_AVAILABLE:
+                return self.solvers[EMSolver.PARDISO]
+            elif _UMFPACK_AVAILABLE:
+                return self.solvers[EMSolver.UMFPACK]
+            else:
+                return self.solvers[EMSolver.SUPERLU]
+        elif self.parallel=='MP':
+            if _UMFPACK_AVAILABLE:
+                return self.solvers[EMSolver.UMFPACK]
+            else:
+                return self.solvers[EMSolver.SUPERLU]
+        elif self.parallel=='MT':
+            return self.solvers[EMSolver.SUPERLU]
+        return self.solvers[EMSolver.SUPERLU]
     
+DEFAULT_ROUTINE = AutomaticRoutine()

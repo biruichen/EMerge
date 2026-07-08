@@ -111,9 +111,7 @@ abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
 pec = model.mw.bc.PEC(rpatch)
 
 # --- Run frequency-domain solver ----------------------------------------
-data = model.mw.frequency_domain(
-    parallel=False, njobs=4, frequency_groups=8
-)
+data = model.mw.frequency_domain()
 
 # --- Post-process S-parameters ------------------------------------------
 freqs = data.scalar.grid.freq

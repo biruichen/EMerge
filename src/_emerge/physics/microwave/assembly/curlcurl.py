@@ -22,21 +22,30 @@ from numba_progress import ProgressBar, ProgressBarType
 from ....mth.optimized import local_mapping, matinv, dot_c, cross_c, compute_distances
 from numba import c16, types, f8, i8, njit, prange
 
+# --- CACHED FACTORIALS ---------------
+
 _FACTORIALS = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int64)
+
+
+# --- MAPPING FUNCTIONS ---------------
+# These mapping functions return edge and face coordinates in the appropriate order.
 
 @njit(i8[:,:](i8[:,:], i8[:,:], i8[:,:], i8, i8), cache=True, nogil=True)
 def local_tet_to_triid(tet_to_field, tets, tris, itet, nedges) -> np.ndarray:
+    """Returns the triangle node indices in the right order given a tet-index"""
     tri_ids = tet_to_field[6:10, itet] - nedges
     global_tri_map = tris[:, tri_ids]
     return local_mapping(tets[:, itet], global_tri_map)
 
 @njit(i8[:,:](i8[:,:], i8[:,:], i8[:,:], i8), cache=True, nogil=True)
 def local_tet_to_edgeid(tets, edges, tet_to_field, itet) -> np.ndarray:
+    """Returns the edge node indices in the right order given a tet-index"""
     global_edge_map = edges[:, tet_to_field[:6,itet]]
     return local_mapping(tets[:, itet], global_edge_map)
 
 @njit(i8[:,:](i8[:,:], i8[:,:], i8[:,:], i8), cache=True, nogil=True)
 def local_tri_to_edgeid(tris, edges, tri_to_field, itri: int) -> np.ndarray:
+    """Returns the edge node indices in the right order given a triangle-index"""
     global_edge_map = edges[:, tri_to_field[:3,itri]]
     return local_mapping(tris[:, itri], global_edge_map)
 
@@ -50,7 +59,11 @@ def matmul(Mat, Vec):
     return Vout
 
 @njit(f8(i8, i8, i8, i8), cache=True, fastmath=True, nogil=True)
-def volume_coeff(a, b, c, d):
+def volume_coeff(a: int, b: int, c: int, d: int):
+    """ Computes the appropriate matrix coefficients given a list of
+    barycentric coordinate functions mentioned.
+    Example:
+      - L1^2 * L2 - volume_coeff(1,1,2,0) """
     klmn = np.array([0,0,0,0,0,0,0])
     klmn[a] += 1
     klmn[b] += 1
@@ -60,6 +73,7 @@ def volume_coeff(a, b, c, d):
                   *_FACTORIALS[klmn[4]]*_FACTORIALS[klmn[5]]*_FACTORIALS[klmn[6]])/_FACTORIALS[(np.sum(klmn[1:])+3)]
     return output
 
+# --- PRECOMPUTE VOLUME COEFFICINETS --------------------
 NFILL = 5
 VOLUME_COEFF_CACHE_BASE = np.zeros((NFILL,NFILL,NFILL,NFILL), dtype=np.float64)
 for I in range(NFILL):
@@ -71,8 +85,17 @@ for I in range(NFILL):
 VOLUME_COEFF_CACHE = VOLUME_COEFF_CACHE_BASE
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:], f8[:]), cache = True, nogil=True)
-def tet_coefficients_bcd(xs, ys, zs):
-    ## THIS FUNCTION WORKS
+def tet_coefficients_bcd(xs: np.ndarray, ys: np.ndarray, zs: np.ndrray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Computes the a,b,c and d coefficients of a tet barycentric coordinate functions and the volume
+
+    Args:
+        xs (np.ndarray): The tetrahedron X-coordinates
+        ys (np.ndarray): The tetrahedron Y-coordinates
+        zs (np.ndrray): The tetrahedron Z-coordinates
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, float]: The a, b, c, d coefficients and volume
+    """
     x1, x2, x3, x4 = xs
     y1, y2, y3, y4 = ys
     z1, z2, z3, z4 = zs
@@ -81,7 +104,11 @@ def tet_coefficients_bcd(xs, ys, zs):
     ccs = np.empty((4,), dtype=np.float64)
     dds = np.empty((4,), dtype=np.float64)
 
-    V = np.abs(-x1*y2*z3/6 + x1*y2*z4/6 + x1*y3*z2/6 - x1*y3*z4/6 - x1*y4*z2/6 + x1*y4*z3/6 + x2*y1*z3/6 - x2*y1*z4/6 - x2*y3*z1/6 + x2*y3*z4/6 + x2*y4*z1/6 - x2*y4*z3/6 - x3*y1*z2/6 + x3*y1*z4/6 + x3*y2*z1/6 - x3*y2*z4/6 - x3*y4*z1/6 + x3*y4*z2/6 + x4*y1*z2/6 - x4*y1*z3/6 - x4*y2*z1/6 + x4*y2*z3/6 + x4*y3*z1/6 - x4*y3*z2/6)
+    V = np.abs(-x1*y2*z3/6 + x1*y2*z4/6 + x1*y3*z2/6 - x1*y3*z4/6 - x1*y4*z2/6 + \
+                x1*y4*z3/6 + x2*y1*z3/6 - x2*y1*z4/6 - x2*y3*z1/6 + x2*y3*z4/6 + \
+                x2*y4*z1/6 - x2*y4*z3/6 - x3*y1*z2/6 + x3*y1*z4/6 + x3*y2*z1/6 - \
+                x3*y2*z4/6 - x3*y4*z1/6 + x3*y4*z2/6 + x4*y1*z2/6 - x4*y1*z3/6 - \
+                x4*y2*z1/6 + x4*y2*z3/6 + x4*y3*z1/6 - x4*y3*z2/6)
     
     bbs[0] = -y2*z3 + y2*z4 + y3*z2 - y3*z4 - y4*z2 + y4*z3
     bbs[1] = y1*z3 - y1*z4 - y3*z1 + y3*z4 + y4*z1 - y4*z3
@@ -101,7 +128,16 @@ def tet_coefficients_bcd(xs, ys, zs):
 def tet_mass_stiffness_matrices(field: Nedelec2,
                            er: np.ndarray, 
                            ur: np.ndarray) -> tuple[csr_matrix, csr_matrix]:
-    
+    """Computes the curl-curl Nedelec-2 mass and stiffness matrices
+
+    Args:
+        field (Nedelec2): The Nedelec2 Field object
+        er (np.ndarray): a 3x3xN array with permittivity tensors
+        ur (np.ndarray): a 3x3xN array with permeability tensors
+
+    Returns:
+        tuple[csr_matrix, csr_matrix]: The stiffness and mass matrix.
+    """
     tets = field.mesh.tets
     tris = field.mesh.tris
     edges = field.mesh.edges

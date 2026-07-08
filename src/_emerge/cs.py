@@ -90,6 +90,17 @@ class Axis:
         """
         return Plane(self, other)
     
+    def __mul__(self, other: Axis) -> Plane:
+        """The multiply binary operator
+
+        Args:
+            other (Axis): _description_
+
+        Returns:
+            Plane: The output plane
+        """
+        return self.pair(other)
+    
     def construct_cs(self) -> CoordinateSystem:
         """Constructs a coordinate system where this vector is the Z-axis
         and the X and Y axis are normal to this axis but with an arbitrary rotation.
@@ -104,18 +115,6 @@ class Axis:
         ax1 = self.cross(ax)
         ax2 = self.cross(ax1).neg
         return CoordinateSystem(ax2, ax1, self, np.zeros(3))
-    
-    def __mul__(self, other) -> np.ndarray:
-        if isinstance(other, np.ndarray):
-            return np.dot(self.vector, other)
-        elif isinstance(other, (int, float)):
-            return self.vector * other
-        else:
-            raise ValueError("Multiplication not supported for this type")
-        
-    def __rmul__(self, other) -> np.ndarray:
-        return self.__mul__(other)
-    
 
 XAX: Axis = Axis(np.array([1, 0, 0]))
 YAX: Axis = Axis(np.array([0, 1, 0]))
@@ -163,6 +162,9 @@ class Plane:
 
     def __repr__(self) -> str:
         return f"Plane({self.uax}, {self.vax})"
+    
+    def __mul__(self, other: Axis) -> CoordinateSystem:
+        return CoordinateSystem(self.uax, self.vax, other)
     
     @property
     def normal(self) -> Axis:

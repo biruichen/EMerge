@@ -27,7 +27,20 @@ from functools import reduce
 from numba import njit
 
 @njit(cache=True)
-def _subsample_coordinates(xs, ys, tolerance, xmin):
+def _subsample_coordinates(xs: np.ndarray, ys: np.ndarray, tolerance: float, xmin: float) -> tuple[np.ndarray, np.ndarray]:
+    """This function takes a set of x and y coordinates in a finely sampled set and returns a reduced
+    set of numbers that traces the input curve within a provided tolerance.
+
+    Args:
+        xs (np.ndarray): The set of X-coordinates
+        ys (np.ndarray): The set of Y-coordinates
+        tolerance (float): The maximum deviation of the curve in meters
+        xmin (float): The minimal distance to the next point.
+
+    Returns:
+        np.ndarray: The output X-coordinates
+        np.ndarray: The output Y-coordinates
+    """
     N = xs.shape[0]
     ids = np.zeros((N,), dtype=np.int32)
     store_index = 1
@@ -72,7 +85,21 @@ def _subsample_coordinates(xs, ys, tolerance, xmin):
             break
     return xs[ids[0:final_index]], ys[ids[0:final_index]]
 
-def _discretize_curve(xfunc, yfunc, t0, t1, xmin, tol=1e-4):
+def _discretize_curve(xfunc: Callable, yfunc: Callable, 
+                      t0: float, t1: float, xmin: float, tol: float=1e-4) -> tuple[np.ndarray, np.ndarray]:
+    """Computes a discreteized curve in X/Y coordinates based on the input parametric coordinates.
+
+    Args:
+        xfunc (Callable): The X-coordinate function fx(t)
+        yfunc (Callable): The Y-coordinate function fy(t)
+        t0 (float): The minimum value for the t-prameter
+        t1 (float): The maximum value for the t-parameter
+        xmin (float): The minimum distance for subsequent points
+        tol (float, optional): The curve matching tolerance. Defaults to 1e-4.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: _description_
+    """
     td = np.linspace(t0, t1, 10001)
     xs = xfunc(td)
     ys = yfunc(td)
@@ -97,7 +124,7 @@ def rotate_point(point: tuple[float, float, float],
 
     Returns
     -------
-    (x′, y′, z′) : tuple with the rotated coordinates.
+    (x,y,z) : tuple with the rotated coordinates.
     """
     # Convert inputs to numpy arrays
     p = np.asarray(point, dtype=float)
@@ -183,7 +210,8 @@ class GeoPrism(GeoVolume):
         return FaceSelection(tags)       
 
 class XYPolygon:
-
+    """This class generalizes a polygon in an un-embedded XY space that can be embedded in 3D space.
+    """
     def __init__(self, 
                  xs: np.ndarray | list | tuple = None,
                  ys: np.ndarray | list | tuple = None):
@@ -205,15 +233,29 @@ class XYPolygon:
 
     @property
     def N(self) -> int:
+        """The number of polygon points
+
+        Returns:
+            int: The number of points
+        """
         return len(self.xs)
     
     def _check(self) -> None:
+        """Checks if the last point is the same as the first point.
+        The XYPolygon does not store redundant points p[0]==p[N] so if these are
+        the same, this function will remove the last point.
+        """
         if np.sqrt((self.x[-1]-self.x[0])**2 + (self.y[-1]-self.y[0])**2) < 1e-6:
             self.x = self.x[:-1]
             self.y = self.y[:-1]
         
     @property
     def area(self) -> float:
+        """The Area of the polygon
+
+        Returns:
+            float: The area in square meters
+        """
         return 0.5*np.abs(np.dot(self.x,np.roll(self.y,1))-np.dot(self.y,np.roll(self.x,1)))
 
     def extend(self, xpts: list[float], ypts: list[float]) -> XYPolygon:
@@ -323,7 +365,7 @@ class XYPolygon:
         return self._finalize(cs) 
     
     def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0) -> GeoPrism:
-        """Applies a revolution to the XYPolygon along the coordinate system Z-axis
+        """Applies a revolution to the XYPolygon along the provided rotation ais
 
         Args:
             cs (CoordinateSystem, optional): _description_. Defaults to None.
