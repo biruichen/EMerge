@@ -22,12 +22,11 @@ from typing import Callable, Literal
 from ...selection import Selection, FaceSelection
 from ...cs import CoordinateSystem, Axis, GCS
 from ...coord import Line
-from ...geometry import GeoSurface, GeoObject, GeoPolygon
+from ...geometry import GeoSurface, GeoObject
 from dataclasses import dataclass
 from collections import defaultdict
 from ...bc import BoundaryCondition, BoundaryConditionSet, Periodic
-from ...geo import XYPolygon, XYPlate
-from ...periodic import PeriodicCell, HexCell, RectCell, Alignment
+from ...periodic import PeriodicCell, HexCell, RectCell
 
 class MWBoundaryConditionSet(BoundaryConditionSet):
 
@@ -309,7 +308,7 @@ class FloquetPort(PortBC):
         self.port_number: int= port_number
         self.active: bool = True
         self.power: float = power
-        self.type: str = 'TE'
+        self.type: str = 'TEM'
         self._field_amplitude: np.ndarray = None
         self.mode: tuple[int,int] = (1,0)
         self.cs: CoordinateSystem = cs
@@ -920,3 +919,5 @@ class LumpedElement(RobinBC):
             complex: The γ-constant
         """
         return 1j*k0*376.730313412/self.surfZ(k0)
+
+

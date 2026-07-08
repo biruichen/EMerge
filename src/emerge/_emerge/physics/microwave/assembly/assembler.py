@@ -20,22 +20,25 @@ from ..microwave_bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC
 from ....elements.nedelec2 import Nedelec2
 from ....elements.nedleg2 import NedelecLegrange2
 from ....mth.optimized import gaus_quad_tri
-from scipy.sparse import csr_matrix, eye
+from ....mth.pairing import pair_coordinates
+
+from scipy.sparse import csr_matrix
 from loguru import logger
 from ..simjob import SimJob
-from collections import defaultdict
+from .periodicbc import gen_periodic_matrix
+
+
+############################################################
+#                         CONSTANTS                        #
+############################################################
 
 C0 = 299792458
 EPS0 = 8.854187818814e-12
 
-def matprint(mat: np.ndarray) -> None:
-    factor = np.max(np.abs(mat.flatten()))
-    if factor == 0:
-        factor = 1
-    print(mat.real/factor)
 
-def select_bc(bcs: list[BoundaryCondition], bctype):
-    return [bc for bc in bcs if isinstance(bc,bctype)]
+############################################################
+#                         FUNCTIONS                        #
+############################################################
 
 def diagnose_matrix(mat: np.ndarray) -> None:
 
@@ -55,10 +58,6 @@ def diagnose_matrix(mat: np.ndarray) -> None:
     if len(ids[0]) > 0:
         logger.error(f'Found large values at {ids}')
     logger.info('Diagnostics finished')
-
-#############
-def gen_key(coord, mult):
-    return tuple([int(round(c*mult)) for c in coord])
 
 def plane_basis_from_points(points: np.ndarray) -> np.ndarray:
     """
@@ -100,12 +99,23 @@ def plane_basis_from_points(points: np.ndarray) -> np.ndarray:
     # Columns of eigvecs = principal axes
     return eigvecs
 
-class Assembler:
 
+############################################################
+#                    THE ASSEMBLER CLASS                   #
+############################################################
+
+class Assembler:
+    """The assembler class is responsible for FEM EM problem assembly.
+
+    It stores some cached properties to accellerate preformance.
+    """
     def __init__(self):
+        
         self.cached_matrices = None
         self.conductivity_limit = 1e7
-
+        # Currently not used.
+        #self._Pmat_cache: dict[tuple[int,int], csr_matrix] = dict()
+        #self._remove_cache: list[int] = []
     
     def assemble_bma_matrices(self,
                               field: Nedelec2,
@@ -115,14 +125,27 @@ class Assembler:
                         k0: float,
                         port: PortBC,
                         bcs: list[BoundaryCondition]) -> tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]:
-        
+        """Computes the boundary mode analysis matrices
+
+        Args:
+            field (Nedelec2): The Nedelec2 field object
+            er (np.ndarray): The relative permittivity tensor of shape (3,3,N)
+            ur (np.ndarray): The relative permeability tensor of shape (3,3,N)
+            sig (np.ndarray): The conductivity scalar of shape (N,)
+            k0 (float): The simulation phase constant
+            port (PortBC): The port boundary condition object
+            bcs (list[BoundaryCondition]): The other boundary conditions
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]: The E, B, solve ids and Mixed order field object.
+        """
         from .generalized_eigen import generelized_eigenvalue_matrix
         
         mesh = field.mesh
         tri_ids = mesh.get_triangles(port.tags)
 
         origin = tuple([c-n for c,n in zip(port.cs.origin, port.cs.gzhat)])
-
+        
         boundary_surface = mesh.boundary_surface(port.tags, origin)
         nedlegfield = NedelecLegrange2(boundary_surface, port.cs)
 
@@ -187,49 +210,67 @@ class Assembler:
                         bcs: list[BoundaryCondition],
                         frequency: float,
                         cache_matrices: bool = False) -> SimJob:
-        
+        """Assembles the frequency domain FEM matrix
+
+        Args:
+            field (Nedelec2): The Nedelec2 object of the problems
+            er (np.ndarray): The relative dielectric permitivity tensor of shape (3,3,N)
+            ur (np.ndarray): The relative magnetic permeability tensor of shape (3,3,N)
+            sig (np.ndarray): The conductivity array of shape (N,)
+            bcs (list[BoundaryCondition]): The boundary conditions
+            frequency (float): The simulation frequency
+            cache_matrices (bool, optional): Whether to use and cache matrices. Defaults to False.
+
+        Returns:
+            SimJob: The resultant SimJob object
+        """
+
         from .curlcurl import tet_mass_stiffness_matrices
         from .robinbc import assemble_robin_bc, assemble_robin_bc_excited
 
-        mesh = field.mesh
-        w0 = 2*np.pi*frequency
-        k0 = w0/C0
+        # PREDEFINE CONSTANTS
+        W0 = 2*np.pi*frequency
+        K0 = W0/C0
 
-        er = er - 1j*sig/(w0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
+        mesh = field.mesh
+        er = er - 1j*sig/(W0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
+        is_frequency_dependent: bool = np.any((sig > 0) & (sig < self.conductivity_limit))
         
-        f_dependent_properties = np.any((sig > 0) & (sig < self.conductivity_limit))
-        
-        if cache_matrices and not f_dependent_properties and self.cached_matrices is not None:
+
+        if cache_matrices and not is_frequency_dependent and self.cached_matrices is not None:
+            # IF CACHED AND AVAILABLE PULL E AND B FROM CACHE
             logger.debug('    Retreiving cached matricies')
             E, B = self.cached_matrices
         else:
+            # OTHERWISE, COMPUTE
             logger.debug('    Assembling matrices')
             E, B = tet_mass_stiffness_matrices(field, er, ur)
             self.cached_matrices = (E, B)
 
-        K: csr_matrix = (E - B*(k0**2)).tocsr()
+        # COMBINE THE MASS AND STIFFNESS MATRIX
+        K: csr_matrix = (E - B*(K0**2)).tocsr()
 
         NF = E.shape[0]
 
-        pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
+        # ISOLATE BOUNDARY CONDITIONS TO ASSEMBLE
+        pec_bcs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
         robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
-        ports: list[PortBC] = [bc for bc in bcs if isinstance(bc, PortBC)]
-        periodic: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
+        port_bcs: list[PortBC] = [bc for bc in bcs if isinstance(bc, PortBC)]
+        periodic_bcs: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
 
+        # PREDEFINE THE FORCING VECTOR CONTAINER
         b = np.zeros((E.shape[0],)).astype(np.complex128)
-        port_vectors = {port.port_number: np.zeros((E.shape[0],)).astype(np.complex128) for port in ports}
+        port_vectors = {port.port_number: np.zeros((E.shape[0],)).astype(np.complex128) for port in port_bcs}
+        
         # Process all PEC Boundary Conditions
-        pec_ids = []
-        
         logger.debug('    Implementing PEC Boundary Conditions.')
-        
+        pec_ids = []
         # Conductivity above al imit, consider it all PEC
         for itet in range(field.n_tets):
             if sig[itet] > self.conductivity_limit:
                 pec_ids.extend(field.tet_to_field[:,itet])
         
-        # PEC Boundary conditions
-        for pec in pecs:
+        for pec in pec_bcs:
             if len(pec.tags)==0:
                 continue
             face_tags = pec.tags
@@ -249,9 +290,7 @@ class Assembler:
             logger.debug('    Implementing Robin Boundary Conditions.')
         
             gauss_points = gaus_quad_tri(4)
-            
             Bempty = field.empty_tri_matrix()
-
             for bc in robin_bcs:
 
                 for tag in bc.tags:
@@ -261,10 +300,10 @@ class Assembler:
                     nodes = mesh.get_nodes(face_tags)
                     edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
 
-                    gamma = bc.get_gamma(k0)
+                    gamma = bc.get_gamma(K0)
 
                     def Ufunc(x,y): 
-                        return bc.get_Uinc(x,y,k0)
+                        return bc.get_Uinc(x,y,K0)
                     
                     ibasis = bc.get_inv_basis()
                     if ibasis is None:
@@ -281,7 +320,7 @@ class Assembler:
             B_p = field.generate_csr(Bempty)
             K = K + B_p
         
-        if len(periodic) > 0:
+        if len(periodic_bcs) > 0:
             logger.debug('    Implementing Periodic Boundary Conditions.')
 
         
@@ -290,75 +329,33 @@ class Assembler:
         remove = set()
         has_periodic = False
 
-        for bc in periodic:
-            Pmat = eye(NF, format='lil', dtype=np.complex128)
+        for bc in periodic_bcs:
             has_periodic = True
             tri_ids_1 = mesh.get_triangles(bc.face1.tags)
+            edge_ids_1 = mesh.get_edges(bc.face1.tags)
             tri_ids_2 = mesh.get_triangles(bc.face2.tags)
+            edge_ids_2 = mesh.get_edges(bc.face2.tags)
             dv = np.array(bc.dv)
-            trimapdict = defaultdict(lambda: [None, None])
-            edgemapdict = defaultdict(lambda: [None, None])
-            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+3))
+            linked_tris = pair_coordinates(mesh.tri_centers, tri_ids_1, tri_ids_2, dv, 1e-9)
+            linked_edges = pair_coordinates(mesh.edge_centers, edge_ids_1, edge_ids_2, dv, 1e-9)
+            dv = np.array(bc.dv)
+            phi = bc.phi(K0)
             
-            edge_ids_1 = set()
-            edge_ids_2 = set()
-            
-            phi = bc.phi(k0)
-            for i1, i2 in zip(tri_ids_1, tri_ids_2):
-                trimapdict[gen_key(mesh.tri_centers[:,i1], mult)][0] = i1
-                trimapdict[gen_key(mesh.tri_centers[:,i2]-dv, mult)][1] = i2
-                
-                ie1, ie2, ie3 = mesh.tri_to_edge[:,i1]
-                edge_ids_1.update({ie1, ie2, ie3})
-                ie1, ie2, ie3 = mesh.tri_to_edge[:,i2]
-                edge_ids_2.update({ie1, ie2, ie3})
-            
-            for i1, i2 in zip(list(edge_ids_1), list(edge_ids_2)):
-                edgemapdict[gen_key(mesh.edge_centers[:,i1], mult)][0] = i1
-                edgemapdict[gen_key(mesh.edge_centers[:,i2]-dv, mult)][1] = i2
-
-            
-            for t1, t2 in trimapdict.values():
-                f11, f21 = field.tri_to_field[[3,7],t1]
-                f12, f22 = field.tri_to_field[[3,7],t2]
-                Pmat[f12,f12] = 0
-                Pmat[f22,f22] = 0
-                if Pmat[f12,f11] == 0:
-                    Pmat[f12,f11] += phi
-                else:
-                    Pmat[f12,f11] *= phi
-                
-                if Pmat[f22,f21] == 0:
-                    Pmat[f22,f21] += phi
-                else:
-                    Pmat[f22,f21] *= phi
-                remove.add(f12)
-                remove.add(f22)
-                
-            for e1, e2 in edgemapdict.values():
-                f11, f21 = field.edge_to_field[:,e1]
-                f12, f22 = field.edge_to_field[:,e2]
-                Pmat[f12,f12] = 0
-                Pmat[f22,f22] = 0
-                if Pmat[f12,f11] == 0:
-                    Pmat[f12,f11] += phi
-                else:
-                    Pmat[f12,f11] *= phi
-                
-                if Pmat[f22,f21] == 0:
-                    Pmat[f22,f21] += phi
-                else:
-                    Pmat[f22,f21] *= phi
-                remove.add(f12)
-                remove.add(f22)
-                
+            Pmat, rows = gen_periodic_matrix(tri_ids_1,
+                                       edge_ids_1,
+                                       field.tri_to_field,
+                                       field.edge_to_field,
+                                       linked_tris,
+                                       linked_edges,
+                                       field.n_field,
+                                       phi)
+            remove.update(rows)
             Pmats.append(Pmat)
         
         if Pmats:
             Pmat = Pmats[0]
             for P2 in Pmats[1:]:
                 Pmat = Pmat @ P2
-            Pmat = Pmat.tocsr()
             remove = np.array(sorted(list(remove)))
             all_indices = np.arange(NF)
             keep_indices = np.setdiff1d(all_indices, remove)
@@ -375,9 +372,10 @@ class Assembler:
             mask = mask[keep_indices]
             solve_ids = np.argwhere(mask==1).flatten()
 
-        logger.debug(f'Number of tets: {mesh.n_tets}')
-        logger.debug(f'Number of DoF: {K.shape[0]}')
-        simjob = SimJob(K, b, k0*299792458/(2*np.pi), True)
+        logger.debug(f'Number of tets: {mesh.n_tets:,}')
+        logger.debug(f'Number of DoF: {K.shape[0]:,}')
+        logger.debug(f'Number of non-zero: {K.nnz:,}')
+        simjob = SimJob(K, b, K0*299792458/(2*np.pi), True)
         
         simjob.port_vectors = port_vectors
         simjob.solve_ids = solve_ids
@@ -395,7 +393,23 @@ class Assembler:
                         sig: np.ndarray,
                         bcs: list[BoundaryCondition],
                         frequency: float) -> SimJob:
-        
+        """Assembles the eigenmode analysis matrix
+
+        The assembly process is frequency dependent because the frequency-dependent properties
+        need a guess before solving. There is currently no adjustment after an eigenmode is found.
+        The frequency-dependent properties are simply calculated once for the given frequency
+
+        Args:
+            field (Nedelec2): The Nedelec2 field
+            er (np.ndarray): The relative permittivity tensor in shape (3,3,N)
+            ur (np.ndarray): The relative permeability tensor in shape (3,3,N)
+            sig (np.ndarray): The conductivity scalar in array (N,)
+            bcs (list[BoundaryCondition]): The list of boundary conditions
+            frequency (float): The compilation frequency (for material properties only)
+
+        Returns:
+            SimJob: The resultant simulation job
+        """
         from .curlcurl import tet_mass_stiffness_matrices
         from .robinbc import assemble_robin_bc
 
@@ -472,66 +486,26 @@ class Assembler:
         has_periodic = False
 
         for bc in periodic:
-            Pmat = eye(NF, format='lil', dtype=np.complex128)
             has_periodic = True
             tri_ids_1 = mesh.get_triangles(bc.face1.tags)
+            edge_ids_1 = mesh.get_edges(bc.face1.tags)
             tri_ids_2 = mesh.get_triangles(bc.face2.tags)
+            edge_ids_2 = mesh.get_edges(bc.face2.tags)
             dv = np.array(bc.dv)
-            trimapdict = defaultdict(lambda: [None, None])
-            edgemapdict = defaultdict(lambda: [None, None])
-            mult = int(10**(-np.round(np.ceil(min(mesh.edge_lengths.flatten())))+2))
-            edge_ids_1 = set()
-            edge_ids_2 = set()
-            
+            linked_tris = pair_coordinates(mesh.tri_centers, tri_ids_1, tri_ids_2, dv, 1e-9)
+            linked_edges = pair_coordinates(mesh.edge_centers, edge_ids_1, edge_ids_2, dv, 1e-9)
+            dv = np.array(bc.dv)
             phi = bc.phi(k0)
-            for i1, i2 in zip(tri_ids_1, tri_ids_2):
-                trimapdict[gen_key(mesh.tri_centers[:,i1], mult)][0] = i1
-                trimapdict[gen_key(mesh.tri_centers[:,i2]-dv, mult)][1] = i2
-                
-                ie1, ie2, ie3 = mesh.tri_to_edge[:,i1]
-                edge_ids_1.update({ie1, ie2, ie3})
-                ie1, ie2, ie3 = mesh.tri_to_edge[:,i2]
-                edge_ids_2.update({ie1, ie2, ie3})
             
-            for i1, i2 in zip(list(edge_ids_1), list(edge_ids_2)):
-                edgemapdict[gen_key(mesh.edge_centers[:,i1], mult)][0] = i1
-                edgemapdict[gen_key(mesh.edge_centers[:,i2]-dv, mult)][1] = i2
-
-            
-            for t1, t2 in trimapdict.values():
-                f11, f21 = field.tri_to_field[[3,7],t1]
-                f12, f22 = field.tri_to_field[[3,7],t2]
-                Pmat[f12,f12] = 0
-                Pmat[f22,f22] = 0
-                if Pmat[f12,f11] == 0:
-                    Pmat[f12,f11] += phi
-                else:
-                    Pmat[f12,f11] *= phi
-                
-                if Pmat[f22,f21] == 0:
-                    Pmat[f22,f21] += phi
-                else:
-                    Pmat[f22,f21] *= phi
-                remove.add(f12)
-                remove.add(f22)
-                
-            for e1, e2 in edgemapdict.values():
-                f11, f21 = field.edge_to_field[:,e1]
-                f12, f22 = field.edge_to_field[:,e2]
-                Pmat[f12,f12] = 0
-                Pmat[f22,f22] = 0
-                if Pmat[f12,f11] == 0:
-                    Pmat[f12,f11] += phi
-                else:
-                    Pmat[f12,f11] *= phi
-                
-                if Pmat[f22,f21] == 0:
-                    Pmat[f22,f21] += phi
-                else:
-                    Pmat[f22,f21] *= phi
-                remove.add(f12)
-                remove.add(f22)
-                
+            Pmat, rows = gen_periodic_matrix(tri_ids_1,
+                                       edge_ids_1,
+                                       field.tri_to_field,
+                                       field.edge_to_field,
+                                       linked_tris,
+                                       linked_edges,
+                                       field.n_field,
+                                       phi)
+            remove.update(rows)
             Pmats.append(Pmat)
         
         if Pmats:

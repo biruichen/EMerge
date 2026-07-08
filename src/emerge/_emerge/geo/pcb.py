@@ -35,8 +35,25 @@ from dataclasses import dataclass
 import math
 
 
-SizeNames = Literal['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']
+############################################################
+#                        EXCEPTIONS                        #
+############################################################
+
+class RouteException(Exception):
+    pass
+
+############################################################
+#                         CONSTANTS                        #
+############################################################
+
+SIZE_NAMES = Literal['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']
 _SMD_SIZE_DICT = {x: (float(x[:2])*0.05, float(x[2:])*0.1) for x in ['0402','0603','1005','1608','2012','3216','3225','4532','5025','6332']}
+
+
+############################################################
+#                         FUNCTIONS                        #
+############################################################
+
 
 def approx(a,b):
     return abs(a-b) < 1e-8
@@ -51,8 +68,10 @@ def _rot_mat(angle):
     ang = -angle * np.pi/180
     return np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
 
-class RouteException(Exception):
-    pass
+############################################################
+#                          CLASSES                         #
+############################################################
+
 
 class PCBPoly:
 
@@ -240,10 +259,14 @@ class StripTurn(RouteElement):
 
             return [(xend, yend), (x2, y2), (x1, y1)]
  
+############################################################
+#                    THE STRIP PATH CLASS                  #
+############################################################
+
 class StripPath:
 
-    def __init__(self, pcb: PCBLayouter):
-        self.pcb: PCBLayouter = pcb
+    def __init__(self, pcb: PCB):
+        self.pcb: PCB = pcb
         self.path: list[RouteElement] = []
         self.z: float = 0
 
@@ -423,7 +446,7 @@ class StripPath:
         self.pcb._checkpoint = self
         return paths
 
-    def lumped_element(self, impedance_function: Callable, size: SizeNames | tuple) -> StripPath:
+    def lumped_element(self, impedance_function: Callable, size: SIZE_NAMES | tuple) -> StripPath:
         """Adds a lumped element to the PCB.
 
         The first argument should be the impedance function as function of frequency. For a capacitor this would be:
@@ -730,7 +753,7 @@ class StripPath:
         return self
 
     def macro(self, path: str, width: float = None, start_dir: tuple[float, float] = None) -> StripPath:
-        """Parse an EMerge macro command string
+        r"""Parse an EMerge macro command string
 
         The start direction by default is the abslute current heading. If a specified heading is provided
         the macro language will assume that as the current heading and generate commands accordingly. 
@@ -743,7 +766,7 @@ class StripPath:
         - v X: Turn to down and move X forward
         - ^ X: Turn to up and move X forward
         - T X,Y: Taper X forward to width Y
-        - \ X: Turn relative right 90 degrees and X forward
+        - \\ X: Turn relative right 90 degrees and X forward
         - / X: Turn relative left 90 degrees and X forward
 
         (*) All commands X can also be provided as X,Y to change the width
@@ -771,8 +794,12 @@ class StripPath:
         if element_nr >= len(self.path):
             self.path.append(RouteElement())
         return self.path[element_nr]
-    
-class PCBLayouter:
+
+############################################################
+#                     PCB DESIGN CLASS                    #
+############################################################
+
+class PCB:
     def __init__(self,
                  thickness: float,
                  unit: float = 0.001,
@@ -1242,3 +1269,14 @@ class PCBLayouter:
             polys.material = COPPER
         return polys
                 
+
+############################################################
+#                        DEPRICATED                       #
+############################################################
+
+class PCBLayouter(PCB):
+
+    def __init__(self, *args, **kwargs):
+        logger.warning('PCBLayouter will be depricated. Use PCB instead.')
+        super().__init__(*args, **kwargs)
+        

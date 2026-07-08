@@ -31,8 +31,8 @@ pack = '0603'         # package footprint for lumped components
 m = em.Simulation3D('LumpedFilter', loglevel='DEBUG')
 th = 0.5         # substrate thickness (meters)
 Hair = 2.0
-pcb = em.geo.PCBLayouter(th, unit=mm, cs=em.GCS,
-                          material=em.lib.ROGERS_RO4003C, layers=2)
+pcb = em.geo.PCB(th, unit=mm, cs=em.GCS,
+                          material=em.lib.DIEL_RO4003C, layers=2)
 # Compute 50-ohm microstrip width
 w0 = pcb.calc.z0(50)
 
@@ -72,7 +72,7 @@ diel = pcb.gen_pcb()                   # substrate dielectric block
 air = pcb.gen_air(Hair)                  # surrounding air block
 
 # Add all geometry to simulation
-m.define_geometry()
+m.commit_geometry()
 
 # --- Solver and mesh settings -------------------------------------------
 m.mw.set_frequency_range(0.05e9, 0.3e9, 51)       # 50–300 MHz sweep

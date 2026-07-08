@@ -77,7 +77,7 @@ model['wg'] = em.geo.Box(wga,wgb,fl, (-wga/2, -wgb/2,-fl) )
 
 # Next we define our geometry as usual
 # Beause we stored our geometry in our model object using the get and set-item notation. We don't have to pass the items anymore.
-model.define_geometry()
+model.commit_geometry()
 
 model.mw.set_frequency_range(2.8e9, 3.3e9, 5)
 model.mw.set_resolution(0.1)

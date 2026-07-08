@@ -18,22 +18,29 @@ along with this program; if not, see
 """
 import os
 
-NTHREADS = "1"
 
-os.environ["OMP_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
+############################################################
+#               HANDLE ENVIRONMENT VARIABLES              #
+############################################################
+
+NTHREADS = "1"
+os.environ["EMERGE_STD_LOGLEVEL"] = os.getenv("EMERGE_STD_LOGLEVEL", default="INFO")
+os.environ["EMERGE_FILE_LOGLEVEL"] = os.getenv("EMERGE_FILE_LOGLEVEL", default="DEBUG")
+os.environ["OMP_NUM_THREADS"] = os.getenv("OMP_NUM_THREADS", default="4")
+os.environ["MKL_NUM_THREADS"] = os.getenv("MKL_NUM_THREADS", default="4")
 os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS
 os.environ["VECLIB_MAXIMUM_THREADS"] = NTHREADS
 os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS
 
 
+############################################################
+#                      IMPORT MODULES                     #
+############################################################
+
+from ._emerge.logsettings import LOG_CONTROLLER
 from loguru import logger
-from ._emerge.logsettings import logger_format
-import sys
 
-logger.remove()
-logger.add(sys.stderr, format=logger_format)
-
+LOG_CONTROLLER.set_default()
 logger.debug('Importing modules')
 
 from ._emerge.simmodel import Simulation3D

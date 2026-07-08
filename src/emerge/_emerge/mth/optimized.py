@@ -18,6 +18,12 @@
 from numba import njit, f8, i8, types, c16
 import numpy as np
 
+
+
+############################################################
+#             TRIANGLE GAUSS QUADRATURE POINTS            #
+############################################################
+
 _GAUSQUADTRI = {
     1: [(1, 1, 1/3, 1/3, 1/3),],
     2: [(3, 1/3, 2/3, 1/6, 1/6),],
@@ -54,7 +60,9 @@ _GAUSQUADTRI = {
          (6, 0.009421666963733, 0.009540815400299, 0.066803251012200, 0.923655933587500)]
 }
 
-
+############################################################
+#            TETRAHEDRON GAUSS QUADRATURE POINTS           #
+############################################################
 
 _GAUSQUADTET = {
     1: [(1, 1, 0.25, 0.25, 0.25, 0.25),],
@@ -69,8 +77,13 @@ _GAUSQUADTET = {
         (1, 0.1493333333, 0.1005964238, 0.3994035762, 0.3994035762, 0.1005964238),
         (1, 0.1493333333, 0.1005964238, 0.3994035762, 0.1005964238, 0.3994035762),
         (1, 0.1493333333, 0.1005964238, 0.1005964238, 0.3994035762, 0.3994035762),],
-    5: [()]
+    5: None
 }
+
+
+############################################################
+#                         FUNCTIONS                        #
+############################################################
 
 def gaus_quad_tri(p: int) -> np.ndarray:
     """
@@ -134,6 +147,12 @@ def gaus_quad_tet(p: int) -> np.ndarray:
             l1, l2, l3, l4 = l2, l3, l4, l1
     pts = np.array(Pts).T
     return pts
+
+
+
+############################################################
+#                      NUMBA COMPILED                     #
+############################################################
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], i8[:]))(f8[:,:], i8[:,:], f8[:,:]), cache=True, nogil=True)
 def generate_int_points_tri(nodes: np.ndarray,
@@ -200,14 +219,44 @@ def generate_int_points_tet(nodes: np.ndarray,
     shape = np.array((nPTS, tets.shape[1]))
 
     return xall_flat, yall_flat, zall_flat, shape
-############## 0.1005964238a Compiled
 
 @njit(f8(f8[:], f8[:]), cache=True, fastmath=True, nogil=True)
-def dot(a: np.ndarray, b: np.ndarray):
+def dot(a: np.ndarray, b: np.ndarray) -> float:
+    """Computes a dot product of two 3D vectors
+
+    Args:
+        a (np.ndarray): (3,) array
+        b (np.ndarray): (3,) array
+
+    Returns:
+        float: a · b
+    """
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+
+@njit(c16(c16[:], c16[:]), cache=True, fastmath=True, nogil=True)
+def dot_c(a: np.ndarray, b: np.ndarray) -> complex:
+    """Computes the complex dot product of two 3D vectors
+
+    Args:
+        a (np.ndarray): (3,) array
+        b (np.ndarray): (3,) array
+
+    Returns:
+        complex: a · b
+    """
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 
 @njit(f8[:](f8[:], f8[:]), cache=True, fastmath=True, nogil=True)
-def cross(a: np.ndarray, b: np.ndarray):
+def cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Optimized single vector cross product
+
+    Args:
+        a (np.ndarray): (3,) vector a
+        b (np.ndarray): (3,) vector b
+
+    Returns:
+        np.ndarray: a ⨉ b
+    """
     crossv = np.empty((3,), dtype=np.float64)
     crossv[0] = a[1]*b[2] - a[2]*b[1]
     crossv[1] = a[2]*b[0] - a[0]*b[2]
@@ -216,6 +265,15 @@ def cross(a: np.ndarray, b: np.ndarray):
 
 @njit(c16[:](c16[:], c16[:]), cache=True, fastmath=True, nogil=True)
 def cross_c(a: np.ndarray, b: np.ndarray):
+    """Optimized complex single vector cross product
+
+    Args:
+        a (np.ndarray): (3,) vector a
+        b (np.ndarray): (3,) vector b
+
+    Returns:
+        np.ndarray: a ⨉ b
+    """
     crossv = np.empty((3,), dtype=np.complex128)
     crossv[0] = a[1]*b[2] - a[2]*b[1]
     crossv[1] = a[2]*b[0] - a[0]*b[2]
@@ -223,7 +281,21 @@ def cross_c(a: np.ndarray, b: np.ndarray):
     return crossv
 
 @njit(f8[:](f8[:], f8[:], f8[:], f8[:]), cache=True, nogil=True)
-def outward_normal(n1, n2, n3, o):
+def outward_normal(n1: np.ndarray, n2: np.ndarray, n3: np.ndarray, o: np.ndarray) -> np.ndarray:
+    """Copmutes an outward normal vector of a triangle spanned by 3 points.
+
+    Computes the triangle surface (n1, n2, n3) which have normal n. 
+    The normal is aligned with respect to an origin.
+
+    Args:
+        n1 (np.ndarray): Node 1 (3,) array
+        n2 (np.ndarray): Node 2 (3,) array
+        n3 (np.ndarray): Node 3 (3,) array
+        o (np.ndarray): The alignment origin
+
+    Returns:
+        Node 1 (3,) array: The outward pointing normal
+    """
     e1 = n2-n1
     e2 = n3-n1
     n = cross(e1, e2)
@@ -234,15 +306,21 @@ def outward_normal(n1, n2, n3, o):
     return n*sgn
     
 @njit(f8(f8[:], f8[:], f8[:]), cache=True, fastmath=True, nogil=True)
-def calc_area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
+def calc_area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> float:
+    """Computes the tirangle surface area of the traingle spun by three nodes.
+
+    Args:
+        x1 (np.ndarray): Node 1 (3,) array
+        x2 (np.ndarray): Node 2 (3,) array
+        x3 (np.ndarray): Node 3 (3,) array
+
+    Returns:
+        float: The surface area
+    """
     e1 = x2 - x1
     e2 = x3 - x1
     av = cross(e1, e2)
     return np.sqrt(av[0]**2 + av[1]**2 + av[2]**2)/2
-
-@njit(c16(c16[:], c16[:]), cache=True, fastmath=True, nogil=True)
-def dot_c(a: np.ndarray, b: np.ndarray):
-    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 
 @njit(i8[:, :](i8[:], i8[:, :]), cache=True, nogil=True)
 def local_mapping(vertex_ids, triangle_ids):
@@ -281,7 +359,7 @@ def local_mapping(vertex_ids, triangle_ids):
     return out
 
 @njit(f8[:,:](f8[:], f8[:], f8[:]), cache=True, nogil=True)
-def orthonormal_basis(xs, ys, zs):
+def orthonormal_basis(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
     """
     Returns an orthonormal basis for the tetrahedron defined by the points
     xs, ys, zs. The basis is given as a 3x3 matrix with the first column being
@@ -325,33 +403,48 @@ def compute_distances(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> np.ndar
 ids = np.array([[0, 0, 1, 1, 2, 2],[1,2,0, 2, 0, 1]], dtype=np.int64)
 
 @njit(c16[:,:](c16[:,:]), cache=True, nogil=True)
-def matinv(s: np.ndarray) -> np.ndarray:
+def matinv(M: np.ndarray) -> np.ndarray:
+    """Optimized matrix inverse of 3x3 matrix
 
+    Args:
+        M (np.ndarray): Input matrix M of shape (3,3)
+
+    Returns:
+        np.ndarray: The matrix inverse inv(M)
+    """
     out = np.zeros((3,3), dtype=np.complex128)
    
-    if s[0,1]==0 and s[0,2]==0 and s[1,0]==0 and s[1,2]==0 and s[2,0]==0 and s[2,1]==0:
-        out[0,0] = 1/s[0,0]
-        out[1,1] = 1/s[1,1]
-        out[2,2] = 1/s[2,2]
+    if M[0,1]==0 and M[0,2]==0 and M[1,0]==0 and M[1,2]==0 and M[2,0]==0 and M[2,1]==0:
+        out[0,0] = 1/M[0,0]
+        out[1,1] = 1/M[1,1]
+        out[2,2] = 1/M[2,2]
     else:
-        det = s[0,0]*s[1,1]*s[2,2] - s[0,0]*s[1,2]*s[2,1] - s[0,1]*s[1,0]*s[2,2] + s[0,1]*s[1,2]*s[2,0] + s[0,2]*s[1,0]*s[2,1] - s[0,2]*s[1,1]*s[2,0]
-        out[0,0] = s[1,1]*s[2,2] - s[1,2]*s[2,1]
-        out[0,1] = -s[0,1]*s[2,2] + s[0,2]*s[2,1]
-        out[0,2] = s[0,1]*s[1,2] - s[0,2]*s[1,1]
-        out[1,0] = -s[1,0]*s[2,2] + s[1,2]*s[2,0]
-        out[1,1] = s[0,0]*s[2,2] - s[0,2]*s[2,0]
-        out[1,2] = -s[0,0]*s[1,2] + s[0,2]*s[1,0]
-        out[2,0] = s[1,0]*s[2,1] - s[1,1]*s[2,0]
-        out[2,1] = -s[0,0]*s[2,1] + s[0,1]*s[2,0]
-        out[2,2] = s[0,0]*s[1,1] - s[0,1]*s[1,0]
+        det = M[0,0]*M[1,1]*M[2,2] - M[0,0]*M[1,2]*M[2,1] - M[0,1]*M[1,0]*M[2,2] + M[0,1]*M[1,2]*M[2,0] + M[0,2]*M[1,0]*M[2,1] - M[0,2]*M[1,1]*M[2,0]
+        out[0,0] = M[1,1]*M[2,2] - M[1,2]*M[2,1]
+        out[0,1] = -M[0,1]*M[2,2] + M[0,2]*M[2,1]
+        out[0,2] = M[0,1]*M[1,2] - M[0,2]*M[1,1]
+        out[1,0] = -M[1,0]*M[2,2] + M[1,2]*M[2,0]
+        out[1,1] = M[0,0]*M[2,2] - M[0,2]*M[2,0]
+        out[1,2] = -M[0,0]*M[1,2] + M[0,2]*M[1,0]
+        out[2,0] = M[1,0]*M[2,1] - M[1,1]*M[2,0]
+        out[2,1] = -M[0,0]*M[2,1] + M[0,1]*M[2,0]
+        out[2,2] = M[0,0]*M[1,1] - M[0,1]*M[1,0]
         out = out*det
     return out
 
-
 @njit(cache=True, nogil=True)
-def matmul(a: np.ndarray, b: np.ndarray):
-    out = np.empty((3,b.shape[1]), dtype=b.dtype)
-    out[0,:] = a[0,0]*b[0,:] + a[0,1]*b[1,:] + a[0,2]*b[2,:]
-    out[1,:] = a[1,0]*b[0,:] + a[1,1]*b[1,:] + a[1,2]*b[2,:]
-    out[2,:] = a[2,0]*b[0,:] + a[2,1]*b[1,:] + a[2,2]*b[2,:]
+def matmul(M: np.ndarray, vecs: np.ndarray):
+    """Executes a basis transformation of vectors (3,N) with a basis matrix M
+
+    Args:
+        M (np.ndarray): A (3,3) basis matrix
+        vec (np.ndarray): A (3,N) set of coordinates
+
+    Returns:
+        np.ndarray: The transformed (3,N) set of vectors
+    """
+    out = np.empty((3,vecs.shape[1]), dtype=vecs.dtype)
+    out[0,:] = M[0,0]*vecs[0,:] + M[0,1]*vecs[1,:] + M[0,2]*vecs[2,:]
+    out[1,:] = M[1,0]*vecs[0,:] + M[1,1]*vecs[1,:] + M[1,2]*vecs[2,:]
+    out[2,:] = M[2,0]*vecs[0,:] + M[2,1]*vecs[1,:] + M[2,2]*vecs[2,:]
     return out

@@ -176,9 +176,9 @@ class Microwave3D:
         logger.debug('Initializing boundary conditions.')
 
         tags = self.mesher.domain_boundary_face_tags
+        tags = [tag for tag in tags if tag not in self.bc.assigned(2)]
         self.bc.PEC(FaceSelection(tags))
         logger.info(f'Adding PEC boundary condition with tags {tags}.')
-
         if self.mesher.periodic_cell is not None:
             self.mesher.periodic_cell.generate_bcs()
             for bc in self.mesher.periodic_cell.bcs:
@@ -656,7 +656,7 @@ class Microwave3D:
             # ITERATE OVER FREQUENCIES
             freq_groups
             for i_group, fgroup in enumerate(freq_groups):
-                logger.debug(f'Precomputing group {i_group}.')
+                logger.info(f'Precomputing group {i_group}.')
                 jobs = []
                 ## Assemble jobs
                 for ifreq, freq in enumerate(fgroup):
@@ -681,7 +681,7 @@ class Microwave3D:
             with ThreadPoolExecutor(max_workers=njobs) as executor:
                 # ITERATE OVER FREQUENCIES
                 for i_group, fgroup in enumerate(freq_groups):
-                    logger.debug(f'Precomputing group {i_group}.')
+                    logger.info(f'Precomputing group {i_group}.')
                     jobs = []
                     ## Assemble jobs
                     for freq in fgroup:

@@ -31,8 +31,11 @@ class BCDimension(Enum):
 
 def _unique(input: list[int]) -> list:
     """ Returns a sorted list of all unique integers/floats in a list."""
-    output = sorted(list(set(input)))
-    return output
+    return sorted(list(set(input)))
+
+############################################################
+#               BASE BOUNDARY CONDITION CLASS              #
+############################################################
 
 class BoundaryCondition:
     """A generalized class for all boundary condition objects.
@@ -141,13 +144,47 @@ class BoundaryConditionSet:
             return obj
         return constr
     
+    def assigned(self, dim: int = 2) -> list[int]:
+        """Returns all boundary tags that have a boundary condition assigned to them
+
+        Args:
+            dim (int, optional): The dimension. Defaults to 2.
+
+        Returns:
+            list[int]: The list of tags
+        """
+        tags = []
+        for bc in self.boundary_conditions:
+            if bc.dim != dim:
+                continue
+            tags.extend(bc.tags)
+        return tags
+
     def count(self, bctype: type) -> int:
+        """Returns the number of a certain boundary condition type
+
+        Args:
+            bctype (type): The boundary condtion type
+
+        Returns:
+            int: The number of occurances
+        """
         return len(self.oftype(bctype))
     
     def oftype(self, bctype: type) -> list[BoundaryCondition]:
+        """Returns a list of all boundary conditions of a certain type.
+
+        Args:
+            bctype (type): The boundar condition type
+
+        Returns:
+            list[BoundaryCondition]: The list of boundary conditions
+        """
         return [item for item in self. boundary_conditions if isinstance(item, bctype)]
 
     def reset(self) -> None:
+        """Resets the boundary conditions that are defined
+        """
         self.boundary_conditions = []
 
     def assign(self, 
@@ -158,6 +195,8 @@ class BoundaryConditionSet:
         Args:
             bcs *(BoundaryCondition): A list of boundary condition objects.
         """
+        if bc in self.boundary_conditions:
+            return
         self._initialized = True
         wordmap = {
             0: 'point',

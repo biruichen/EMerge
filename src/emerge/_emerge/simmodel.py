@@ -22,8 +22,7 @@ from .geo.modeler import Modeler
 from .physics.microwave.microwave_3d import Microwave3D
 from .mesh3d import Mesh3D
 from .selection import Selector, FaceSelection, Selection
-from .logsettings import logger_format
-from .plot.display import BaseDisplay
+from .logsettings import LOG_CONTROLLER
 from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
 from .periodic import PeriodicCell
@@ -40,6 +39,11 @@ from pathlib import Path
 from atexit import register
 import signal
 
+
+############################################################
+#                   EXCEPTION DEFINITIONS                  #
+############################################################
+
 _GMSH_ERROR_TEXT = """
 --------------------------
 Known problems/solutions:
@@ -48,9 +52,14 @@ Known problems/solutions:
 --------------------------
 """
 
+
 class SimulationError(Exception):
     pass
 
+
+############################################################
+#                 BASE 3D SIMULATION MODEL                 #
+############################################################
 
 class Simulation3D:
 
@@ -74,6 +83,7 @@ class Simulation3D:
             logfile (bool, optional): If a file should be created that contains the entire log of the simulation. Defaults to False.
             path_suffix (str, optional): The suffix that will be added to the results directory. Defaults to ".EMResults".
         """
+
         caller_file = Path(inspect.stack()[1].filename).resolve()
         base_path = caller_file.parent
 
@@ -93,8 +103,9 @@ class Simulation3D:
         self._cell: PeriodicCell = None
 
         self.display = PVDisplay(self.mesh)
+
         if logfile:
-            self.set_logfile(logfile)
+            self.set_logfile()
 
         self.save_file: bool = save_file
         self.load_file: bool = load_file
@@ -107,6 +118,11 @@ class Simulation3D:
         self._initialize_simulation()
 
         self._update_data()
+    
+
+    ############################################################
+    #                       PRIVATE FUNCTIONS                  #
+    ############################################################
 
     def __setitem__(self, name: str, value: Any) -> None:
         """Store data in the current data container"""
@@ -116,6 +132,82 @@ class Simulation3D:
         """Get the data from the current data container"""
         return self.data.sim[name]
     
+    def __enter__(self) -> Simulation3D:
+        """This method is depricated with the new atexit system. It still exists for backwards compatibility.
+
+        Returns:
+            Simulation3D: the Simulation3D object
+        """
+        return self
+
+    def __exit__(self, type, value, tb):
+        """This method no longer does something. It only serves as backwards compatibility."""
+        self._exit_gmsh()
+        return False
+    
+    def _install_signal_handlers(self):
+        # on SIGINT (Ctrl-C) or SIGTERM, call our exit routine
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, self._handle_signal)
+    
+    def _handle_signal(self, signum, frame):
+        """
+        Signal handler: do our cleanup, then re-raise
+        the default handler so that exit code / traceback
+        is as expected.
+        """
+        try:
+            # run your atexit-style cleanup
+            self._exit_gmsh()
+        except Exception:
+            # log but don’t block shutdown
+            logger.exception("Error during signal cleanup")
+        finally:
+            # restore default handler and re‐send the signal
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+    def _initialize_simulation(self):
+        """Initializes the Simulation data and GMSH API with proper shutdown routines.
+        """
+        _GEOMANAGER.sign_in(self.modelname)
+        
+        # If GMSH is not yet initialized (Two simulation in a file)
+        if gmsh.isInitialized() == 0:
+            logger.debug('Initializing GMSH')
+            gmsh.initialize()
+            
+            # Set an exit handler for Ctrl+C cases
+            self._install_signal_handlers()
+
+            # Restier the Exit GMSH function on proper program abortion
+            register(self._exit_gmsh)
+
+        # Create a new GMSH model or load it
+        if not self.load_file:
+            gmsh.model.add(self.modelname)
+            self.data: SimulationDataset = SimulationDataset()
+        else:
+            self.load()
+
+        # Set the Simulation state to active
+        self.__active = True
+        return self
+
+    def _exit_gmsh(self):
+        # If the simulation object state is still active (GMSH is running)
+        if not self.__active:
+            return
+        logger.debug('Exiting program')
+        # Save the file first
+        if self.save_file:
+            self.save()
+        # Finalize GMSH
+        gmsh.finalize()
+        logger.debug('GMSH Shut down successful')
+        # set the state to active
+        self.__active = False
+
     def _update_data(self) -> None:
         """Writes the stored physics data to each phyics class insatnce"""
         self.mw.data = self.data.mw
@@ -128,17 +220,21 @@ class Simulation3D:
         """Returns all boundary condition objects stored in the simulation file"""
         return [obj for obj in self.sim.default.values() if isinstance(obj, BoundaryCondition)]
     
-    @property
-    def passed_geometries(self) -> list[GeoObject]:
-        """"""
-        return self.data.sim['geometries']
-    
-    def set_mesh(self, mesh: Mesh3D) -> None:
+    def _set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
         self.mesh = mesh
         self.mw.mesh = mesh
         self.mesher.mesh = mesh
         self.display._mesh = mesh
+    
+    ############################################################
+    #                       PUBLIC FUNCTIONS                  #
+    ############################################################
+
+    @property
+    def passed_geometries(self) -> list[GeoObject]:
+        """"""
+        return self.data.sim['geometries']
     
     def save(self) -> None:
         """Saves the current model in the provided project directory."""
@@ -186,11 +282,8 @@ class Simulation3D:
         # Load data
         datapack = joblib.load(str(data_path))
         self.data = datapack['simdata']
-        self.set_mesh(datapack['mesh'])
+        self._set_mesh(datapack['mesh'])
         logger.info(f"Loaded simulation data from: {data_path}")
-
-    def load_data(self, key: str) -> Any:
-        return self.save_data[key]
     
     def set_loglevel(self, loglevel: Literal['DEBUG','INFO','WARNING','ERROR']) -> None:
         """Set the loglevel for loguru.
@@ -198,12 +291,11 @@ class Simulation3D:
         Args:
             loglevel ('DEBUG','INFO','WARNING','ERROR'): The loglevel
         """
-        handler = {"sink": sys.stdout, "level": loglevel, "format": logger_format}
-        logger.configure(handlers=[handler])
+        LOG_CONTROLLER.set_std_loglevel(loglevel)
 
     def set_logfile(self) -> None:
         """Adds a file output for the logger."""
-        logger.add(str(self.modelpath / 'logging.log'), mode='w', level='DEBUG', format=logger_format, colorize=False, backtrace=True, diagnose=True)
+        LOG_CONTROLLER.set_write_file(self.modelpath)
         
     def view(self, 
              selections: list[Selection] = None, 
@@ -240,15 +332,20 @@ class Simulation3D:
             'sure that this method is properly implemented.')
     
     def set_periodic_cell(self, cell: PeriodicCell, excluded_faces: list[FaceSelection] = None):
-        """Sets the periodic cell information based on the PeriodicCell class object"""
+        """Set the given periodic cell object as the simulations peridicity.
+
+        Args:
+            cell (PeriodicCell): The PeriodicCell class
+            excluded_faces (list[FaceSelection], optional): Faces to exclude from the periodic boundary condition. Defaults to None.
+        """
         self.mw.bc._cell = cell
         self._cell = cell
 
-    def define_geometry(self, *geometries: list[GeoObject]) -> None:
-        """Provide the physics engine with the geometries that are contained and ought to be included
-        in the simulation. Please make sure to include all geometries. Its currently unclear how the
-        system behaves if only a part of all geometries are included.
+    def commit_geometry(self, *geometries: list[GeoObject]) -> None:
+        """Finalizes and locks the current geometry state of the simulation.
 
+        The geometries may be provided (legacy behavior) but are automatically managed underwater.
+        
         """
         if not geometries:
             geometries = _GEOMANAGER.all_geometries()
@@ -258,15 +355,10 @@ class Simulation3D:
         self.mesher.submit_objects(geometries)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
-        # Set the cell periodicity in GMSH
-        if self._cell is not None:
-            self.mesher.set_periodic_cell(self._cell)
-            
-        self.mw._initialize_bcs()
-    
-    def generate_mesh(self):
+          
+    def generate_mesh(self) -> None:
         """Generate the mesh. 
-        This can only be done after define_geometry(...) is called and if frequencies are defined.
+        This can only be done after commit_geometry(...) is called and if frequencies are defined.
 
         Args:
             name (str, optional): The mesh file name. Defaults to "meshname.msh".
@@ -275,8 +367,14 @@ class Simulation3D:
             ValueError: ValueError if no frequencies are defined.
         """
         if not self._defined_geometries:
-            self.define_geometry()
+            self.commit_geometry()
         
+        # Set the cell periodicity in GMSH
+        if self._cell is not None:
+            self.mesher.set_periodic_cell(self._cell)
+            
+        self.mw._initialize_bcs()
+
         # Check if frequencies are defined: TODO: Replace with a more generic check
         if self.mw.frequencies is None:
             raise ValueError('No frequencies defined for the simulation. Please set frequencies before generating the mesh.')
@@ -296,25 +394,7 @@ class Simulation3D:
         self.mesh.update(self.mesher._get_periodic_bcs())
         self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
         gmsh.model.occ.synchronize()
-        self.set_mesh(self.mesh)
-
-    def get_boundary(self, face: FaceSelection = None, tags: list[int] = None) -> tuple[np.ndarray, np.ndarray]:
-        ''' Return boundary data. 
-        
-        Parameters
-        ----------
-        obj: GeoObject
-        tags: list[int]
-        
-        Returns:
-        ----------
-        nodes: np.ndarray
-        triangles: np.ndarray
-        '''
-        if tags is None:
-            tags = face.tags
-        tri_ids = self.mesh.get_triangles(tags)
-        return self.mesh.nodes, self.mesh.tris[:,tri_ids]
+        self._set_mesh(self.mesh)
 
     def parameter_sweep(self, clear_mesh: bool = True, **parameters: np.ndarray) -> Generator[tuple[float,...], None, None]:
         """Executes a parameteric sweep iteration.
@@ -349,7 +429,7 @@ class Simulation3D:
                 gmsh.clear()
                 mesh = Mesh3D(self.mesher)
                 _GEOMANAGER.reset(self.modelname)
-                self.set_mesh(mesh)
+                self._set_mesh(mesh)
                 self.mw.reset()
             
             params = {key: dim[i_iter] for key,dim in zip(paramlist, dims_flat)}
@@ -363,81 +443,12 @@ class Simulation3D:
                 yield (dim[i_iter] for dim in dims_flat)
         self.mw.cache_matrices = True
 
-    def __enter__(self) -> Simulation3D:
-        """This method is depricated with the new atexit system. It still exists for backwards compatibility.
+    ############################################################
+    #                     DEPRICATED FUNCTIONS                #
+    ############################################################
 
-        Returns:
-            Simulation3D: the Simulation3D object
+    def define_geometry(self, *args):
+        """DEPRICATED VERSION: Use .commit_geometry()
         """
-        return self
-
-    def __exit__(self, type, value, tb):
-        """This method no longer does something. It only serves as backwards compatibility."""
-        self._exit_gmsh()
-        return False
-    
-    def _install_signal_handlers(self):
-        # on SIGINT (Ctrl-C) or SIGTERM, call our exit routine
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, self._handle_signal)
-    
-    def _handle_signal(self, signum, frame):
-        """
-        Signal handler: do our cleanup, then re-raise
-        the default handler so that exit code / traceback
-        is as expected.
-        """
-        try:
-            # run your atexit-style cleanup
-            self._exit_gmsh()
-        except Exception:
-            # log but don’t block shutdown
-            logger.exception("Error during signal cleanup")
-        finally:
-            # restore default handler and re‐send the signal
-            signal.signal(signum, signal.SIG_DFL)
-            os.kill(os.getpid(), signum)
-
- 
-    def _initialize_simulation(self):
-        """Initializes the Simulation data and GMSH API with proper shutdown routines.
-        """
-        _GEOMANAGER.sign_in(self.modelname)
-        
-        # If GMSH is not yet initialized (Two simulation in a file)
-        if gmsh.isInitialized() == 0:
-            logger.debug('Initializing GMSH')
-            gmsh.initialize()
-            
-            # Set an exit handler for Ctrl+C cases
-            self._install_signal_handlers()
-
-            # Restier the Exit GMSH function on proper program abortion
-            register(self._exit_gmsh)
-
-        # Create a new GMSH model or load it
-        if not self.load_file:
-            gmsh.model.add(self.modelname)
-            self.data: SimulationDataset = SimulationDataset()
-        else:
-            self.load()
-
-        # Set the Simulation state to active
-        self.__active = True
-        return self
-
-    def _exit_gmsh(self):
-        # If the simulation object state is still active (GMSH is running)
-        if not self.__active:
-            return
-        logger.debug('Exiting program')
-        # Save the file first
-        if self.save_file:
-            self.save()
-        # Finalize GMSH
-        gmsh.finalize()
-        logger.debug('GMSH Shut down successful')
-        # set the state to active
-        self.__active = False
-
-   
+        logger.warning('define_geometry() will be derpicated. Use commit_geometry() instead.')
+        self.commit_geometry(*args)

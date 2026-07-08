@@ -72,7 +72,7 @@ feed1out = em.geo.subtract(feed1out, feed1in)
 feed2out = em.geo.subtract(feed2out, feed2in)
 
 # Finally we may define our geometry
-model.define_geometry()
+model.commit_geometry()
 
 model.view()
 

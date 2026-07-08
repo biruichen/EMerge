@@ -42,7 +42,7 @@ model = em.Simulation3D('Demo3', loglevel='DEBUG')
 # --- Material and layouter -----------------------------------------------
 mat = em.Material(er=3.55, color="#488343", opacity=0.1)
 # Create PCB layouter with given substrate thickness and units
-pcb = em.geo.PCBLayouter(th, unit=mil)
+pcb = em.geo.PCB(th, unit=mil)
 
 # --- Route coupled-line trace --------------------------------------------
 # start at (0,140) with width w0
@@ -96,7 +96,7 @@ model.mw.set_resolution(0.2)            # mesh density: fraction of wavelength
 model.mw.set_frequency_range(5.2e9, 6.2e9, 31)  # 5.2–6.2 GHz, 31 points
 
 # --- Assemble geometry into simulation -----------------------------------
-model.define_geometry(stripline, diel, p1, p2, air)
+model.commit_geometry(stripline, diel, p1, p2, air)
 
 # --- Mesh refinement -----------------------------------------------------
 model.mesher.set_boundary_size(stripline, 0.5 * mm)

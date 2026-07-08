@@ -87,7 +87,7 @@ abc = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
 # --- Run frequency-domain solver ----------------------------------------
-data = m.mw.frequency_domain(True, 2, frequency_groups=4)
+data = m.mw.frequency_domain()
 
 # --- Plot return loss ---------------------------------------------------
 scal = data.scalar.grid
