@@ -73,7 +73,7 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         """
         bcs = self.oftype(PEC)
         for bc in self.oftype(SurfaceImpedance):
-            if bc.material.cond > 1e3:
+            if bc.sigma > 1e3:
                 bcs.append(bc)
 
         return bcs
@@ -1034,12 +1034,13 @@ class SurfaceImpedance(RobinBC):
         self._material: Material | None = material
         self._mur: float | complex = 1.0
         self._epsr: float | complex = 1.0
-
         self.sigma: float = 0.0
+        
         if material is not None:
             self.sigma = material.cond
             self._mur = material.ur
             self._epsr = material.er
+        
         if surface_conductance is not None:
             self.sigma = surface_conductance
         
@@ -1066,10 +1067,15 @@ class SurfaceImpedance(RobinBC):
         Returns:
             complex: The γ-constant
         """
+        
         w0 = k0*C0
-        sigma = self.sigma
+        f0 = w0/(2*np.pi)
+        sigma = self.sigma.scalar(f0)
+        mur = self._material.ur.scalar(f0)
+        er = self._material.er.scalar(f0)
+        
         rho = 1/sigma
-        d_skin = (2*rho/(w0*MU0*self._mur) * ((1+(w0*EPS0*self._epsr*rho)**2)**0.5 + rho*w0*EPS0*self._epsr))**0.5
+        d_skin = (2*rho/(w0*MU0*mur) * ((1+(w0*EPS0*er*rho)**2)**0.5 + rho*w0*EPS0*er))**0.5
         R = rho/d_skin
         if self._sr_model=='Hammerstad-Jensen' and self._sr > 0.0:
             R = R * (1 + 2/np.pi * np.arctan(1.4*(self._sr/d_skin)**2))

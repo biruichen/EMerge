@@ -376,7 +376,7 @@ class GeoObject:
         return self
     
     def prio_up(self) -> GeoObject:
-        """Increase priority by 1
+        """Increases the material selection priority by 1
 
         Returns:
             GeoObject: _description_
@@ -385,7 +385,7 @@ class GeoObject:
         return self
     
     def prio_down(self) -> GeoObject:
-        """Decrase priority by 1
+        """Decreases the material selection priority by 1
 
         Returns:
             GeoObject: _description_
@@ -394,7 +394,7 @@ class GeoObject:
         return self
 
     def background(self) -> GeoObject:
-        """Set the priority to be on the background.
+        """Set the material selection priority to be on the background.
 
         Returns:
             GeoObject: _description_
@@ -403,7 +403,7 @@ class GeoObject:
         return self
 
     def foreground(self) -> GeoObject:
-        """Set the priority to be on top.
+        """Set the material selection priority to be on top.
 
         Returns:
             GeoObject: _description_

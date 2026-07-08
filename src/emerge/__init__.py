@@ -45,7 +45,7 @@ LOG_CONTROLLER.set_default()
 logger.debug('Importing modules')
 
 from ._emerge.simmodel import Simulation
-from ._emerge.material import Material
+from ._emerge.material import Material, FreqCoordDependent, FreqDependent, CoordDependent
 from ._emerge import bc
 from ._emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
 from ._emerge.cs import CoordinateSystem, CS, GCS, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE

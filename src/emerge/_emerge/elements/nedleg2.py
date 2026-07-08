@@ -73,24 +73,30 @@ class FieldFunctionClass:
         Fx, Fy, Fz = self.cs.in_global_basis(Fxl, Fyl, Fzl)
         return np.array([Fx, Fy, Fz])*self.constant
     
-    def calcE(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def calcE(self, xs: np.ndarray, ys: np.ndarray, usenan: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
-        return ned2_tri_interp_full(coordinates, 
+        vals = ned2_tri_interp_full(coordinates, 
                                self.field, 
                                self.tris,  
                                self.nodes, 
                                self.tri_to_field)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals
     
-    def calcH(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def calcH(self, xs: np.ndarray, ys: np.ndarray, usenan: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
         
-        return ned2_tri_interp_curl(coordinates, 
+        vals = ned2_tri_interp_curl(coordinates, 
                                self.field, 
                                self.tris,  
                                self.nodes, 
                                self.tri_to_field,
                                self.diadic,
                                self.beta)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals
 
 ############### Nedelec2 Class
 
@@ -178,22 +184,28 @@ class NedelecLegrange2(FEMBasis):
 
         return FieldFunctionClass(field, self.cs, self.local_nodes, self.mesh.tris, self.tri_to_field, 'H', urinv, beta, constant)
     
-    def tri_interpolate(self, field, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def tri_interpolate(self, field, xs: np.ndarray, ys: np.ndarray, usenan: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
-        return ned2_tri_interp_full(coordinates, 
+        vals = ned2_tri_interp_full(coordinates, 
                                field, 
                                self.mesh.tris,  
                                self.local_nodes, 
                                self.tri_to_field)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals
     
-    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray, diadic: np.ndarray | None = None, beta: float = 0.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray, diadic: np.ndarray | None = None, beta: float = 0.0, usenan: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
         if diadic is None:
             diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.mesh.n_tris)) # type: ignore
-        return ned2_tri_interp_curl(coordinates, 
+        vals = ned2_tri_interp_curl(coordinates, 
                                field, 
                                self.mesh.tris,  
                                self.local_nodes, 
                                self.tri_to_field,
                                diadic,
                                beta)
+        if not usenan:
+            vals = np.nan_to_num(vals)
+        return vals

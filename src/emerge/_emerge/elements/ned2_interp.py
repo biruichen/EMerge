@@ -130,9 +130,10 @@ def ned2_tet_interp(coords: np.ndarray,
     ys = coords[1,:]
     zs = coords[2,:]
 
-    Ex = np.full((nNodes, ),np.nan, dtype=np.complex128)
-    Ey = np.full((nNodes, ),np.nan, dtype=np.complex128)
-    Ez = np.full((nNodes, ),np.nan, dtype=np.complex128)
+    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    
     for i_iter in range(tetids.shape[0]):
         itet = tetids[i_iter]
 
@@ -258,9 +259,9 @@ def ned2_tet_interp_curl(coords: np.ndarray,
     ys = coords[1,:]
     zs = coords[2,:]
 
-    Ex = np.zeros((nNodes, ), dtype=np.complex128)
-    Ey = np.zeros((nNodes, ), dtype=np.complex128)
-    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
 
     for i_iter in range(tetids.shape[0]):
         itet = tetids[i_iter]
@@ -381,9 +382,9 @@ def ned2_tri_interp(coords: np.ndarray,
     xs = coords[0,:]
     ys = coords[1,:]
 
-    Ex = np.zeros((nNodes, ), dtype=np.complex128)
-    Ey = np.zeros((nNodes, ), dtype=np.complex128)
-    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
 
     nodes = nodes[:2,:]
 
@@ -490,9 +491,9 @@ def ned2_tri_interp_full(coords: np.ndarray,
     xs = coords[0,:]
     ys = coords[1,:]
 
-    Ex = np.zeros((nNodes, ), dtype=np.complex128)
-    Ey = np.zeros((nNodes, ), dtype=np.complex128)
-    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
 
     nodes = nodes[:2,:]
 
@@ -571,9 +572,9 @@ def ned2_tri_interp_curl(coords: np.ndarray,
     xs = coords[0,:]
     ys = coords[1,:]
     jB = 1j*beta
-    Ex = np.zeros((nNodes, ), dtype=np.complex128)
-    Ey = np.zeros((nNodes, ), dtype=np.complex128)
-    Ez = np.zeros((nNodes, ), dtype=np.complex128)
+    Ex = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ey = np.full((nNodes, ), np.nan, dtype=np.complex128)
+    Ez = np.full((nNodes, ), np.nan, dtype=np.complex128)
 
     nodes = nodes[:2,:]
 
