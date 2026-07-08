@@ -244,10 +244,10 @@ class Mesher:
         for dimtag in dimtags:
             gmsh.model.mesh.setSizeFromBoundary(dimtag[0], dimtag[1], 0)
             
-    def set_boundary_size(self, object: GeoSurface | FaceSelection, 
+    def set_boundary_size(self, boundary: GeoSurface | FaceSelection | Iterable, 
                           size:float,
                           growth_rate: float = 1.4,
-                          max_size: float | None = None):
+                          max_size: float | None = None) -> None:
         """Refine the mesh size along the boundary of a conducting surface
 
         Args:
@@ -256,8 +256,12 @@ class Mesher:
             growth_rate (float, optional): _description_. Defaults to 1.1.
             max_size (float, optional): _description_. Defaults to None.
         """
+        if isinstance(boundary, Iterable):
+            for bound in boundary:
+                self.set_boundary_size(bound, size, growth_rate, max_size)
+            return
         
-        dimtags = object.dimtags
+        dimtags = boundary.dimtags
 
         if max_size is None:
             self._check_ready()

@@ -27,10 +27,9 @@ from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
 from .periodic import PeriodicCell
 from .bc import BoundaryCondition
-from typing import Literal, Type, Generator, Any
+from typing import Literal, Generator, Any
 from loguru import logger
 import numpy as np
-import sys
 import gmsh # type: ignore
 import joblib # type: ignore
 import os
@@ -431,7 +430,7 @@ class Simulation3D:
 
             logger.info(f'Iterating: {params}')
             if len(dims_flat)==1:
-                yield dims_flat[0][i_iter]
+                yield (dims_flat[0][i_iter],)
             else:
                 yield (dim[i_iter] for dim in dims_flat) # type: ignore
         self.mw.cache_matrices = True

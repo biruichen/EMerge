@@ -20,7 +20,7 @@ from ...simulation_data import BaseDataset, DataContainer
 from ...elements.femdata import FEMBasis
 from dataclasses import dataclass
 import numpy as np
-from typing import Literal, Any
+from typing import Literal
 from loguru import logger
 from .adaptive_freq import SparamModel
 from ...cs import Axis, _parse_axis

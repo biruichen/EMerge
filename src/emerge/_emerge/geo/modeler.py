@@ -17,9 +17,9 @@
 
 from __future__ import annotations
 import numpy as np
-from typing import Callable, Iterable, Any
-from .shapes import Box, Sphere, Cyllinder, CoaxCyllinder, Alignment
-from ..geometry import GeoVolume, GeoObject, GeoSurface
+from typing import Callable, Iterable
+from .shapes import Box, Cyllinder, Alignment
+from ..geometry import GeoVolume, GeoObject
 from .operations import rotate, mirror, translate, add, subtract, embed
 from numbers import Number
 from functools import reduce
@@ -67,7 +67,6 @@ def get_item(value: Number | Series | list, n: int) -> Number | Series | Iterabl
     return None
 
 def unpack(*args):
-    output = []
     N = get_count(args)
     return tuple(zip(*[[get_item(a,n) for a in args] for n in range(N)]))
 

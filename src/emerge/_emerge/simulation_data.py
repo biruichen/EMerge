@@ -397,7 +397,7 @@ class BaseDataset(Generic[T,M]):
         return True
     
     @property
-    def grid(self) -> M | None:
+    def grid(self) -> M:
         """Returns the gridded version of the scalar dataset.
 
         Raises:
@@ -408,7 +408,9 @@ class BaseDataset(Generic[T,M]):
         """
         if self._gritted is None:
             self._grid_axes()
+
         if self._gritted is False:
             logger.error('The dataset cannot be cast to a structured grid.')
             raise ValueError('Data not in regular grid')
+        
         return self._gridobj
