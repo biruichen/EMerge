@@ -58,15 +58,45 @@ class Axis:
         return Axis(-self.vector)
     
     def cross(self, other: Axis) -> Axis:
+        """Take the cross produt with another vector
+
+        Args:
+            other (Axis): Vector B in AxB
+
+        Returns:
+            Axis: The resultant Axis.
+        """
         return Axis(np.cross(self.vector, other.vector))
 
     def dot(self, other: Axis) -> float:
+        """Take the dot product of two vectors A·B
+
+        Args:
+            other (Axis): Vector B
+
+        Returns:
+            float: The resultant vector (A·B)
+        """
         return np.dot(self.vector, other.vector)
     
     def pair(self, other: Axis) -> Plane:
+        """Pair this vector with another to span the plane A⨂B
+
+        Args:
+            other (Axis): Vector B
+
+        Returns:
+            Plane: The plane spanned by A and B.
+        """
         return Plane(self, other)
     
     def construct_cs(self) -> CoordinateSystem:
+        """Constructs a coordinate system where this vector is the Z-axis
+        and the X and Y axis are normal to this axis but with an arbitrary rotation.
+
+        Returns:
+            CoordinateSystem: The resultant coordinate system
+        """
         ax = Axis(np.array([1, 0, 0]))
         if np.abs(self.dot(ax)) > 0.999:
             
@@ -202,7 +232,17 @@ class Plane:
         return xs.reshape(shp), ys.reshape(shp), zs.reshape(shp)
     
     def span(self, u: float, v: float, N: int, origin: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        ''' Create a grid of XYZ coordinates in the plane reaching from 0 to u and 0 to v in N steps at the given origin'''
+        """Create a grid of XYZ coordinates in the plane reaching from 0 to u and 0 to v in N steps at the given origin
+
+        Args:
+            u (float): The distance along the first axis
+            v (float): The distance along the second axis 
+            N (int): The number of sample points per axis
+            origin (np.ndarray): The origin of the planar grid.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The set of X,Y,Z coordinates.
+        """
         uax = np.linspace(0, u, N)
         vax = np.linspace(0, v, N)
         U, V = np.meshgrid(uax, vax, indexing='ij')
@@ -276,9 +316,16 @@ class CoordinateSystem:
     def rotate(self, axis: tuple | list | np.ndarray | Axis, 
                angle: float, 
                degrees: bool = True) -> CoordinateSystem:
-        """
-        Return a new CoordinateSystem rotated about the given axis (through the global origin)
+        """Return a new CoordinateSystem rotated about the given axis (through the global origin)
         by `angle`. If `degrees` is True, `angle` is interpreted in degrees.
+
+        Args:
+            axis (tuple | list | np.ndarray | Axis): The rotation axis
+            angle (float): The rotation angle (in degrees if degrees = True)
+            degrees (bool, optional): Whether to use degrees. Defaults to True.
+
+        Returns:
+            CoordinateSystem: The new rotated coordinate system
         """
 
         # Convert to radians if needed
@@ -437,26 +484,32 @@ class CoordinateSystem:
     
     @property
     def gx(self) -> float:
+        """ The origin x-coordinate in global coordinates."""
         return self.origin[0]
     
     @property
     def gy(self) -> float:
+        """ The origin y-coordinate in global coordinates."""
         return self.origin[1]
     
     @property
     def gz(self) -> float:
+        """ The origin z-coordinate in global coordinates."""
         return self.origin[2]
     
     @property
     def gxhat(self) -> np.ndarray:
+        """ The x-axis unit vector in global coordinates."""
         return self.xax.np
     
     @property
     def gyhat(self) -> np.ndarray:
+        """ The y-axis unit vector in global coordinates."""
         return self.yax.np
     
     @property
     def gzhat(self) -> np.ndarray:
+        """ The z-axis unit vector in global coordinates."""
         return self.zax.np
 
 # A shorthand alias for the CoordinateSystem Class 

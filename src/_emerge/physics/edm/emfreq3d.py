@@ -95,11 +95,9 @@ class Electrodynamics3D:
 
         ## States
         self._bc_initialized: bool = False
-        self.freq_data: EMSimData = EMSimData()
-        self.mode_data: dict[int, EMSimData] = dict()
 
-        ## Data
-        self._params: dict[str, float] = dict()
+        self.freq_data: EMSimData = None
+        self.mode_data: dict[int, EMSimData] = dict()
 
     def pack_data(self) -> dict:
         datapack = dict(basis = self.basis,
@@ -205,7 +203,7 @@ class Electrodynamics3D:
             condutivity (float): The conductivity level in S/m
         """
         if condutivity < 0:
-            logger.warning('Conductivity values must be above 0. Ignoring assignment')
+            raise ValueError('Conductivity values must be above 0. Ignoring assignment')
 
         self.assembler.conductivity_limit = condutivity
     def get_discretizer(self) -> Callable:
@@ -295,7 +293,7 @@ class Electrodynamics3D:
         ermax = np.max(er.flatten())
         urmax = np.max(ur.flatten())
 
-        mode_data = EMSimData()
+        mode_data = EMSimData(self.basis)
         self.mode_data[port.port_number] = mode_data
 
         if freq is None:
@@ -331,7 +329,7 @@ class Electrodynamics3D:
         nmodes_found = eigen_values.shape[0]
 
         for i in range(nmodes_found):
-            data = mode_data.new(basis=self.basis, freq=freq, ur=ur, er=er, k0=k0, mode=i+1)
+            data = mode_data.new(freq=freq, ur=ur, er=er, k0=k0, mode=i+1)
             
             Emode = np.zeros((nlf.n_field,), dtype=np.complex128)
             eigenmode = eigen_modes[:,i]
@@ -360,7 +358,7 @@ class Electrodynamics3D:
                 logger.debug('High Ez/Et ratio detected, assuming TM mode')
                 mode.modetype = 'TM'
             elif TEM:
-                G1, G2 = self._find_tem_conductors(port)
+                G1, G2 = self._find_tem_conductors(port, sigtri=cond)
                 cs, dls = self._compute_integration_line(G1,G2)
                 
                 Ex, Ey, Ez = portfE(cs[0,:], cs[1,:], cs[2,:])
@@ -421,7 +419,7 @@ class Electrodynamics3D:
         dls = path[:,1:] - path[:,:-1]
         return centres, dls
 
-    def _find_tem_conductors(self, port: ModalPort) -> tuple[list[int], list[int]]:
+    def _find_tem_conductors(self, port: ModalPort, sigtri: np.ndarray) -> tuple[list[int], list[int]]:
         ''' Returns two lists of global node indices corresponding to the TEM port conductors.
         
         This method is invoked during modal analysis with TEM modes. It looks at all edges
@@ -448,6 +446,12 @@ class Electrodynamics3D:
             edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
             pec_edges.extend(edge_ids)
         
+        # Process conductivity
+        for itri in mesh.get_triangles(port.tags):
+            if sigtri[itri] > 1e6:
+                edge_ids = list(mesh.tri_to_edge[:,itri].flatten())
+                pec_edges.extend(edge_ids)
+
         pec_edges = set(pec_edges)
         
         tri_ids = mesh.get_triangles(port.tags)
@@ -527,6 +531,8 @@ class Electrodynamics3D:
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
         
+        self.freq_data = EMSimData(self.basis)
+        
         #### Port settings
 
         all_ports = [bc for bc in self.boundary_conditions if isinstance(bc,PortBC)]
@@ -601,8 +607,8 @@ class Electrodynamics3D:
         for freq, job in zip(self.frequencies, results):
 
             k0 = 2*np.pi*freq/299792458
-            data = self.freq_data.new(basis=self.basis, freq=freq,
-                                 k0=k0, **self._params)
+            data = self.freq_data.new(freq=freq,
+                                 k0=k0)
             
             data.init_sp(port_numbers)
 
@@ -685,6 +691,9 @@ class Electrodynamics3D:
             ertri[:,:,itri] = er[:,:,itet]
             urtri[:,:,itri] = ur[:,:,itet]
             condtri[itri] = cond[itet]
+
+        ### Does this move
+        self.freq_data = EMSimData(self.basis)
         
         #### Port settings
 
@@ -726,7 +735,7 @@ class Electrodynamics3D:
 
             k0 = 2*np.pi*freq/299792458
 
-            data = self.freq_data.new(basis=self.basis, freq=freq, k0=k0)
+            data = self.freq_data.new(freq=freq, k0=k0)
             data.init_sp(port_numbers)
             data.er = np.squeeze(er[0,0,:])
             data.ur = np.squeeze(ur[0,0,:])
@@ -823,6 +832,9 @@ class Electrodynamics3D:
             f_points = 0.5*((f_max-f_min)*xk + (f_max+f_min))
             self.frequencies = np.geomspace(f_min, f_max, Npts)
         if parallel:
+            if njobs == 1:
+                logger.warning('Only one parallel thread indicated, defaulting to single threaded.')
+                return self.frequency_domain_single()
             return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups)
         else:
             return self.frequency_domain_single()
@@ -897,7 +909,7 @@ class Electrodynamics3D:
             for existing_bc in self.boundary_conditions:
                 excluded = existing_bc.exclude_bc(bc)
                 if excluded:
-                    logger.warning(f'Removed the following {wordmap[bc.dim]}: {excluded} from {existing_bc}')
+                    logger.debug(f'Removed the following {wordmap[bc.dim]}: {excluded} from {existing_bc}')
             
             self.boundary_conditions.append(bc)
 

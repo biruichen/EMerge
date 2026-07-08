@@ -5,6 +5,11 @@ from ..bc import PortBC
 from typing import Iterable, Literal
 import numpy as np
 
+cmap_names = Literal['bgy','bgyw','kbc','blues','bmw','bmy','kgy','gray','dimgray','fire','kb','kg','kr',
+                     'bkr','bky','coolwarm','gwv','bjy','bwy','cwr','colorwheel','isolum','rainbow','fire',
+                     'cet_fire','gouldian','kbgyw','cwr','CET_CBL1','CET_CBL3','CET_D1A']
+
+
 class BaseDisplay:
 
     def __init__(self, mesh: Mesh3D):
@@ -358,10 +363,32 @@ class BaseDisplay:
         
         raise NotImplementedError('This method is not implemented')
     
-    def add_surf(self, x: np.ndarray,
+    def add_surf(self, 
+                 x: np.ndarray,
                  y: np.ndarray,
                  z: np.ndarray,
                  field: np.ndarray,
-                 opacity: float = 1.0):
+                 scale: Literal['lin','log','symlog'] = 'lin',
+                 cmap: cmap_names = 'coolwarm',
+                 clim: tuple[float, float] = None,
+                 opacity: float = 1.0,
+                 symmetrize: bool = True,
+                 animate: bool = False,
+                 **kwargs,):
+        """Add a surface plot to the display
+        The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
+
+        Args:
+            x (np.ndarray): The X-grid array
+            y (np.ndarray): The Y-grid array
+            z (np.ndarray): The Z-grid array
+            field (np.ndarray): The scalar field to display
+            scale (Literal["lin","log","symlog"], optional): The colormap scaling¹. Defaults to 'lin'.
+            cmap (cmap_names, optional): The colormap. Defaults to 'coolwarm'.
+            clim (tuple[float, float], optional): Specific color limits (min, max). Defaults to None.
+            opacity (float, optional): The opacity of the surface. Defaults to 1.0.
+            symmetrize (bool, optional): Wether to force a symmetrical color limit (-A,A). Defaults to True.
         
+        (¹): lin: f(x)=x, log: f(x)=log₁₀(|x|), symlog: f(x)=sgn(x)·log₁₀(1+|x·ln(10)|)
+        """
         raise NotImplementedError('This method is not implemented')

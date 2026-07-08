@@ -14,16 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
-
+from __future__ import annotations
+import time
 from ...mesh3d import Mesh3D
 from ...geometry import GeoObject
 from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection
 from ...bc import PortBC
 import numpy as np
 import pyvista as pv
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Callable
 from ..display import BaseDisplay
-
 from matplotlib.colors import ListedColormap
 ### Color scale
 
@@ -57,8 +57,6 @@ def gen_cmap(mesh, N: int = 256):
     
     return ListedColormap(newcolors)
 
-
-
 def setdefault(options: dict, **kwargs) -> dict:
     """Shorthand for overwriting non-existent keyword arguments with defaults
 
@@ -69,7 +67,7 @@ def setdefault(options: dict, **kwargs) -> dict:
         dict: the kwargs dict
     """
     for key in kwargs.keys():
-        if key not in options:
+        if options.get(key,None) is None:
             options[key] = kwargs[key]
     return options
 
@@ -169,48 +167,119 @@ def _merge(lst: list[GeoObject | Selection]) -> Selection:
     elif dim==3:
         return DomainSelection(all_tags)
 
+class _AnimObject:
+    """ A private class containing the required information for plot items in a view
+    that can be animated.
+    """
+    def __init__(self, 
+                 field: np.ndarray,
+                 T: Callable,
+                 grid: pv.Grid,
+                 actor: pv.Actor,
+                 on_update: Callable):
+        self.field: np.ndarray = field
+        self.T: Callable = T
+        self.grid: pv.Grid = grid
+        self.actor: pv.Actor = actor
+        self.on_update: Callable = on_update
+
+    def update(self, phi: complex):
+        self.on_update(self, phi)
+
 class PVDisplay(BaseDisplay):
 
     def __init__(self, mesh: Mesh3D, plotter: pv.Plotter = None):
         self._mesh: Mesh3D = mesh
         if plotter is None:
             plotter = pv.Plotter()
+
         self._plot: pv.Plotter = plotter
 
+        # Animation options
+        self._stop: bool = False
+        self._objs: list[_AnimObject] = []
+        self._do_animate: bool = False
+        self._Nsteps: int = None
+        self._fps: int = 25
+
+
     def show(self):
+        """ Shows the Pyvista display. """
         self._plot.add_axes()
-        self._plot.show()
+        if self._do_animate:
+            self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
+            self._animate()
+        else:
+            self._plot.show()
+        self._reset()
+    
+    def _reset(self):
+        """ Resets key display parameters."""
         self._plot = pv.Plotter()
+        self._stop = False
+        self._objs = []
+
+    def _close_callback(self):
+        """The private callback function that stops the animation.
+        """
+        self._stop = True
+
+    def _animate(self) -> None:
+        """Private function that starts the animation loop.
+        """
+        self._plot.update()
+        while not self._stop:
+            for step in range(self._Nsteps):
+                if self._stop:
+                    break
+                for aobj in self._objs:
+                    phi = np.exp(1j*(step/self._Nsteps)*2*np.pi)
+                    aobj.update(phi)
+                self._plot.update()
+                time.sleep(1/self._fps)
+        self._stop = False
+
+    def animate(self, Nsteps: int = 35, fps: int = 25) -> PVDisplay:
+        """ Turns on the animation mode with the specified number of steps and FPS.
+
+        All subsequent plot calls will automatically be animated. This method can be
+        method chained.
+        
+        Args:
+            Nsteps (int, optional): The number of frames in the loop. Defaults to 35.
+            fps (int, optional): The number of frames per seocond, Defaults to 25
+
+        Returns:
+            PVDisplay: The same PVDisplay object
+
+        Example:
+        >>> display.animate().surf(...)
+        >>> display.show()
+        """
+        self._Nsteps = Nsteps
+        self._fps = fps
+        self._do_animate = True
+        return self
     
     ## CUSTOM METHODS
     def mesh_volume(self, volume: DomainSelection) -> pv.UnstructuredGrid:
         tets = self._mesh.get_tetrahedra(volume.tags)
-
         ntets = tets.shape[0]
-
         cells = np.zeros((ntets,5), dtype=np.int64)
-
         cells[:,1:] = self._mesh.tets[:,tets].T
-
         cells[:,0] = 4
         celltypes = np.full(ntets, fill_value=pv.CellType.TETRA, dtype=np.uint8)
         points = self._mesh.nodes.T
-
         return pv.UnstructuredGrid(cells, celltypes, points)
     
     def mesh_surface(self, surface: FaceSelection) -> pv.UnstructuredGrid:
         tris = self._mesh.get_triangles(surface.tags)
-
         ntris = tris.shape[0]
-
         cells = np.zeros((ntris,4), dtype=np.int64)
-
         cells[:,1:] = self._mesh.tris[:,tris].T
-
         cells[:,0] = 3
         celltypes = np.full(ntris, fill_value=pv.CellType.TRIANGLE, dtype=np.uint8)
         points = self._mesh.nodes.T
-
         return pv.UnstructuredGrid(cells, celltypes, points)
     
     def mesh(self, obj: GeoObject | Selection | Iterable) -> pv.UnstructuredGrid:
@@ -226,9 +295,7 @@ class PVDisplay(BaseDisplay):
 
     ## OBLIGATORY METHODS
     def add_object(self, obj: GeoObject | Selection | Iterable, *args, **kwargs):
-
         kwargs = setdefault(kwargs, color=obj.color, opacity=obj.opacity)
-
         self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
@@ -242,14 +309,15 @@ class PVDisplay(BaseDisplay):
         cloud = pv.PolyData(np.array([xs,ys,zs]).T)
         self._plot.add_points(cloud)
 
-    def add_portmode(self, port: PortBC, k0: float, Npoints: int = 10, dv=(0,0,0), XYZ=None,
+    def add_portmode(self, port: PortBC, Npoints: int = 10, dv=(0,0,0), XYZ=None,
                       field: Literal['E','H'] = 'E') -> pv.UnstructuredGrid:
+        k0 = port.get_mode().k0
         if XYZ:
             X,Y,Z = XYZ
         else:
             X,Y,Z = port.selection.sample(Npoints)
             for x,y,z in zip(X,Y,Z):
-                self.add_portmode(port, k0, Npoints, dv, (x,y,z), field)
+                self.add_portmode(port, Npoints, dv, (x,y,z), field)
             return
         
         X = X+dv[0]
@@ -285,32 +353,62 @@ class PVDisplay(BaseDisplay):
                  y: np.ndarray,
                  z: np.ndarray,
                  field: np.ndarray,
+                 scale: Literal['lin','log','symlog'] = 'lin',
+                 cmap: cmap_names = 'coolwarm',
+                 clim: tuple[float, float] = None,
                  opacity: float = 1.0,
                  symmetrize: bool = True,
+                 animate: bool = False,
                  **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
 
         Args:
-            x (np.ndarray): The x-coordinates
-            y (np.ndarray): The y-coordinates
-            z (np.ndarray): The z-coordinates
-            field (np.ndarray): The field to display
-            opacity (float, optional): The opacity. Defaults to 1.0.
+            x (np.ndarray): The X-grid array
+            y (np.ndarray): The Y-grid array
+            z (np.ndarray): The Z-grid array
+            field (np.ndarray): The scalar field to display
+            scale (Literal["lin","log","symlog"], optional): The colormap scaling¹. Defaults to 'lin'.
+            cmap (cmap_names, optional): The colormap. Defaults to 'coolwarm'.
+            clim (tuple[float, float], optional): Specific color limits (min, max). Defaults to None.
+            opacity (float, optional): The opacity of the surface. Defaults to 1.0.
+            symmetrize (bool, optional): Wether to force a symmetrical color limit (-A,A). Defaults to True.
+        
+        (¹): lin: f(x)=x, log: f(x)=log₁₀(|x|), symlog: f(x)=sgn(x)·log₁₀(1+|x·ln(10)|)
         """
         
         grid = pv.StructuredGrid(x,y,z)
         field_flat = field.flatten(order='F')
-        fmin = np.min(field_flat)
-        fmax = np.max(field_flat)
-        if symmetrize:
-            lim = max(abs(fmin),abs(fmax))
-            clim = (-lim, lim)
+
+        if scale=='log':
+            T = lambda x: np.log10(np.abs(x))
+        elif scale=='symlog':
+            T = lambda x: np.sign(x) * np.log10(1 + np.abs(x*np.log(10)))
         else:
+            T = lambda x: x
+        
+        static_field = T(np.real(field_flat))
+        grid['anim'] = static_field
+
+        if clim is None:
+            fmin = np.min(static_field)
+            fmax = np.max(static_field)
             clim = (fmin, fmax)
-        grid['values'] = field_flat
-        kwargs = setdefault(kwargs, cmap='coolwarm', clim=clim)
-        self._plot.add_mesh(grid, opacity=opacity, **kwargs)
+        
+        if symmetrize:
+            lim = max(abs(clim[0]),abs(clim[1]))
+            clim = (-lim, lim)
+
+        kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity)
+        actor = self._plot.add_mesh(grid, scalars='anim', **kwargs)
+
+        if self._animate:
+            def on_update(obj: _AnimObject, phi: complex):
+                field = obj.T(np.real(obj.field*phi))
+                obj.grid['anim'] = field
+            self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update))
+        
+        
 
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,
@@ -352,11 +450,39 @@ class PVDisplay(BaseDisplay):
                      Y: np.ndarray,
                      Z: np.ndarray,
                      V: np.ndarray,
-                     Nlevels: int = 5):
+                     Nlevels: int = 5,
+                     symmetrize: bool = True,
+                     cmap: str = 'viridis'):
+        """Adds a 3D volumetric contourplot based on a 3D grid of X,Y,Z and field values
+
+
+        Args:
+            X (np.ndarray): A 3D Grid of X-values
+            Y (np.ndarray): A 3D Grid of Y-values
+            Z (np.ndarray): A 3D Grid of Z-values
+            V (np.ndarray): The scalar quantity to plot ()
+            Nlevels (int, optional): The number of contour levels. Defaults to 5.
+            symmetrize (bool, optional): Wether to symmetrize the countour levels (-V,V). Defaults to True.
+            cmap (str, optional): The color map. Defaults to 'viridis'.
+        """
         Vf = V.flatten()
-        vmin = np.min(Vf)
-        vmax = np.max(Vf)
+        vmin = np.min(np.real(Vf))
+        vmax = np.max(np.real(Vf))
+        if symmetrize:
+            level = max(np.abs(vmin),np.abs(vmax))
+            vmin, vmax = (-level, level)
         grid = pv.StructuredGrid(X,Y,Z)
-        grid['values'] = V.flatten(order='F')
-        contour = grid.contour(isosurfaces=np.linspace(vmin, vmax, Nlevels))
-        self._plot.add_mesh(contour, opacity=0.25)
+        field = V.flatten(order='F')
+        grid['anim'] = np.real(field)
+        levels = np.linspace(vmin, vmax, Nlevels)
+        contour = grid.contour(isosurfaces=levels)
+        actor = self._plot.add_mesh(contour, opacity=0.25, cmap=cmap)
+
+        if self._animate:
+            def on_update(obj: _AnimObject, phi: complex):
+                new_vals = np.real(obj.field * phi)
+                obj.grid['anim'] = new_vals
+                new_contour = obj.grid.contour(isosurfaces=levels)
+                obj.actor.GetMapper().SetInputData(new_contour)
+            
+            self._objs.append(_AnimObject(field, lambda x: x, grid, actor, on_update))
