@@ -15,28 +15,3 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-# """
-# import os
-
-# os.environ["OMP_NUM_THREADS"] = "1"
-# os.environ["MKL_NUM_THREADS"] = "1"
-# os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
-# from loguru import logger
-# from .logsettings import logger_format
-# import sys
-
-# logger.remove()
-# logger.add(sys.stderr, format=logger_format)
-
-# logger.debug('Importing modules')
-# from _emerge.simmodel import Simulation3D
-# from _emerge.material import Material, FR4, AIR, VACUUM, COPPER
-# import bc
-# from _emerge.solver import superlu_info, SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK
-# from _emerge.cs import CoordinateSystem, Plane, Axis, XAX, YAX, ZAX, XYPLANE, XZPLANE, YZPLANE, YXPLANE, ZXPLANE, ZYPLANE
-# from _emerge.coord import Line
-# import geo
-# from _emerge.selection import Selection, FaceSelection, DomainSelection, EdgeSelection
-# from _emerge.mth.common_functions import norm
-# logger.debug('Importing complete!')
