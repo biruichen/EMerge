@@ -24,8 +24,6 @@ class STEPItems:
             raise FileNotFoundError(f'File with name {stl_path} does not exist.')
         
         dimtags = gmsh.model.occ.import_shapes(filename, format='step')
-        
-        print(dimtags)
 
         gmsh.model.occ.affine_transform(dimtags, np.array([unit, 0, 0, 0,
                                                            0, unit, 0, 0,

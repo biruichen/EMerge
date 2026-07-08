@@ -26,7 +26,7 @@ from typing import Literal
 from functools import reduce
 from numba import njit
 
-#@njit(cache=True)
+@njit(cache=True)
 def _subsample_coordinates(xs, ys, tolerance, xmin):
     N = xs.shape[0]
     ids = np.zeros((N,), dtype=np.int32)
@@ -78,6 +78,58 @@ def _discretize_curve(xfunc, yfunc, t0, t1, xmin, tol=1e-4):
     ys = yfunc(td)
     XS, YS = _subsample_coordinates(xs, ys, tol, xmin)
     return XS, YS
+
+def rotate_point(point: tuple[float, float, float],
+                 axis: tuple[float, float, float],
+                 ang: float,
+                 origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                 degrees: bool = False) -> tuple[float, float, float]:
+    """
+    Rotate a 3‑D point around an arbitrary axis that passes through `origin`.
+
+    Parameters
+    ----------
+    point   : (x, y, z) coordinate of the point to rotate.
+    axis    : (ux, uy, uz) direction vector of the rotation axis (need not be unit length).
+    ang     : rotation angle.  Positive values follow the right‑hand rule.
+    origin  : (ox, oy, oz) point through which the axis passes.  Defaults to global origin.
+    degrees : If True, `ang` is interpreted in degrees; otherwise in radians.
+
+    Returns
+    -------
+    (x′, y′, z′) : tuple with the rotated coordinates.
+    """
+    # Convert inputs to numpy arrays
+    p = np.asarray(point, dtype=float)
+    o = np.asarray(origin, dtype=float)
+    u = np.asarray(axis, dtype=float)
+
+    # Shift so the axis passes through the global origin
+    p_shifted = p - o
+
+    # Normalise the axis direction
+    norm = np.linalg.norm(u)
+    if norm == 0:
+        raise ValueError("Axis direction vector must be non‑zero.")
+    u = u / norm
+
+    # Convert angle to radians if necessary
+    if degrees:
+        ang = np.radians(ang)
+
+    # Rodrigues’ rotation formula components
+    cos_a = np.cos(ang)
+    sin_a = np.sin(ang)
+    cross = np.cross(u, p_shifted)
+    dot = np.dot(u, p_shifted)
+
+    rotated = (p_shifted * cos_a
+               + cross * sin_a
+               + u * dot * (1 - cos_a))
+
+    # Shift back to original reference frame
+    rotated += o
+    return tuple(rotated)
 
 class GeoPrism(GeoVolume):
     """The GepPrism class generalizes the GeoVolume for extruded convex polygons.
@@ -133,8 +185,8 @@ class GeoPrism(GeoVolume):
 class XYPolygon:
 
     def __init__(self, 
-                 xs: np.ndarray = None,
-                 ys: np.ndarray = None):
+                 xs: np.ndarray | list | tuple = None,
+                 ys: np.ndarray | list | tuple = None):
         """Constructs an XY-plane placed polygon.
 
         Args:
@@ -146,8 +198,8 @@ class XYPolygon:
         if ys is None:
             ys = []
 
-        self.x: np.ndarray = xs
-        self.y: np.ndarray = ys
+        self.x: np.ndarray = np.asarray(xs)
+        self.y: np.ndarray = np.asarray(ys)
 
         self.fillets: list[tuple[float, int]] = []
 
@@ -258,6 +310,14 @@ class XYPolygon:
         return GeoPrism(tags, surftags[0], surftags)
     
     def geo(self, cs: CoordinateSystem = None) -> GeoPolygon:
+        """Returns a GeoPolygon object for the current polygon.
+
+        Args:
+            cs (CoordinateSystem, optional): The Coordinate system of which the XY plane will be used. Defaults to None.
+
+        Returns:
+            GeoPolygon: The resultant object.
+        """
         if cs is None:
             cs = GCS
         return self._finalize(cs) 
@@ -321,7 +381,18 @@ class XYPolygon:
     def rect(width: float,
              height: float,
              origin: tuple[float, float],
-             alignment: Alignment = Alignment.CORNER):
+             alignment: Alignment = Alignment.CORNER) -> XYPolygon:
+        """Create a rectangle in the XY-plane as polygon
+
+        Args:
+            width (float): The width (X)
+            height (float): The height (Y)
+            origin (tuple[float, float]): The origin (x,y)
+            alignment (Alignment, optional): What point the origin describes. Defaults to Alignment.CORNER.
+
+        Returns:
+            XYPolygon: A new XYpolygon object
+        """
         if alignment is Alignment.CORNER:
             x0, y0 = origin
         else:
@@ -362,3 +433,55 @@ class XYPolygon:
             ys = ys[::-1]
         self.extend(xs, ys)
         return self
+    
+    # def discrete_revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0, nsteps: int = 12) -> GeoPrism:
+    #     """Applies a revolution to the XYPolygon along the coordinate system Z-axis
+
+    #     Args:
+    #         cs (CoordinateSystem, optional): _description_. Defaults to None.
+    #         angle (float, optional): _description_. Defaults to 360.0.
+
+    #     Returns:
+    #         Prism: The resultant 
+    #     """
+    #     if cs is None:
+    #         cs = GCS
+        
+    #     x,y,z = origin
+    #     ax, ay, az = axis
+    #     loops = []
+    #     loops_edges = []
+
+    #     closed = False
+    #     if angle == 360:
+    #         angs = np.linspace(0, 2*np.pi, nsteps+1)[:-1]
+    #         closed = True
+    #     else:
+    #         angs = np.linspace(0, angle*np.pi/180, nsteps)
+
+    #     for x0, y0 in zip(self.x, self.y):
+    #         #print([rotate_point((x0, y0, 0), axis, ang, origin, degrees=False) for ang in angs])
+    #         points = [gmsh.model.occ.add_point(*rotate_point((x0, y0, 0), axis, ang, origin, degrees=False)) for ang in angs]
+    #         points = points + [points[0],]
+    #         loops.append(points)
+
+    #         edges = [gmsh.model.occ.add_line(p1, p2) for p1, p2 in zip(points[:-1],points[1:])]
+    #         loops_edges.append(edges)
+        
+    #     face1loop = gmsh.model.occ.add_curve_loop(loops_edges[0])
+    #     face_front = gmsh.model.occ.add_plane_surface([face1loop,])
+
+    #     face2loop = gmsh.model.occ.add_curve_loop(loops_edges[-1])
+    #     face_back = gmsh.model.occ.add_plane_surface([face2loop,])
+        
+    #     faces = []
+    #     for loop1, loop2 in zip(loops_edges[:-1], loops_edges[1:]):
+    #         for p1, p2, p3, p4 in zip(loop1[:-1], loop1[1:], loop2[1:], loop2[:0]):
+    #             curve = gmsh.model.occ.add_curve_loop([p1, p2, p3, p4])
+    #             face = gmsh.model.occ.add_plane_surface(curve)
+    #             faces.append(face)
+
+    #     surface_loop = gmsh.model.occ.add_surface_loop(faces + [face_front, face_back])
+    #     vol = gmsh.model.occ.add_volume([surface_loop,])
+
+    #     return GeoVolume(vol)

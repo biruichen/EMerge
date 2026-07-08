@@ -118,7 +118,6 @@ Y = Y.flatten()
 Z = Z.flatten()
 
 # The E-field can be interpolated by selecting a desired solution and then interpolating it.
-
 Ex, Ey, Ez = data.field[3].interpolate(X,Y,Z).E
 
 # We can add the objects we want and fields using the shown methods.
@@ -127,5 +126,5 @@ model.display.add_quiver(X,Y,Z, Ex.real, Ey.real, Ez.real)
 model.display.add_object(feed1out, opacity=0.1)
 model.display.add_portmode(port1, 21)
 model.display.add_portmode(port2, 21)
-model.display.add_surf(*data.field[3].cutplane(ds=2*mm, y=0).scalar('normE'))
+model.display.add_surf(*data.field[3].cutplane(ds=0.5*mm, y=0).scalar('normE'))
 model.display.show()

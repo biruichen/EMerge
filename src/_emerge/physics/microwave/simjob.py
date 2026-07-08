@@ -1,7 +1,25 @@
+# EMerge is an open source Python based FEM EM simulation module.
+# Copyright (C) 2025  Robert Fennis.
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see
+# <https://www.gnu.org/licenses/>.
+
 import numpy as np
 import os
 from scipy.sparse import csr_matrix, save_npz, load_npz
 from ...solver import SolveReport
+
 class SimJob:
 
     def __init__(self, 
@@ -9,9 +27,11 @@ class SimJob:
                  b: np.ndarray,
                  freq: float,
                  cache_factorization: bool,
+                 B: csr_matrix = None
                  ):
 
         self.A: csr_matrix = A
+        self.B: csr_matrix = B
         self.b: np.ndarray = b
         self.P: csr_matrix = None
         self.Pd: csr_matrix = None
@@ -81,6 +101,23 @@ class SimJob:
             reuse_factorization = True
         
         self.cleanup()
+
+    def yield_AC(self):
+        A = self.A
+        B = self.B
+        
+        if self.has_periodic:
+            P = self.P
+            Pd = self.Pd
+            A = Pd @ A @ P
+            B = Pd @ B @ P
+
+        return A, B, self.solve_ids
+        
+    def fix_solutions(self, solution: np.ndarray) -> np.ndarray:
+        if self.has_periodic:
+            solution = self.P @ solution
+        return solution
     
     def submit_solution(self, solution: np.ndarray, report: SolveReport):
         # Solve the Ax=b problem

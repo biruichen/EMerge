@@ -320,7 +320,7 @@ class GeoObject:
         self.material = material
         return self
     
-    def set_priority(self, level: int) -> GeoObject:
+    def prio_set(self, level: int) -> GeoObject:
         """Defines the material assignment priority level of this geometry.
         By default all objects have priority level 10. If you assign a lower number,
         in cases where multiple geometries occupy the same volume, the highest priority
@@ -335,6 +335,24 @@ class GeoObject:
         self._priority = level
         return self
     
+    def prio_up(self) -> GeoObject:
+        """Increase priority by 1
+
+        Returns:
+            GeoObject: _description_
+        """
+        self._priority += 1
+        return self
+    
+    def prio_down(self) -> GeoObject:
+        """Decrase priority by 1
+
+        Returns:
+            GeoObject: _description_
+        """
+        self._priority -= 1
+        return self
+
     def outside(self, *exclude: FaceNames, tags: list[int] = None) -> FaceSelection:
         """Returns the complete set of outside faces.
 

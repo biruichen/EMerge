@@ -16,9 +16,8 @@
 # <https://www.gnu.org/licenses/>.
 
 from ..geometry import GeoVolume
-from .shapes import Box, Sphere, Alignment, Plate
+from .shapes import Box, Alignment, Plate
 from ..material import Material, AIR
-import gmsh
 import numpy as np
 from functools import partial
 
@@ -28,9 +27,10 @@ def _add_pml_layer(center: tuple[float, float, float],
                    direction: tuple[float, float, float],
                    thickness: float,
                    Nlayers: int,
+                   N_mesh_layers: int,
                    exponent: float,
                    deltamax: float,
-                   material: Material) -> list[GeoVolume]:
+                   material: Material) -> GeoVolume:
     px, py, pz = center
     W,D,H = dims
     dx, dy, dz = direction
@@ -67,14 +67,6 @@ def _add_pml_layer(center: tuple[float, float, float],
         def szf(x, y, z):
             return 1 - 1j * (dz*(z-pz-(dz*H/2)) / thickness) ** exponent * deltamax
     
-    if Nlayers == 1:
-        def sxf(x, y, z):
-            return (1 - 1.1j)*np.ones_like(x)
-        def syf(x, y, z):
-            return (1 - 1.1j)*np.ones_like(x)
-        def szf(x, y, z):
-            return (1 - 1.1j)*np.ones_like(x)
-
     def ermat(x, y, z):
         ers = np.zeros((3,3,x.shape[0]), dtype=np.complex128)
         ers[0,0,:] = material.er * syf(x,y,z)*szf(x,y,z)/sxf(x,y,z)
@@ -115,7 +107,7 @@ def _add_pml_layer(center: tuple[float, float, float],
             planes.append(plate)
     
     pml_box.material = Material(_neff=np.sqrt(material.er*material.ur), _fer=ermat, _fur=urmat)
-    pml_box.max_meshsize = thickness/Nlayers * 2
+    pml_box.max_meshsize = thickness/N_mesh_layers
     pml_box._embeddings = planes
     
     return pml_box
@@ -129,15 +121,44 @@ def pmlbox(width: float,
             material: Material = AIR,
             thickness: float = 0.1,
             Nlayers: int = 1,
-            exponent: float = 2.0,
+            N_mesh_layers: int = 8,
+            exponent: float = 1.5,
             deltamax: float = 8.0,
-            top: bool = True,
+            top: bool = False,
             bottom: bool = False,
             left: bool = False,
             right: bool = False,
             front: bool = False,
             back: bool = False) -> list[GeoVolume]:
-    
+    """Generate a block of uniform material (default air) with optional PML boxes around it
+
+    This constructor uses coordinate-dependent material properties so only 1 layer is needed for the PML box. As a standin,
+    the mesh discretization will be based on the thickness/number of mesh layers. If the PML layer is over-meshsed, try decreasing 
+    the number of mesh layers.
+
+
+    Args:
+        width (float): The width of the box
+        depth (float): The depth of the box
+        height (float): The height of the box
+        position (tuple, optional): The placmeent of the box. Defaults to (0, 0, 0).
+        alignment (Alignment, optional): Which point of the box is placed at the given coordinate. Defaults to Alignment.CORNER.
+        material (Material, optional): The material of the box. Defaults to AIR.
+        thickness (float, optional): The thickness of the PML Layer. Defaults to 0.1.
+        Nlayers (int, optional): The number of PML layers (1 is reccomended). Defaults to 1.
+        N_mesh_layers (int, optional): The number of mesh layers. Sets the discretization size accordingly. Defaults to 8
+        exponent (float, optional): The PML gradient growth function. Defaults to 1.5.
+        deltamax (float, optional): A PML matching coefficient. Defaults to 8.0.
+        top (bool, optional): Add a top PML layer. Defaults to True.
+        bottom (bool, optional): Add a bottom PML layer. Defaults to False.
+        left (bool, optional): Add a left PML layer. Defaults to False.
+        right (bool, optional): Add a right PML layer. Defaults to False.
+        front (bool, optional): Add a front PML layer. Defaults to False.
+        back (bool, optional): Add a back PML layer. Defaults to False.
+
+    Returns:
+        list[GeoVolume]: A list of objects [main box, *pml boxes]
+    """
     px, py, pz = position
     if alignment == Alignment.CORNER:
         px = px + width / 2
@@ -152,8 +173,9 @@ def pmlbox(width: float,
     other_boxes = []
 
     addpml = partial(_add_pml_layer, center=(px, py, pz), dims=(width, depth, height),
-                     thickness=thickness, Nlayers=Nlayers,
+                     thickness=thickness, Nlayers=Nlayers, N_mesh_layers=N_mesh_layers,
                      exponent=exponent, deltamax=deltamax, material=material)
+    
     xs = [0,]
     ys = [0,]
     zs = [0,]
@@ -175,9 +197,8 @@ def pmlbox(width: float,
                 if x == 0 and y == 0 and z == 0:
                     continue
                 box = addpml(direction=(x, y, z))
+                
                 other_boxes.append(box
-                    
                 )
-                #planes.extend(planes)
     
     return [main_box] + other_boxes

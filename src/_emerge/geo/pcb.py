@@ -670,7 +670,6 @@ class StripPath:
         if width is None:
             width = self.end.width
         for instr in parse_macro(path, width, start_dir):
-            print(f'Instr: {instr.args}, option={instr.kwargs}')
             getattr(self, instr.instr)(*instr.args, **instr.kwargs)
         return self
     

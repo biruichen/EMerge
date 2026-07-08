@@ -27,6 +27,7 @@ from .plot.display import BaseDisplay
 from .plot.pyvista import PVDisplay
 from .dataset import SimulationDataset
 from .periodic import PeriodicCell
+from .bc import BoundaryCondition
 from typing import Literal, Type, Generator, Any
 from loguru import logger
 import numpy as np
@@ -83,7 +84,6 @@ class Simulation3D:
         self.select: Selector = Selector()
         self.display: PVDisplay = None
         self.geo: Builder = Builder()
-        self._geometries: list[GeoObject] = []
         self.set_loglevel(loglevel)
 
         ## STATES
@@ -98,8 +98,6 @@ class Simulation3D:
         if logfile:
             self.set_logfile(logfile)
 
-        self.obj: dict[str, GeoObject] = dict()
-
         self.save_file: bool = save_file
         self.load_file: bool = load_file
 
@@ -111,18 +109,32 @@ class Simulation3D:
         self._initialize_simulation()
 
         self._update_data()
-        
-        
 
-    def __setitem__(self, name: str, value: GeoObject) -> None:
-        self.obj[name] = value
+    def __setitem__(self, name: str, value: Any) -> None:
+        """Store data in the current data container"""
+        self.data.sim[name] = value
 
-    def __getitem__(self, name: str) -> GeoObject:
-        return self.obj[name]
+    def __getitem__(self, name: str) -> Any:
+        """Get the data from the current data container"""
+        return self.data.sim[name]
     
     def _update_data(self) -> None:
+        """Writes the stored physics data to each phyics class insatnce"""
         self.mw.data = self.data.mw
-        
+
+    def all_geometries(self) -> list[GeoObject]:
+        """Returns all geometries stored in the simulation file."""
+        return [obj for obj in self.sim.default.values() if isinstance(obj, GeoObject)]
+    
+    def all_bcs(self) -> list[BoundaryCondition]:
+        """Returns all boundary condition objects stored in the simulation file"""
+        return [obj for obj in self.sim.default.values() if isinstance(obj, BoundaryCondition)]
+    
+    @property
+    def passed_geometries(self) -> list[GeoObject]:
+        """"""
+        return self.data.sim['geometries']
+    
     def set_mesh(self, mesh: Mesh3D) -> None:
         """Set the current model mesh to a given mesh."""
         self.mesh = mesh
@@ -151,8 +163,7 @@ class Simulation3D:
         logger.info(f"Saved mesh to: {mesh_path}")
 
         # Pack and save data
-        objects = self.obj
-        dataset = dict(simdata=self.data, objects=objects, mesh=self.mesh)
+        dataset = dict(simdata=self.data, mesh=self.mesh)
         data_path = self.modelpath / 'simdata.emerge'
         joblib.dump(dataset, str(data_path))
         logger.info(f"Saved simulation data to: {data_path}")
@@ -177,7 +188,6 @@ class Simulation3D:
         # Load data
         datapack = joblib.load(str(data_path))
         self.data = datapack['simdata']
-        self.obj = datapack['objects']
         self.set_mesh(datapack['mesh'])
         logger.info(f"Loaded simulation data from: {data_path}")
 
@@ -217,7 +227,7 @@ class Simulation3D:
             gmsh.fltk.run()
             return
         try:
-            for obj in self._geometries:
+            for obj in self.data.sim['geometries']:
                 if obj.dim==2:
                     opacity=surface_opacity
                 elif obj.dim==3:
@@ -242,9 +252,9 @@ class Simulation3D:
         system behaves if only a part of all geometries are included.
 
         """
-        geometries = geometries + tuple(self.obj.values()) + tuple(self.geo.all_geometries())
-        self._geometries = unpack_lists(geometries)
-        self.mesher.submit_objects(self._geometries)
+        geometries = unpack_lists(geometries + tuple(self.geo.all_geometries()) + tuple([item for item in self.data.sim.default.values() if isinstance(item, GeoObject)]))
+        self.data.sim['geometries'] = geometries
+        self.mesher.submit_objects(geometries)
         self._defined_geometries = True
         self.display._facetags = [dt[1] for dt in gmsh.model.get_entities(2)]
     
@@ -337,9 +347,13 @@ class Simulation3D:
                 gmsh.clear()
                 self.mesh = Mesh3D(self.mesher)
                 self.mw.reset()
-            self.mw._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
-            self._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
-            logger.info(f'Iterating: {self.mw._params}')
+            
+            params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            self.mw._params = params
+            #self._params = {key: dim[iter] for key,dim in zip(paramlist, dims_flat)}
+            self.data.sim.new(**params)
+
+            logger.info(f'Iterating: {params}')
             if len(dims_flat)==1:
                 yield dims_flat[0][iter]
             else:

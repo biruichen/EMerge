@@ -61,6 +61,12 @@ model = em.Simulation3D('Periodic', loglevel='DEBUG')
 
 periodic_cell = em.HexCell((-a/2, b/2, 0), (-a/2, -b/2, 0), (0, -b/2, 0))
 
+# To make sure that we can run a periodic simulation we must tell the simulation that
+# it has to copy the meshing on each face that is duplcated. We can simply pass our periodic
+# cell to our model using the set_periodic_cell() method.
+
+model.set_periodic_cell(periodic_cell)
+
 # We can easily use our periodic cell to construct volumes with the appropriate faces. We simply call the volume method
 # to construct a cell region from z=0 to z=H
 
@@ -73,13 +79,8 @@ model['wg'] = em.geo.Box(wga,wgb,fl, (-wga/2, -wgb/2,-fl) )
 # Beause we stored our geometry in our model object using the get and set-item notation. We don't have to pass the items anymore.
 model.define_geometry()
 
-model.mw.set_frequency_range(2.8e9,3.3e9,5)
+model.mw.set_frequency_range(2.8e9, 3.3e9, 5)
 model.mw.set_resolution(0.1)
-
-# To make sure that we can run a periodic simulation we must tell the mesher that
-# it has to copy the meshing on each face that is duplcated. We can simply pass our periodic
-# cell to the mesher using the set_periodic_cell() method.
-model.set_periodic_cell(periodic_cell)
 
 # Then we create our mesh and view the result
 model.generate_mesh()

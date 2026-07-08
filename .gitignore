@@ -29,6 +29,7 @@ version_update.txt
 *.s3p
 *.s4p
 *.snp
+*.csv
 
 
 manual_scripts/

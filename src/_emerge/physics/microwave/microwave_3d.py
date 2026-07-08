@@ -31,7 +31,7 @@ from .simjob import SimJob
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from loguru import logger
-from typing import Callable
+from typing import Callable, Literal
 import time
 import threading
 import multiprocessing as mp
@@ -372,7 +372,6 @@ class Microwave3D:
         Args:
             freq (float): The simulation frequency
         """
-        k0 = 2*np.pi*freq/299792458
         for bc in self.bc.oftype(ModalPort):
             
             # If there is a port mode (at least one) and the port does not have mixed materials. No new analysis is needed
@@ -388,8 +387,7 @@ class Microwave3D:
                        TEM: bool = False,
                        target_kz = None,
                        target_neff = None,
-                       freq: float = None,
-                       search: bool = False) -> None:
+                       freq: float = None) -> None:
         ''' Execute a modal analysis on a given ModalPort boundary condition.
         
         Parameters:
@@ -408,16 +406,14 @@ class Microwave3D:
                 The expected effective mode index defined as kz/k0 (1.0 = free space, <1 = TE/TM, >1=slow wavees)
             freq : float = None
                 The desired frequency at which the mode is solved. If None then it uses the lowest frequency of the provided range.
-            search : bool = False
-                Wether to use a search method (defaults to terative solver). This is faster for large face meshes when the expected
-                propagation constant is unknown. It will search between ½k0 and √εᵣ k0
         '''
         T0 = time.time()
         if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         
         self._initialize_field()
-        
+        self._initialize_bc_data()
+
         logger.debug('Retreiving material properties.')
         ertet = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         urtet = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
@@ -462,25 +458,12 @@ class Microwave3D:
             else:
                 target_kz = ermean*urmean*0.7*k0
 
-        if search:
-            k1 = 0.5*k0
-            k2 = np.sqrt(ermax)*k0
-            logger.debug(f'Searching in range {k1:.2f} to {k2:.2f} rad/m')
-            eigen_values = []
-            eigen_modes = []
-            for kz in np.geomspace(k1,k2,20):
-                sub_eigen_values, sub_eigen_modes, report = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, 1, False, kz)
-                eigen_values.append(sub_eigen_values)
-                eigen_modes.append(sub_eigen_modes)
-            eigen_values = np.concatenate(eigen_values)
-            eigen_modes = np.concatenate(eigen_modes, axis=1)
+    
+        logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
 
-        else:
-            logger.debug(f'Solving for {solve_ids.shape[0]} degrees of freedom.')
-
-            eigen_values, eigen_modes, report = self.solveroutine.eig(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
-            
-            logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
+        eigen_values, eigen_modes, report = self.solveroutine.eig_boundary(Amatrix, Bmatrix, solve_ids, nmodes, direct, target_kz)
+        
+        logger.debug(f'Eigenvalues: {np.sqrt(F*eigen_values)} rad/m')
 
         port._er = er
         port._ur = ur
@@ -541,7 +524,7 @@ class Microwave3D:
                          frequency_groups: int = -1,
                          multi_processing: bool = False,
                          automatic_modal_analysis: bool = True) -> MWData:
-        """Executes a parallel frequency domain study
+        """Executes a frequency domain study
 
         The study is distributed over "njobs" workers.
         As optional parameter you may set a harddisc_threshold as integer. This determines the maximum
@@ -570,6 +553,7 @@ class Microwave3D:
         self._simstart = time.time()
         if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
         self._initialize_field()
         self._initialize_bc_data()
         
@@ -720,6 +704,87 @@ class Microwave3D:
 
         ### Compute S-parameters and return
         self._post_process(results, er, ur, cond)
+        return self.data
+    
+    def eigenmode(self, search_frequency: float,
+                        nmodes: int = 6,
+                        k0_limit: float = 1,
+                        direct: bool = False,
+                        smart_search: bool = True,
+                        mode: Literal['LM','LR','SR','LI','SI']='LM') -> MWData:
+        """Executes an eigenmode study
+
+       
+
+        Args:
+            search_frequency (float): The frequency around which you would like to search
+            nmodes (int, optional): The number of jobs. Defaults to 6.
+            k0_limit (float): The lowest k0 value before which a mode is considered part of the null space. Defaults to 1e-3
+        Raises:
+            SimulationError: An error associated witha a problem during the simulation.
+
+        Returns:
+            MWSimData: The dataset.
+        """
+        
+        self._simstart = time.time()
+        if self.bc._initialized is False:
+            raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
+        self._initialize_field()
+        self._initialize_bc_data()
+        
+        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+
+        ### Does this move
+        logger.debug('Initializing frequency domain sweep.')
+            
+        logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
+        
+        job = self.assembler.assemble_eig_matrix(self.basis, er, ur, cond, 
+                                                            self.bc.boundary_conditions, search_frequency)
+        
+
+        logger.info('Solving complete')
+
+        A, C, solve_ids = job.yield_AC()
+
+        target_k0 = 2*np.pi*search_frequency/299792458
+
+        eigen_values, eigen_modes, report = self.solveroutine.eig(A, C, solve_ids, nmodes, direct, target_k0, smart_search=smart_search, which=mode)
+
+        eigen_modes = job.fix_solutions(eigen_modes)
+
+        logger.debug(f'Eigenvalues: {np.sqrt(eigen_values)} rad/m')
+
+        nmodes_found = eigen_values.shape[0]
+
+        for i in range(nmodes_found):
+            
+            Emode = np.zeros((self.basis.n_field,), dtype=np.complex128)
+            eig_k0 = np.sqrt(eigen_values[i])
+            if eig_k0 < k0_limit:
+                logger.debug(f'Ignoring mode due to low k0: {eig_k0} < {k0_limit}')
+                continue
+            eig_freq = eig_k0*299792458/(2*np.pi)
+
+            logger.debug(f'Found k0={eig_k0:.2f}, f0={eig_freq/1e9:.2f} GHz')
+            Emode = eigen_modes[:,i]
+
+            scalardata = self.data.scalar.new(freq=eig_freq, **self._params)
+            scalardata.k0 = eig_k0
+            scalardata.freq = eig_freq
+
+            fielddata = self.data.field.new(freq=eig_freq, **self._params)
+            fielddata.freq = eig_freq
+            fielddata.er = np.squeeze(er[0,0,:])
+            fielddata.ur = np.squeeze(ur[0,0,:])
+            fielddata._mode_field = Emode
+            fielddata.basis = self.basis
+        ### Compute S-parameters and return
+        
         return self.data
 
     def _post_process(self, results: list[SimJob], er: np.ndarray, ur: np.ndarray, cond: np.ndarray):
