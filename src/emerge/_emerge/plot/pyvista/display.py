@@ -22,7 +22,7 @@ from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selectio
 from ...physics.microwave.microwave_bc import PortBC, ModalPort
 import numpy as np
 import pyvista as pv
-from typing import Iterable, Literal, Callable
+from typing import Iterable, Literal, Callable, Any
 from ..display import BaseDisplay
 from .display_settings import PVDisplaySettings
 from matplotlib.colors import ListedColormap
@@ -155,7 +155,7 @@ def _select(obj: GeoObject | Selection) -> Selection:
         return obj.select
     return obj
 
-def _merge(lst: list[GeoObject | Selection]) -> Selection:
+def _merge(lst: Iterable[GeoObject | Selection]) -> Selection:
     selections = [_select(item) for item in lst]
     dim = selections[0].dim
     all_tags = []
@@ -168,6 +168,8 @@ def _merge(lst: list[GeoObject | Selection]) -> Selection:
         return FaceSelection(all_tags)
     elif dim==3:
         return DomainSelection(all_tags)
+    else:
+        return Selection(all_tags)
 
 class _AnimObject:
     """ A private class containing the required information for plot items in a view
@@ -199,7 +201,7 @@ class PVDisplay(BaseDisplay):
         self._stop: bool = False
         self._objs: list[_AnimObject] = []
         self._do_animate: bool = False
-        self._Nsteps: int = None
+        self._Nsteps: int  = 0
         self._fps: int = 25
         self._ruler: ScreenRuler = ScreenRuler(self, 0.001)
         self._selector: ScreenSelector = ScreenSelector(self)
@@ -208,10 +210,11 @@ class PVDisplay(BaseDisplay):
 
         self._plot = pv.Plotter()
 
-        self._plot.add_key_event("m", self.activate_ruler)
-        self._plot.add_key_event("f", self.activate_object)
+        self._plot.add_key_event("m", self.activate_ruler) # type: ignore
+        self._plot.add_key_event("f", self.activate_object) # type: ignore
 
         self._ctr: int = 0
+
     def activate_ruler(self):
         self._plot.disable_picking()
         self._selector.turn_off()
@@ -310,7 +313,7 @@ class PVDisplay(BaseDisplay):
         points = self._mesh.nodes.T
         return pv.UnstructuredGrid(cells, celltypes, points)
     
-    def mesh(self, obj: GeoObject | Selection | Iterable) -> pv.UnstructuredGrid:
+    def mesh(self, obj: GeoObject | Selection | Iterable) -> pv.UnstructuredGrid | None:
         if isinstance(obj, Iterable):
             obj = _merge(obj)
         else:
@@ -320,11 +323,13 @@ class PVDisplay(BaseDisplay):
             return self.mesh_volume(obj)
         elif isinstance(obj, FaceSelection):
             return self.mesh_surface(obj)
+        else:
+            return None
 
     ## OBLIGATORY METHODS
-    def add_object(self, obj: GeoObject | Selection | Iterable, *args, **kwargs):
-        kwargs = setdefault(kwargs, color=obj.color_rgb, opacity=obj.opacity, silhouette=True)
-        self._plot.add_mesh(self.mesh(obj), pickable=True, *args, **kwargs)
+    def add_object(self, obj: GeoObject | Selection, *args, **kwargs):
+        kwargs = setdefault(kwargs, color=obj.color_rgb, opacity=obj.opacity, silhouette=True, pickable=True)
+        self._plot.add_mesh(self.mesh(obj), *args, **kwargs)
 
     def add_scatter(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray):
         """Adds a scatter point cloud
@@ -342,8 +347,8 @@ class PVDisplay(BaseDisplay):
                      dv=(0,0,0), 
                      XYZ=None,
                      field: Literal['E','H'] = 'E', 
-                     k0: float = None,
-                     mode_number: int = None) -> pv.UnstructuredGrid:
+                     k0: float | None = None,
+                     mode_number: int | None = None) -> None:
         
         if XYZ:
             X,Y,Z = XYZ
@@ -408,10 +413,10 @@ class PVDisplay(BaseDisplay):
                  field: np.ndarray,
                  scale: Literal['lin','log','symlog'] = 'lin',
                  cmap: cmap_names = 'coolwarm',
-                 clim: tuple[float, float] = None,
+                 clim: tuple[float, float] | None = None,
                  opacity: float = 1.0,
                  symmetrize: bool = True,
-                 _fieldname: str = None,
+                 _fieldname: str | None = None,
                  **kwargs,):
         """Add a surface plot to the display
         The X,Y,Z coordinates must be a 2D grid of data points. The field must be a real field with the same size.
@@ -460,11 +465,11 @@ class PVDisplay(BaseDisplay):
         kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False, multi_colors=True)
         actor = self._plot.add_mesh(grid, scalars=name, **kwargs)
 
-        if self._animate:
+        if self._do_animate:
             def on_update(obj: _AnimObject, phi: complex):
                 field = obj.T(np.real(obj.field*phi))
                 obj.grid['anim'] = field
-            self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update))
+            self._objs.append(_AnimObject(field_flat, T, grid, actor, on_update)) # type: ignore
         
         
     def add_title(self, title: str) -> None:
@@ -481,14 +486,14 @@ class PVDisplay(BaseDisplay):
     def add_text(self, text: str, 
                  color: str = 'black', 
                  position: Literal['lower_left', 'lower_right', 'upper_left', 'upper_right', 'lower_edge', 'upper_edge', 'right_edge', 'left_edge']='upper_right',
-                 abs_position: tuple[float, float, float] = None):
+                 abs_position: tuple[float, float, float] | None = None):
         viewport = False
         if abs_position is not None:
-            position = abs_position
+            final_position = abs_position
             viewport = True
         self._plot.add_text(
             text,
-            position=position,
+            position=final_position,
             color=color,
             font_size=18,
             viewport=viewport)
@@ -496,7 +501,7 @@ class PVDisplay(BaseDisplay):
     def add_quiver(self, x: np.ndarray, y: np.ndarray, z: np.ndarray,
               dx: np.ndarray, dy: np.ndarray, dz: np.ndarray,
               scale: float = 1,
-              color: tuple[float, float, float] = None,
+              color: tuple[float, float, float] | None = None,
               scalemode: Literal['lin','log'] = 'lin'):
         """Add a quiver plot to the display
 
@@ -562,18 +567,18 @@ class PVDisplay(BaseDisplay):
         grid = pv.StructuredGrid(X,Y,Z)
         field = V.flatten(order='F')
         grid['anim'] = np.real(field)
-        levels = np.linspace(vmin, vmax, Nlevels)
+        levels = list(np.linspace(vmin, vmax, Nlevels))
         contour = grid.contour(isosurfaces=levels)
         actor = self._plot.add_mesh(contour, opacity=0.25, cmap=cmap, pickable=False)
 
-        if self._animate:
+        if self._do_animate:
             def on_update(obj: _AnimObject, phi: complex):
                 new_vals = np.real(obj.field * phi)
                 obj.grid['anim'] = new_vals
                 new_contour = obj.grid.contour(isosurfaces=levels)
-                obj.actor.GetMapper().SetInputData(new_contour)
+                obj.actor.GetMapper().SetInputData(new_contour) # type: ignore
             
-            self._objs.append(_AnimObject(field, lambda x: x, grid, actor, on_update))
+            self._objs.append(_AnimObject(field, lambda x: x, grid, actor, on_update)) # type: ignore
 
     def _add_aux_items(self) -> None:
         saved_camera = {
@@ -591,8 +596,8 @@ class PVDisplay(BaseDisplay):
             plane = pv.Plane(
                 center=(0, 0, 0),
                 direction=(1, 0, 0),    # normal vector pointing along +X
-                i_size=length,
-                j_size=length,
+                i_size=length, # type: ignore
+                j_size=length, # type: ignore
                 i_resolution=1,
                 j_resolution=1
             )
@@ -617,8 +622,8 @@ class PVDisplay(BaseDisplay):
             plane = pv.Plane(
                 center=(0, 0, 0),
                 direction=(0, 1, 0),    # normal vector pointing along +X
-                i_size=length,
-                j_size=length,
+                i_size=length, # type: ignore
+                j_size=length, # type: ignore
                 i_resolution=1,
                 j_resolution=1
             )
@@ -642,8 +647,8 @@ class PVDisplay(BaseDisplay):
             plane = pv.Plane(
                 center=(0, 0, 0),
                 direction=(0, 0, 1),    # normal vector pointing along +X
-                i_size=length,
-                j_size=length,
+                i_size=length, # type: ignore
+                j_size=length, # type: ignore
                 i_resolution=1,
                 j_resolution=1
             )
@@ -776,11 +781,11 @@ class PVDisplay(BaseDisplay):
 
         if self.set.add_light:
             light = pv.Light()
-            light.set_direction_angle(*self.set.light_angle)
+            light.set_direction_angle(*self.set.light_angle) # type: ignore
             self._plot.add_light(light)
 
-        self._plot.set_background(self.set.background_bottom, top=self.set.background_top)
-        self._plot.add_axes()
+        self._plot.set_background(self.set.background_bottom, top=self.set.background_top) # type: ignore
+        self._plot.add_axes() # type: ignore
 
         self._plot.camera.position = saved_camera["position"]
         self._plot.camera.focal_point = saved_camera["focal_point"]
@@ -837,7 +842,7 @@ class ScreenSelector:
                 celltypes = np.full(ntris, fill_value=pv.CellType.TRIANGLE, dtype=np.uint8)
                 points = self.disp._mesh.nodes.T
                 grid = pv.UnstructuredGrid(cells, celltypes, points)
-                grid._tag = key
+                grid._tag = key # type: ignore
                 self.grids.append(grid)
                 self.surfs[key] = points[nodes,:].T
         
@@ -856,14 +861,14 @@ class ScreenSelector:
             meany = np.mean(ys)
             meanz = np.mean(zs)
             data = (meanx, meany, meanz, min(xs), min(ys), min(zs), max(xs), max(ys), max(zs))
-            encoded = encode_data(data)
+            encoded = encode_data(data) #type: ignore
             print(f'Face code key={key}: ', encoded)
 
         self.disp._plot.enable_mesh_picking(callback, style='surface', left_clicking=True, use_actor=True)
     
     def turn_off(self) -> None:
         for actor in self.select_actors:
-            self.disp._plot.remove_actor(actor)
+            self.disp._plot.remove_actor(actor) # type: ignore
         self.select_actors = []
         for actor in self.original_actors:
             if isinstance(actor, pv.Text):
@@ -876,9 +881,9 @@ class ScreenRuler:
     def __init__(self, display: PVDisplay, min_length: float):
         self.disp: PVDisplay = display
         self.points: list[tuple] = [(0,0,0),(0,0,0)]
-        self.text: pv.Text = None
-        self.ruler = None
-        self.state = False
+        self.text: pv.Text | None = None
+        self.ruler: Any = None
+        self.state: bool = False
         self.min_length: float = min_length
     
     @freeze
@@ -916,7 +921,7 @@ class ScreenRuler:
     
     def set_ruler(self) -> None:
         if self.ruler is None:
-            self.ruler = self.disp._plot.add_ruler(self.points[0], self.points[1], title=f'{1000*self.dist:.2f}mm')
+            self.ruler = self.disp._plot.add_ruler(self.points[0], self.points[1], title=f'{1000*self.dist:.2f}mm') # type: ignore
         else:
             p1 = self.ruler.GetPositionCoordinate()
             p2 = self.ruler.GetPosition2Coordinate()

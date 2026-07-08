@@ -51,8 +51,8 @@ class LogController:
         logger.remove()
         self.std_handlers: list[int] = []
         self.file_handlers: list[int] = []
-        self.level: LLTYPE = 'INFO'
-        self.file_level: LLTYPE = 'INFO'
+        self.level: str = 'INFO'
+        self.file_level: str = 'INFO'
     
     def set_default(self):
         value = os.getenv("EMERGE_STD_LOGLEVEL", default="INFO")
@@ -68,7 +68,7 @@ class LogController:
         handler = {"sink": sys.stdout, 
                    "level": loglevel, 
                    "format": FORMAT_DICT.get(loglevel, INFO_FORMAT)}
-        logger.configure(handlers=[handler])
+        logger.configure(handlers=[handler]) # type: ignore
         self.level = loglevel
         os.environ["EMERGE_STD_LOGLEVEL"] = loglevel
         

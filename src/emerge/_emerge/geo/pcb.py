@@ -108,6 +108,10 @@ class RouteElement:
         self.dirright: np.ndarray = None
     
     @property
+    def xy(self) -> tuple[float, float]:
+        return self.x, self.y
+
+    @property
     def nr(self) -> tuple[float,float]:
         return (self.x + self.dirright[0]*self.width/2, self.y + self.dirright[1]*self.width/2)
     
@@ -117,11 +121,11 @@ class RouteElement:
     
     @property
     def right(self) -> list[tuple[float, float]]:
-        pass
+        raise NotImplementedError()
 
     @property
     def left(self) -> list[tuple[float, float]]:
-        pass
+        raise NotImplementedError()
     
     def __eq__(self, other: RouteElement) -> bool:
         return approx(self.x, other.x) and approx(self.y, other.y) and (1-abs(np.sum(self.direction*other.direction)))<1e-8
@@ -158,7 +162,7 @@ class StripTurn(RouteElement):
                  direction: tuple[float, float],
                  angle: float,
                  corner_type: str = 'round',
-                 champher_distance: float = None):
+                 champher_distance: float | None = None):
         self.xold: float = x
         self.yold: float = y
         self.width: float = width
@@ -221,7 +225,8 @@ class StripTurn(RouteElement):
             y2 = yend - dist * self.direction[1]
 
             return [(x1, y1), (x2, y2), (xend, yend)]
-    
+        else:
+            raise RouteException(f'Trying to route a StripTurn with an unknown corner type: {self.corner_type}')
     @property
     def left(self) -> list[tuple[float, float]]:
         if self.angle < 0:
@@ -258,6 +263,8 @@ class StripTurn(RouteElement):
             y2 = yend - dist * self.direction[1]
 
             return [(xend, yend), (x2, y2), (x1, y1)]
+        else:
+            raise RouteException(f'Trying to route a StripTurn with an unknown corner type: {self.corner_type}')
  
 ############################################################
 #                    THE STRIP PATH CLASS                  #
@@ -316,7 +323,7 @@ class StripPath:
         return self
     
     def straight(self, distance: 
-                 float, width: float = None, 
+                 float, width: float | None = None, 
                  dx: float = 0, 
                  dy: float = 0) -> StripPath:
         """Add A straight section to the stripline.
@@ -381,7 +388,7 @@ class StripPath:
         return self
     
     def turn(self, angle: float, 
-             width: float = None, 
+             width: float | None = None, 
              corner_type: Literal['champher','square'] = 'champher') -> StripPath:
         """Adds a turn to the strip path.
 
@@ -419,13 +426,12 @@ class StripPath:
         Returns:
             StripPath: The current StripPath object.
         """
-        self.pcb.store(name, self.end.x, self.end.y)
         self.pcb.stored_striplines[name] = self.end
         return self
     
     def split(self, 
-              direction: tuple[float, float] = None,
-              width: float = None) -> StripPath:
+              direction: tuple[float, float]  | None= None,
+              width: float  | None= None) -> StripPath:
         """Split the current path in N new paths given by a new departure direction
 
         Args:
@@ -529,9 +535,9 @@ class StripPath:
             znew: float,
             radius: float,
             proceed: bool = True,
-            direction: tuple[float, float] = None,
-            width: float = None,
-            extra: float = None,
+            direction: tuple[float, float] | None = None,
+            width: float | None = None,
+            extra: float | None = None,
             segments: int = 6) -> StripPath:
         """Adds a via to the circuit
 
@@ -576,13 +582,13 @@ class StripPath:
         return self
 
     def jump(self, 
-             dx: float = None,
-             dy: float = None,
-             width: float = None,
-             direction: tuple[float, float] = None,
-             gap: float = None,
-             side: Literal['left','right'] = None,
-             reverse: float = None) -> StripPath:
+             dx: float | None = None,
+             dy: float | None = None,
+             width: float | None = None,
+             direction: tuple[float, float] | None = None,
+             gap: float | None = None,
+             side: Literal['left','right'] | None = None,
+             reverse: float | None = None) -> StripPath:
         """Add an unconnected jump to the currenet stripline.
 
         The last stripline path will be terminated and a new one will be started based on the 
@@ -630,8 +636,8 @@ class StripPath:
         return self.pcb.new(x, y, width, direction)
     
     def to(self, dest: tuple[float, float], 
-           arrival_dir: tuple[float, float] = None,
-           arrival_margin: float = None,
+           arrival_dir: tuple[float, float] | None = None,
+           arrival_margin: float  | None= None,
            angle_step: float = 90):
         """
         Extend the path from current end point to dest (x, y).
@@ -672,7 +678,7 @@ class StripPath:
         dt = max_t / 1000.0  # resolution of search
         found = False
         desired_q = None
-        cand_dx = cand_dy = 0.0
+        #cand_dx = cand_dy = 0.0
         
         while t <= max_t:
             # candidate intercept point
@@ -700,8 +706,8 @@ class StripPath:
             raise RuntimeError("Could not find an intercept angle matching quantization")
 
         # 1) Perform initial quantized turn
-        if abs(desired_q) > atol:
-            self.turn(-desired_q)
+        if abs(desired_q) > atol: # type: ignore
+            self.turn(-desired_q) # type: ignore
         x0 = self.end.x
         y0 = self.end.y
         # compute new heading vector after turn
@@ -752,7 +758,7 @@ class StripPath:
 
         return self
 
-    def macro(self, path: str, width: float = None, start_dir: tuple[float, float] = None) -> StripPath:
+    def macro(self, path: str, width: float | None = None, start_dir: tuple[float, float] | None = None) -> StripPath:
         r"""Parse an EMerge macro command string
 
         The start direction by default is the abslute current heading. If a specified heading is provided
@@ -803,7 +809,7 @@ class PCB:
     def __init__(self,
                  thickness: float,
                  unit: float = 0.001,
-                 cs: CoordinateSystem = None,
+                 cs: CoordinateSystem | None = None,
                  material: Material = AIR,
                  layers: int = 2,
                  ):
@@ -811,16 +817,16 @@ class PCB:
         self.thickness: float = thickness
         self._zs: np.ndarray = np.linspace(-self.thickness, 0, layers)
         self.material: Material = material
-        self.width: float = None
-        self.length: float = None
-        self.origin: np.ndarray = None
+        self.width: float | None = None
+        self.length: float | None = None
+        self.origin: np.ndarray = np.array([0.,0.,0.])
         self.paths: list[StripPath] = []
         self.polies: list[PCBPoly] = []
 
         self.lumped_ports: list[StripLine] = []
         self.lumped_elements: list[GeoPolygon] = []
 
-        self.unit = unit
+        self.unit: float = unit
 
         self.cs: CoordinateSystem = cs
         if self.cs is None:
@@ -864,7 +870,7 @@ class PCB:
         """
         return self._zs[layer-1]
     
-    def _get_z(self, element: RouteElement) -> float:
+    def _get_z(self, element: RouteElement) -> float :
         """Return the z-height of a given Route Element
 
         Args:
@@ -876,38 +882,23 @@ class PCB:
         for path in self.paths:
             if path._has(element):
                 return path.z
-        return None
+        raise RouteException('Requesting z-height of route element that is not contained in a path.')
 
-    def store(self, name: str, x: float, y:float):
-        """Store the x,y coordinate pair one label provided by name
-
-        Args:
-            name (str): The corodinate label name
-            x (float): The x-coordinate
-            y (float): The y-coordinate
-        """
-        self.stored_coords[name] = (x,y)
-
-    def load(self, name: str) -> tuple[float, float] | StripLine:
+    def load(self, name: str) -> StripLine:
         """Acquire the x,y, coordinate associated with the label name.
         
         Args:
             name (str): The name of the x,y coordinate
             
         """
-        if name in self.stored_striplines and name in self.stored_coords:
-            logger.warning(f'There is both a coordinate and stripline under the name {name}.')
+        if name in self.stored_striplines:
             return self.stored_striplines[name]
-        elif name in self.stored_striplines:
-            return self.stored_striplines[name]
-        elif name in self.stored_coords:
-            return self.stored_coords[name]
         else:
             raise ValueError(f'There is no stripline or coordinate under the name of {name}')
     
     def __call__(self, path_nr: int) -> StripPath:
         if path_nr >= len(self.paths):
-            self.paths.append(StripPath())
+            self.paths.append(StripPath(self))
         return self.paths[path_nr]
     
     def determine_bounds(self, 
@@ -956,9 +947,9 @@ class PCB:
 
     def plane(self,
               z: float,
-              width: float = None,
-              height: float = None,
-              origin: tuple[float, float] = None,
+              width: float | None = None,
+              height: float | None = None,
+              origin: tuple[float, float] | None = None,
               alignment: Literal['corner','center'] = 'corner') -> GeoSurface:
         """Generates a generic rectangular plate in the XY grid.
         If no size is provided, it defaults to the entire PCB size assuming that the bounds are determined.
@@ -974,17 +965,22 @@ class PCB:
             GeoSurface: _description_
         """
         if width is None or height is None or origin is None:
+            if self.width is None or self.length is None or self.origin:
+                raise RouteException('Cannot define a plane with no possible definition of its size.')
             width = self.width
             height = self.length
             origin = (self.origin[0]*self.unit, self.origin[1]*self.unit)
-        origin = origin + (z*self.unit, )
+        
+        origin: tuple[float, ...] = origin + (z*self.unit, ) # type: ignore
 
         if alignment == 'center':
-            origin = (origin[0] - width*self.unit/2, origin[1]-height*self.unit/2, origin[2])
+            origin = (origin[0] - width*self.unit/2, 
+                                                        origin[1] - height*self.unit/2, 
+                                                        origin[2])
 
-        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0))
-        plane = change_coordinate_system(plane, self.cs)
-        return plane
+        plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0)) # type: ignore
+        plane = change_coordinate_system(plane, self.cs) # type: ignore
+        return plane # type: ignore
     
     def gen_pcb(self, 
                 split_z: bool = True,
@@ -1004,7 +1000,7 @@ class PCB:
                 if (z-zvalues_isolated[-1]) <= layer_tolerance:
                     continue
                 zvalues_isolated.append(z)
-            boxes = []
+            boxes: list[GeoVolume] = []
             for z1, z2 in zip(zvalues_isolated[:-1],zvalues_isolated[1:]):
                 h = z2-z1
                 box = Box(self.width*self.unit,
@@ -1015,8 +1011,8 @@ class PCB:
                 box = change_coordinate_system(box, self.cs)
                 boxes.append(box)
             if merge:
-                return GeoVolume.merged(boxes)
-            return boxes
+                return GeoVolume.merged(boxes) # type: ignore
+            return boxes # type: ignore
         
         box = Box(self.width*self.unit, 
                   self.length*self.unit, 
@@ -1024,7 +1020,7 @@ class PCB:
                   position=(x0,y0,z0-self.thickness*self.unit))
         box.material = self.material
         box = change_coordinate_system(box, self.cs)
-        return box
+        return box # type: ignore
 
     def gen_air(self, height: float) -> GeoVolume:
         """Generate the Air Block object
@@ -1041,7 +1037,7 @@ class PCB:
                   height*self.unit, 
                   position=(x0,y0,z0))
         box = change_coordinate_system(box, self.cs)
-        return box
+        return box # type: ignore
 
     def new(self, 
             x: float, 
@@ -1072,7 +1068,7 @@ class PCB:
         self.paths.append(path)  
         return path
     
-    def lumped_port(self, stripline: StripLine, z_ground: float = None) -> GeoPolygon:
+    def lumped_port(self, stripline: StripLine, z_ground: float | None = None) -> GeoPolygon:
         """Generate a lumped-port object to be created.
 
         Args:
@@ -1152,7 +1148,7 @@ class PCB:
 
         plate = Plate(np.array([x0,y0,z0])*self.unit, ax1, ax2)
         plate = change_coordinate_system(plate, self.cs)
-        return plate
+        return plate # type: ignore
 
     def generate_vias(self, merge=False) -> list[Cyllinder] | Cyllinder:
         """Generates the via objects.
@@ -1175,14 +1171,14 @@ class PCB:
             vias.append(cyl)
         if merge:
             
-            return GeoVolume.merged(vias)
+            return GeoVolume.merged(vias) # type: ignore
         return vias   
 
     def add_poly(self, 
                  xs: list[float],
                  ys: list[float],
                  z: float = 0,
-                 material: Material = COPPER):
+                 material: Material = COPPER) -> None:
         """Add a custom polygon to the PCB
 
         Args:

@@ -252,7 +252,7 @@ def ned2_tri_stiff_force(lcs_vertices, gamma, lcs_Uinc, DPTs):
 def compute_bc_entries_excited(vertices_local, tris, Bmat, Bvec, surf_triangle_indices, gamma, Ulocal_all, DPTs, tri_to_field):
     N = 64
     Niter = surf_triangle_indices.shape[0]
-    for i in prange(Niter):
+    for i in prange(Niter): # type: ignore
         itri = surf_triangle_indices[i]
 
         vertex_ids = tris[:, itri]
@@ -388,7 +388,7 @@ def ned2_tri_stiff(vertices, edge_lengths, gamma):
 def compute_bc_entries(vertices, tris, Bmat, all_edge_lengths, surf_triangle_indices, gamma):
     N = 64
     Niter = surf_triangle_indices.shape[0]
-    for i in prange(Niter):
+    for i in prange(Niter): # type: ignore
         itri = surf_triangle_indices[i]
 
         vertex_ids = tris[:, itri]
@@ -404,7 +404,7 @@ def assemble_robin_bc_excited(field: Nedelec2,
                               Bmat: np.ndarray,
                 surf_triangle_indices: np.ndarray,
                 Ufunc: Callable,
-                gamma: np.ndarray,
+                gamma: complex,
                 local_basis: np.ndarray,
                 origin: np.ndarray,
                 DPTs: np.ndarray):
@@ -424,8 +424,8 @@ def assemble_robin_bc_excited(field: Nedelec2,
 
 def assemble_robin_bc(field: Nedelec2,
                       Bmat: np.ndarray,
-                surf_triangle_indices: np.ndarray,
-                gamma: np.ndarray):
+                    surf_triangle_indices: np.ndarray,
+                    gamma: np.ndarray):
     vertices = field.mesh.nodes
     all_edge_lengths = field.mesh.edge_lengths[field.mesh.tri_to_edge]
     Bmat = compute_bc_entries(vertices, field.mesh.tris, Bmat, all_edge_lengths, surf_triangle_indices, gamma)

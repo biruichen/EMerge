@@ -21,6 +21,9 @@ from loguru import logger
 from .selection import Selection, FaceSelection
 import numpy as np
 from .geometry import GeoObject
+from typing import TypeVar, Type
+
+T = TypeVar('T')
 
 class BCDimension(Enum):
     ANY = -1
@@ -94,14 +97,14 @@ class BoundaryCondition:
         elif self.dimension != BCDimension(dimension):
             raise ValueError(f'Current boundary condition has dimension {self.dimension}, but tags have dimension {BCDimension(dimension)}')
         
-    def add_tags(self, tags: list[tuple[int,int]]) -> None:
+    def add_tags(self, dimtags: list[tuple[int,int]]) -> None:
         """Adds the given taggs to this boundary condition.
 
         Args:
             tags (list[tuple[int,int]]): The tags to include
         """
-        self.check_dimension(tags)
-        tags = [x[1] for x in tags]
+        self.check_dimension(dimtags)
+        tags = [x[1] for x in dimtags]
         self.tags = _unique(self.tags + tags)
     
     def remove_tags(self, tags: list[int]) -> list[int]:
@@ -137,12 +140,12 @@ class BoundaryConditionSet:
         self.boundary_conditions: list[BoundaryCondition] = []
         self._initialized: bool = False
     
-    def _construct_bc(self, constructor: type):
+    def _construct_bc(self, constructor: type) -> type:
         def constr(*args, **kwargs):
             obj = constructor(*args, **kwargs)
             self.assign(obj)
             return obj
-        return constr
+        return constr # type: ignore
     
     def assigned(self, dim: int = 2) -> list[int]:
         """Returns all boundary tags that have a boundary condition assigned to them
@@ -171,7 +174,7 @@ class BoundaryConditionSet:
         """
         return len(self.oftype(bctype))
     
-    def oftype(self, bctype: type) -> list[BoundaryCondition]:
+    def oftype(self, bctype: Type[T]) -> list[T]:
         """Returns a list of all boundary conditions of a certain type.
 
         Args:
@@ -218,8 +221,8 @@ class BoundaryConditionSet:
 class Periodic(BoundaryCondition):
 
     def __init__(self, 
-                 selection1: FaceSelection,
-                 selection2: FaceSelection,
+                 selection1: Selection,
+                 selection2: Selection,
                  dv: tuple[float,float,float],
                  ):
         self.face1: BoundaryCondition = BoundaryCondition(selection1)

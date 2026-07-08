@@ -20,10 +20,11 @@ from ...material import Material
 from ...mesh3d import Mesh3D
 from ...coord import Line
 from ...elements.femdata import FEMBasis
+from ...elements.nedelec2 import Nedelec2
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...system import called_from_main_function
 from ...selection import FaceSelection
-from scipy.sparse.linalg import inv as sparse_inverse
+from scipy.sparse.linalg import inv as sparse_inverse # type: ignore
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
 from .assembly.assembler import Assembler
@@ -110,11 +111,11 @@ class Microwave3D:
         self.resolution: float = 1
 
         self.mesher: Mesher = mesher
-        self.mesh: Mesh3D = None
+        self.mesh: Mesh3D = Mesh3D(self.mesher)
 
         self.assembler: Assembler = Assembler()
         self.bc: MWBoundaryConditionSet = MWBoundaryConditionSet(None)
-        self.basis: FEMBasis = None
+        self.basis: Nedelec2 | None = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
         self.set_order(order)
         self.cache_matrices: bool = True
@@ -125,8 +126,8 @@ class Microwave3D:
 
         ## Data
         self._params: dict[str, float] = dict()
-        self._simstart: int = 0
-        self._simend: int = 0
+        self._simstart: float = 0.0
+        self._simend: float = 0.0
 
     def reset_data(self):
         self.data = MWData()
@@ -167,7 +168,7 @@ class Microwave3D:
         Returns:
             list[PortBC]: A list of all port boundary conditions
         """
-        return sorted(self.bc.oftype(PortBC), key=lambda x: x.number)
+        return sorted(self.bc.oftype(PortBC), key=lambda x: x.number) # type: ignore
     
     
     def _initialize_bcs(self) -> None:
@@ -190,7 +191,7 @@ class Microwave3D:
         Args:
             frequency (float | list[float] | np.ndarray): The frequency points.
         """
-        logger.info(f'Setting frequency as {frequency/1e6}MHz.')
+        logger.info(f'Setting frequency as {frequency}Hz.')
         if isinstance(frequency, (tuple, list, np.ndarray)):
             self.frequencies = list(frequency)
         else:
@@ -307,7 +308,7 @@ class Microwave3D:
         port.vintline = Line.from_points(start, end, 21)
 
         logger.info(f'Ending node = {_dimstring(end)}')
-        port.voltage_integration_points = (start, end)
+        
         port.v_integration = True
     
     def _compute_integration_line(self, group1: list[int], group2: list[int]) -> tuple[np.ndarray, np.ndarray]:
@@ -347,9 +348,11 @@ class Microwave3D:
             list[int]: A list of node integers of island 1.
             list[int]: A list of node integers of island 2.
         '''
+        if self.basis is None:
+            raise ValueError('The field basis is not yet defined.')
 
         logger.debug('Finding PEC TEM conductors')
-        pecs: list[PEC] = self.bc.oftype(PEC)
+        pecs: list[PEC] = self.bc.oftype(PEC) # type: ignore
         mesh = self.mesh
 
         # Process all PEC Boundary Conditions
@@ -366,16 +369,15 @@ class Microwave3D:
                 edge_ids = list(mesh.tri_to_edge[:,itri].flatten())
                 pec_edges.extend(edge_ids)
 
-        pec_edges = set(pec_edges)
+        pec_edges = list(set(pec_edges))
         
         tri_ids = mesh.get_triangles(port.tags)
         edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
         
-        pec_port = np.array([i for i in list(pec_edges) if i in set(edge_ids)])
+        pec_port = np.array([i for i in pec_edges if i in set(edge_ids)])
         
         pec_islands = mesh.find_edge_groups(pec_port)
 
-        self.basis._pec_islands = pec_islands
         logger.debug(f'Found {len(pec_islands)} PEC islands.')
 
         if len(pec_islands) != 2:
@@ -415,7 +417,7 @@ class Microwave3D:
                        TEM: bool = False,
                        target_kz = None,
                        target_neff = None,
-                       freq: float = None) -> None:
+                       freq: float | None = None) -> None:
         ''' Execute a modal analysis on a given ModalPort boundary condition.
         
         Parameters:
@@ -441,6 +443,9 @@ class Microwave3D:
         
         self._initialize_field()
         self._initialize_bc_data()
+
+        if self.basis is None:
+            raise SimulationError('Cannot proceed, the current basis class is undefined.')
 
         logger.debug('Retreiving material properties.')
         ertet = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
@@ -557,7 +562,7 @@ class Microwave3D:
     def frequency_domain(self, 
                          parallel: bool = False,
                          njobs: int = 2, 
-                         harddisc_threshold: int = None,
+                         harddisc_threshold: int | None = None,
                          harddisc_path: str = 'EMergeSparse',
                          frequency_groups: int = -1,
                          multi_processing: bool = False,
@@ -595,6 +600,9 @@ class Microwave3D:
         self._initialize_field()
         self._initialize_bc_data()
         
+        if self.basis is None:
+            raise SimulationError('Cannot proceed, the simulation basis class is undefined.')
+
         er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
         cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
@@ -777,6 +785,9 @@ class Microwave3D:
         self._initialize_field()
         self._initialize_bc_data()
         
+        if self.basis is None:
+            raise SimulationError('Cannot proceed. The simulation basis class is undefined.')
+
         er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
         cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
@@ -839,6 +850,8 @@ class Microwave3D:
             ur (np.ndarray): The domain μᵣ
             cond (np.ndarray): The domain conductivity
         """
+        if self.basis is None:
+            raise SimulationError('Cannot post-process. Simulation basis function is undefined.')
         mesh = self.mesh
         all_ports = self.bc.oftype(PortBC)
         port_numbers = [port.port_number for port in all_ports]
@@ -863,7 +876,7 @@ class Microwave3D:
             scalardata = self.data.scalar.new(freq=freq, **self._params)
             scalardata.k0 = k0
             scalardata.freq = freq
-            scalardata.init_sp(port_numbers)
+            scalardata.init_sp(port_numbers) # type: ignore
             
             fielddata = self.data.field.new(freq=freq, **self._params)
             fielddata.freq = freq
@@ -881,7 +894,7 @@ class Microwave3D:
                                          k0 = k0,
                                          beta = active_port.get_beta(k0),
                                          Z0 = active_port.portZ0(k0),
-                                         Pout= active_port.power)
+                                         Pout = active_port.power)
                 scalardata.add_port_properties(active_port.port_number,
                                          mode_number=active_port.mode_number,
                                          k0 = k0,
@@ -899,7 +912,7 @@ class Microwave3D:
                 # Compute the S-parameters
                 # Define the field interpolation function
                 fieldf = self.basis.interpolate_Ef(solution, tetids=all_port_tets)
-                Pout = 0
+                Pout = 0.0 + 0j
 
                 # Active port power
                 logger.debug('Active ports:')
@@ -947,19 +960,26 @@ class Microwave3D:
         """
         from .sparam import sparam_field_power, sparam_mode_power
         if bc.v_integration:
+            if bc.vintline is None:
+                raise SimulationError('Trying to compute characteristic impedance but no integration line is defined.')
+            if bc.Z0 is None:
+                raise SimulationError('Trying to compute the impedance of a boundary condition with no characteristic impedance.')
+            
             V = bc.vintline.line_integral(fieldfunction)
             
             if bc.active:
+                if bc.voltage is None:
+                    raise ValueError('Cannot compute port S-paramer with a None port voltage.')
                 a = bc.voltage
                 b = (V-bc.voltage)
             else:
                 a = 0
                 b = V
             
-            a = a*csqrt(1/(2*bc.Z0))
-            b = b*csqrt(1/(2*bc.Z0))
+            a_sig = a*csqrt(1/(2*bc.Z0))
+            b_sig = b*csqrt(1/(2*bc.Z0))
 
-            return b, a
+            return b_sig, a_sig
         else:
             if bc.modetype(k0) == 'TEM':
                 const = 1/(np.sqrt((urp[0,0,:] + urp[1,1,:] + urp[2,2,:])/(erp[0,0,:] + erp[1,1,:] + erp[2,2,:])))

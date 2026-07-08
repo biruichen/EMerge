@@ -61,14 +61,14 @@ class Nedelec2(FEMBasis):
         self.tri_to_field[7,:] = np.arange(ntris) + 2*nedges + ntris
 
         ##
-        self._field: np.ndarray = None
+        self._field: np.ndarray | None = None
         self.n_tet_dofs = 20
         self.n_tri_dofs = 8
         self._all_tet_ids = np.arange(self.ntets)
 
         self.empty_tri_rowcol()
     
-    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         ''' 
         Interpolate the provided field data array at the given xs, ys and zs coordinates
         '''
@@ -76,7 +76,7 @@ class Nedelec2(FEMBasis):
             tetids = self._all_tet_ids
         return ned2_tet_interp(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, tetids)
     
-    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, c: np.ndarray, tetids: np.ndarray = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def interpolate_curl(self, field: np.ndarray, xs: np.ndarray, ys: np.ndarray, zs:np.ndarray, c: np.ndarray, tetids: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Interpolates the curl of the field at the given points.
         """
@@ -87,7 +87,7 @@ class Nedelec2(FEMBasis):
     def interpolate_index(self, xs: np.ndarray,
                         ys: np.ndarray,
                         zs: np.ndarray,
-                        tetids: np.ndarray = None) -> np.ndarray:
+                        tetids: np.ndarray | None = None) -> np.ndarray:
         if tetids is None:
             tetids = self._all_tet_ids
 

@@ -16,11 +16,11 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-import gmsh
+import gmsh # type: ignore
 import numpy as np
-from numba import njit, f8
+from numba import njit, f8 # type: ignore
 from .mesher import Mesher
-from typing import Union, List, Tuple, Callable
+from typing import Union, List, Tuple, Callable, Any
 from collections import defaultdict
 from .geometry import GeoVolume
 from .mth.optimized import outward_normal
@@ -75,8 +75,10 @@ def tri_ordering(i1: int, i2: int, i3: int) -> int:
     '''
     return np.sign(np.sign(i2-1) + np.sign(i3-i2) + np.sign(i1-i3))
 
+class Mesh:
+    pass
 
-class Mesh3D:
+class Mesh3D(Mesh):
     """A Mesh managing all 3D mesh related properties.
 
     Relevant mesh data such as mappings between nodes(vertices), edges, triangles and tetrahedra
@@ -89,54 +91,54 @@ class Mesh3D:
         self.geometry: Mesher = mesher
 
         # All spatial objects
-        self.nodes: np.ndarray = None
-        self.n_i2t: dict = None
-        self.n_t2i: dict = None
+        self.nodes: np.ndarray = np.array([])
+        self.n_i2t: dict = dict()
+        self.n_t2i: dict = dict()
 
         # tets colletions
-        self.tets: np.ndarray = None
-        self.tet_i2t: dict = None
-        self.tet_t2i: dict = None
-        self.centers: np.ndarray = None
+        self.tets: np.ndarray = np.array([])
+        self.tet_i2t: dict = dict()
+        self.tet_t2i: dict = dict()
+        self.centers: np.ndarray = np.array([])
 
         # triangles
-        self.tris: np.ndarray = None
-        self.tri_i2t: dict = None
-        self.tri_t2i: dict = None
-        self.areas: np.ndarray = None
-        self.tri_centers: np.ndarray = None
+        self.tris: np.ndarray = np.array([])
+        self.tri_i2t: dict = dict()
+        self.tri_t2i: dict = dict()
+        self.areas: np.ndarray = np.array([])
+        self.tri_centers: np.ndarray = np.array([])
 
         # edges
-        self.edges: np.ndarray = None
-        self.edge_i2t: dict = None
-        self.edge_t2i: dict = None
-        self.edge_centers: np.ndarray = None
-        self.edge_lengths: np.ndarray = None
+        self.edges: np.ndarray = np.array([])
+        self.edge_i2t: dict = dict()
+        self.edge_t2i: dict = dict()
+        self.edge_centers: np.ndarray = np.array([])
+        self.edge_lengths: np.ndarray = np.array([])
         
         # Inverse mappings
-        self.inv_edges: dict = None
-        self.inv_tris: dict = None
-        self.inv_tets: dict = None
+        self.inv_edges: dict = dict()
+        self.inv_tris: dict = dict()
+        self.inv_tets: dict = dict()
 
         # Mappings
 
-        self.tet_to_edge: np.ndarray = None
-        self.tet_to_edge_sign: np.ndarray = None
-        self.tet_to_tri: np.ndarray = None
-        self.tri_to_tet: np.ndarray = None
-        self.tri_to_edge: np.ndarray = None
-        self.tri_to_edge_sign: np.ndarray = None
-        self.edge_to_tri: defaultdict = None
-        self.node_to_edge: defaultdict = None
+        self.tet_to_edge: np.ndarray = np.array([])
+        self.tet_to_edge_sign: np.ndarray = np.array([])
+        self.tet_to_tri: np.ndarray = np.array([])
+        self.tri_to_tet: np.ndarray = np.array([])
+        self.tri_to_edge: np.ndarray = np.array([])
+        self.tri_to_edge_sign: np.ndarray = np.array([])
+        self.edge_to_tri: defaultdict | dict = defaultdict()
+        self.node_to_edge: defaultdict | dict = defaultdict()
 
         # Physics mappings
 
-        self.tet_to_field: np.ndarray = None
-        self.edge_to_field: np.ndarray = None
-        self.tri_to_field: np.ndarray = None
+        self.tet_to_field: np.ndarray = np.array([])
+        self.edge_to_field: np.ndarray = np.array([])
+        self.tri_to_field: np.ndarray = np.array([])
 
         ## States
-        self.defined = False
+        self.defined: bool = False
 
 
         ## Memory
@@ -144,6 +146,8 @@ class Mesh3D:
         self.ftag_to_node: dict[int, list[int]] = dict()
         self.ftag_to_edge: dict[int, list[int]] = dict()
         self.vtag_to_tet:  dict[int, list[int]] = dict()
+        
+        self.exterior_face_tags: list[int] = []
     
     @property
     def n_edges(self) -> int:
@@ -170,7 +174,9 @@ class Mesh3D:
         if i1==i2:
             raise ValueError("Edge cannot be formed by the same node.")
         search = (min(int(i1),int(i2)), max(int(i1),int(i2)))
-        result =  self.inv_edges.get(search, None)
+        result =  self.inv_edges.get(search, -10)
+        if result == -10:
+            ValueError(f'There is no edge with indices {i1}, {i2}')
         return result
     
     def get_edge_sign(self, i1: int, i2: int) -> int:
@@ -183,13 +189,19 @@ class Mesh3D:
         
     def get_tri(self, i1, i2, i3) -> int:
         '''Return the triangle index given the three node indices'''
-        return self.inv_tris.get(tuple(sorted((int(i1), int(i2), int(i3)))), None)
+        output = self.inv_tris.get(tuple(sorted((int(i1), int(i2), int(i3)))), None)
+        if output is None:
+            raise ValueError(f'There is no triangle with indices {i1}, {i2}, {i3}')
+        return output
     
     def get_tet(self, i1, i2, i3, i4) -> int:
         '''Return the tetrahedron index given the four node indices'''
-        return self.inv_tets.get(tuple(sorted((int(i1), int(i2), int(i3), int(i4)))), None)
+        output = self.inv_tets.get(tuple(sorted((int(i1), int(i2), int(i3), int(i4)))), None)
+        if output is None:
+            raise ValueError(f'There is no tetrahedron with indices {i1}, {i2}, {i3}, {i4}')
+        return output
     
-    def boundary_triangles(self, dimtags: list[tuple[int, int]] = None) -> np.ndarray:
+    def boundary_triangles(self, dimtags: list[tuple[int, int]] | None = None) -> np.ndarray:
         if dimtags is None:
             outputtags = []
             for tags in self.ftag_to_tri.values():
@@ -230,7 +242,7 @@ class Mesh3D:
     
     def get_face_tets(self, *taglist: list[int]) -> np.ndarray:
         ''' Return a list of a tetrahedrons that share a node with any of the nodes in the provided face.'''
-        nodes = set()
+        nodes: set = set()
         for tags in taglist:
             nodes.update(self.get_nodes(tags))
         return np.array([i for i, tet in enumerate(self.tets.T) if not set(tet).isdisjoint(nodes)])
@@ -258,7 +270,7 @@ class Mesh3D:
         return np.array(sorted(list(set(edges))))
     
     
-    def update(self, periodic_bcs: list[Periodic] = None):
+    def update(self, periodic_bcs: list[Periodic] | None = None):
         if periodic_bcs is None:
             periodic_bcs = []
             
@@ -406,8 +418,7 @@ class Mesh3D:
         self.edge_centers = (self.nodes[:,self.edges[0,:]] + self.nodes[:,self.edges[1,:]]) / 2
         self.edge_lengths = np.sqrt(np.sum((self.nodes[:,self.edges[0,:]] - self.nodes[:,self.edges[1,:]])**2, axis=0))
         self.areas = np.array([area(self.nodes[:,self.tris[0,i]], self.nodes[:,self.tris[1,i]], self.nodes[:,self.tris[2,i]]) for i in range(self.tris.shape[1])])
-
-
+        
         ## Tag bindings
         face_dimtags = gmsh.model.get_entities(2)
         for d,t in face_dimtags:
@@ -466,11 +477,11 @@ class Mesh3D:
         all_node_ids = np.unique(np.array(node_ids_1 + node_ids_2))
         dsmin = shortest_distance(self.nodes[:,all_node_ids])
 
-        node_ids_1 = sorted(list(set(node_ids_1)))
-        node_ids_2 = sorted(list(set(node_ids_2)))
+        node_ids_1_arry = np.sort(np.unique(np.array(node_ids_1)))
+        node_ids_2_arry = np.sort(np.unique(np.array(node_ids_2)))
         dv = np.array(bc.dv)
         
-        nodemap = pair_coordinates(self.nodes, node_ids_1, node_ids_2, dv, dsmin/2)
+        nodemap = pair_coordinates(self.nodes, node_ids_1_arry, node_ids_2_arry, dv, dsmin/2)
         node_ids_2_unsorted = [nodemap[i] for i in sorted(node_ids_1)]
         node_ids_2_sorted = sorted(node_ids_2_unsorted)
         conv_map = {i1: i2 for i1, i2 in zip(node_ids_2_unsorted, node_ids_2_sorted)}
@@ -499,7 +510,7 @@ class Mesh3D:
     def plot_gmsh(self) -> None:
         gmsh.fltk.run()
 
-    def find_edge_groups(self, edge_ids: np.ndarray) -> dict:
+    def find_edge_groups(self, edge_ids: np.ndarray) -> list[tuple[Any,...]]:
         """
         Find the groups of edges in the mesh.
 
@@ -568,7 +579,7 @@ class Mesh3D:
 
     def boundary_surface(self, 
                          face_tags: Union[int, list[int]], 
-                         origin: tuple[float, float, float] = None) -> SurfaceMesh:
+                         origin: tuple[float, float, float] | None = None) -> SurfaceMesh:
         """Returns a SurfaceMesh class that is a 2D mesh isolated from the 3D mesh
 
         The mesh will be based on the given set of face tags.
@@ -593,7 +604,7 @@ class Mesh3D:
 
         return SurfaceMesh(self, tri_ids, origin)
     
-class SurfaceMesh:
+class SurfaceMesh(Mesh):
 
     def __init__(self,
                  original: Mesh3D,
@@ -614,21 +625,22 @@ class SurfaceMesh:
 
         self.original_tris: np.ndarray = original.tris
 
-        self.old_new_node_map: dict[int,int] = old_to_new_node_id_map
+        self.old_new_node_map: dict = old_to_new_node_id_map
         self.original: Mesh3D = original
         self._alignment_origin: np.ndarray = np.array(origin).astype(np.float64)
         self.nodes: np.ndarray = original.nodes[:, unique_nodes]
         self.tris: np.ndarray = new_tris
 
         ## initialize derived
-        self.edge_centers: np.ndarray = None
-        self.edge_tris: np.ndarray = None
+        self.edge_centers: np.ndarray = np.array([])
+        self.edge_tris: np.ndarray = np.array([])
         self.n_nodes = self.nodes.shape[1]
         self.n_tris = self.tris.shape[1]
-        self.n_edges = None
-        self.areas: np.ndarray = None
-        self.normals: np.ndarray = None
-
+        self.n_edges: float = -1
+        self.areas: np.ndarray = np.array([])
+        self.normals: np.ndarray = np.array([])
+        self.tri_to_edge: np.ndarray = np.array([])
+        self.edge_to_tri: dict | defaultdict = dict()
         # Generate derived
         self.update()
 
@@ -642,22 +654,26 @@ class SurfaceMesh:
             self.flipY()
         if ax.lower()=='z':
             self.flipZ()
+        return self
         #self.tris[(0,1),:] = self.tris[(1,0),:]
 
     def flipX(self) -> SurfaceMesh:
         self.nodes[0,:] = -self.nodes[0,:]
         self.normals[0,:] = -self.normals[0,:]
         self.edge_centers[0,:] = -self.edge_centers[0,:]
-    
+        return self
+
     def flipY(self) -> SurfaceMesh:
         self.nodes[1,:] = -self.nodes[1,:]
         self.normals[1,:] = -self.normals[1,:]
         self.edge_centers[1,:] = -self.edge_centers[1,:]
+        return self
     
     def flipZ(self) -> SurfaceMesh:
         self.nodes[2,:] = -self.nodes[2,:]
         self.normals[2,:] = -self.normals[2,:]
         self.edge_centers[2,:] = -self.edge_centers[2,:]
+        return self
 
     def from_source_tri(self, triid: int) -> int | None:
         ''' Returns a triangle index from the old mesh to the new mesh.'''
@@ -685,6 +701,8 @@ class SurfaceMesh:
             raise ValueError("Edge cannot be formed by the same node.")
         search = (min(int(i1),int(i2)), max(int(i1),int(i2)))
         result =  self.inv_edges.get(search, None)
+        if result is None:
+            raise ValueError(f'There is no edge with indices {i1}, {i2}')
         return result
     
     def get_edge_sign(self, i1: int, i2: int) -> int:
@@ -697,7 +715,11 @@ class SurfaceMesh:
         
     def get_tri(self, i1, i2, i3) -> int:
         '''Return the triangle index given the three node indices'''
-        return self.inv_tris.get(tuple(sorted((int(i1), int(i2), int(i3)))), None)
+        result = self.inv_tris.get(tuple(sorted((int(i1), int(i2), int(i3)))), None)
+        if result is None:
+            raise ValueError(f'There is no triangle with indices {i1}, {i2}, {i3}')
+        return result
+
     
     def update(self) -> None:
         ## First Edges

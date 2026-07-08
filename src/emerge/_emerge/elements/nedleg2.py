@@ -46,21 +46,21 @@ class FieldFunctionClass:
                  tris: np.ndarray,
                  tri_to_field: np.ndarray,
                  EH: str = 'E',
-                 diadic: np.ndarray = None,
-                 beta: float = None,
-                 constant: float = 1.0):
+                 diadic: np.ndarray | None = None,
+                 beta: float | None = None,
+                 constant: float | int | complex = 1.0):
         self.field: np.ndarray = field
         self.cs: CoordinateSystem = cs
         self.nodes: np.ndarray = nodes
         self.tris: np.ndarray = tris
         self.tri_to_field: np.ndarray = tri_to_field
         self.eh: str = EH
-        self.diadic: np.ndarray = diadic
-        self.beta: float = beta
+        self.diadic: np.ndarray | None = diadic
+        self.beta: float | None = beta
         self.constant: float = constant
         if EH == 'H':
             if diadic is None:
-                self.diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.tris.shape[1]))
+                self.diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.tris.shape[1])) # type: ignore
 
     def __call__(self, xs: np.ndarray,
              ys: np.ndarray,
@@ -158,7 +158,7 @@ class NedelecLegrange2(FEMBasis):
 
     def interpolate_Hf(self, field: np.ndarray, k0: float, ur: np.ndarray, beta: float) -> FieldFunctionClass:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
-        constant = 1j/ ((k0*299792458)*(4*np.pi*1e-7))
+        constant = 1j / ((k0*299792458)*(4*np.pi*1e-7))
         urinv = np.zeros_like(ur)
         
         for i in range(ur.shape[2]):
@@ -179,10 +179,10 @@ class NedelecLegrange2(FEMBasis):
                                self.local_nodes, 
                                self.tri_to_field)
     
-    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray, diadic: np.ndarray = None, beta: float = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def tri_interpolate_curl(self, field, xs: np.ndarray, ys: np.ndarray, diadic: np.ndarray | None = None, beta: float = 0.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         coordinates = np.array([xs, ys])
         if diadic is None:
-            diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.mesh.n_tris))
+            diadic = np.eye(3)[:,:,np.newaxis()] * np.ones((self.mesh.n_tris)) # type: ignore
         return ned2_tri_interp_curl(coordinates, 
                                field, 
                                self.mesh.tris,  

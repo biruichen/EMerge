@@ -124,7 +124,7 @@ class Assembler:
                         sig: np.ndarray,
                         k0: float,
                         port: PortBC,
-                        bcs: list[BoundaryCondition]) -> tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]:
+                        bcs: list[BoundaryCondition]) -> tuple[csr_matrix, csr_matrix, np.ndarray, NedelecLegrange2]:
         """Computes the boundary mode analysis matrices
 
         Args:
@@ -194,12 +194,9 @@ class Assembler:
                 tids = nedlegfield.tri_to_field[:, i2]
                 pec_ids.extend(list(tids))
 
-        port._field = nedlegfield
-        port._pece = pec_edges
-        port._pecv = pec_vertices
         # Process all port boundary Conditions
-        pec_ids = set(pec_ids)
-        solve_ids = [i for i in range(nedlegfield.n_field) if i not in pec_ids]
+        pec_ids_set: set[int] = set(pec_ids)
+        solve_ids = [i for i in range(nedlegfield.n_field) if i not in pec_ids_set]
 
         return E, B, np.array(solve_ids), nedlegfield
 
@@ -234,7 +231,7 @@ class Assembler:
 
         mesh = field.mesh
         er = er - 1j*sig/(W0*EPS0)*np.repeat(np.eye(3)[:, :, np.newaxis], er.shape[2], axis=2)
-        is_frequency_dependent: bool = np.any((sig > 0) & (sig < self.conductivity_limit))
+        is_frequency_dependent: bool = np.any((sig > 0) & (sig < self.conductivity_limit)) # type: ignore
         
 
         if cache_matrices and not is_frequency_dependent and self.cached_matrices is not None:
@@ -254,7 +251,7 @@ class Assembler:
 
         # ISOLATE BOUNDARY CONDITIONS TO ASSEMBLE
         pec_bcs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
-        robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
+        robin_bcs: list[RobinBC] = [bc for bc in bcs if isinstance(bc,RobinBC)]
         port_bcs: list[PortBC] = [bc for bc in bcs if isinstance(bc, PortBC)]
         periodic_bcs: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
 
@@ -264,7 +261,7 @@ class Assembler:
         
         # Process all PEC Boundary Conditions
         logger.debug('    Implementing PEC Boundary Conditions.')
-        pec_ids = []
+        pec_ids: list[int] = []
         # Conductivity above al imit, consider it all PEC
         for itet in range(field.n_tets):
             if sig[itet] > self.conductivity_limit:
@@ -310,13 +307,13 @@ class Assembler:
                         basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
                         ibasis = np.linalg.pinv(basis)
                     if bc._include_force:
-
-                        Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points)
                         
-                        port_vectors[bc.port_number] += b_p
+                        Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points) # type: ignore
+                        
+                        port_vectors[bc.port_number] += b_p # type: ignore
                     
                     else:
-                        Bempty = assemble_robin_bc(field, Bempty, tri_ids, gamma)
+                        Bempty = assemble_robin_bc(field, Bempty, tri_ids, gamma) # type: ignore
             B_p = field.generate_csr(Bempty)
             K = K + B_p
         
@@ -326,20 +323,20 @@ class Assembler:
         
         # Periodic BCs
         Pmats = []
-        remove = set()
+        remove: set[int] = set()
         has_periodic = False
 
-        for bc in periodic_bcs:
+        for pbc in periodic_bcs:
             has_periodic = True
-            tri_ids_1 = mesh.get_triangles(bc.face1.tags)
-            edge_ids_1 = mesh.get_edges(bc.face1.tags)
-            tri_ids_2 = mesh.get_triangles(bc.face2.tags)
-            edge_ids_2 = mesh.get_edges(bc.face2.tags)
-            dv = np.array(bc.dv)
+            tri_ids_1 = mesh.get_triangles(pbc.face1.tags)
+            edge_ids_1 = mesh.get_edges(pbc.face1.tags)
+            tri_ids_2 = mesh.get_triangles(pbc.face2.tags)
+            edge_ids_2 = mesh.get_edges(pbc.face2.tags)
+            dv = np.array(pbc.dv)
             linked_tris = pair_coordinates(mesh.tri_centers, tri_ids_1, tri_ids_2, dv, 1e-9)
             linked_edges = pair_coordinates(mesh.edge_centers, edge_ids_1, edge_ids_2, dv, 1e-9)
-            dv = np.array(bc.dv)
-            phi = bc.phi(K0)
+            dv = np.array(pbc.dv)
+            phi = pbc.phi(K0)
             
             Pmat, rows = gen_periodic_matrix(tri_ids_1,
                                        edge_ids_1,
@@ -356,15 +353,15 @@ class Assembler:
             Pmat = Pmats[0]
             for P2 in Pmats[1:]:
                 Pmat = Pmat @ P2
-            remove = np.array(sorted(list(remove)))
+            remove_array = np.sort(np.unique(list(remove)))
             all_indices = np.arange(NF)
-            keep_indices = np.setdiff1d(all_indices, remove)
+            keep_indices = np.setdiff1d(all_indices, remove_array)
             Pmat = Pmat[:,keep_indices]
         else:
             Pmat = None
         
-        pec_ids = set(pec_ids)
-        solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids])
+        pec_ids_set = set(pec_ids)
+        solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids_set])
         
         if has_periodic:
             mask = np.zeros((NF,))
@@ -426,11 +423,11 @@ class Assembler:
         NF = E.shape[0]
 
         pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
-        robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
+        robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)] # type: ignore
         periodic: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
 
         # Process all PEC Boundary Conditions
-        pec_ids = []
+        pec_ids: list = []
         
         logger.debug('    Implementing PEC Boundary Conditions.')
         
@@ -459,23 +456,30 @@ class Assembler:
         if len(robin_bcs) > 0:
             logger.debug('    Implementing Robin Boundary Conditions.')
         
-        for bc in robin_bcs:
-            for tag in bc.tags:
-                face_tags = [tag,]#bc.tags
+        if len(robin_bcs) > 0:
+            logger.debug('    Implementing Robin Boundary Conditions.')
+        
+            gauss_points = gaus_quad_tri(4)
+            Bempty = field.empty_tri_matrix()
+            for bc in robin_bcs:
 
-                tri_ids = mesh.get_triangles(face_tags)
-                nodes = mesh.get_nodes(face_tags)
-                edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+                for tag in bc.tags:
+                    face_tags = [tag,]
 
-                gamma = bc.get_gamma(k0)
-                
-                ibasis = bc.get_inv_basis()
-                if ibasis is None:
-                    basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
-                    ibasis = np.linalg.pinv(basis)
-                B_p = assemble_robin_bc(field, tri_ids, gamma)
-                if bc._include_stiff:
-                    B = B + B_p
+                    tri_ids = mesh.get_triangles(face_tags)
+                    nodes = mesh.get_nodes(face_tags)
+                    edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+
+                    gamma = bc.get_gamma(k0)
+                    
+                    ibasis = bc.get_inv_basis()
+                    if ibasis is None:
+                        basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
+                        ibasis = np.linalg.pinv(basis)
+                    
+                    Bempty = assemble_robin_bc(field, Bempty, tri_ids, gamma) # type: ignore
+            B_p = field.generate_csr(Bempty)
+            B = B + B_p
         
         if len(periodic) > 0:
             logger.debug('    Implementing Periodic Boundary Conditions.')
@@ -485,17 +489,17 @@ class Assembler:
         remove = set()
         has_periodic = False
 
-        for bc in periodic:
+        for bcp in periodic:
             has_periodic = True
-            tri_ids_1 = mesh.get_triangles(bc.face1.tags)
-            edge_ids_1 = mesh.get_edges(bc.face1.tags)
-            tri_ids_2 = mesh.get_triangles(bc.face2.tags)
-            edge_ids_2 = mesh.get_edges(bc.face2.tags)
-            dv = np.array(bc.dv)
+            tri_ids_1 = mesh.get_triangles(bcp.face1.tags)
+            edge_ids_1 = mesh.get_edges(bcp.face1.tags)
+            tri_ids_2 = mesh.get_triangles(bcp.face2.tags)
+            edge_ids_2 = mesh.get_edges(bcp.face2.tags)
+            dv = np.array(bcp.dv)
             linked_tris = pair_coordinates(mesh.tri_centers, tri_ids_1, tri_ids_2, dv, 1e-9)
             linked_edges = pair_coordinates(mesh.edge_centers, edge_ids_1, edge_ids_2, dv, 1e-9)
-            dv = np.array(bc.dv)
-            phi = bc.phi(k0)
+            dv = np.array(bcp.dv)
+            phi = bcp.phi(k0)
             
             Pmat, rows = gen_periodic_matrix(tri_ids_1,
                                        edge_ids_1,
@@ -513,15 +517,15 @@ class Assembler:
             for P2 in Pmats[1:]:
                 Pmat = Pmat @ P2
             Pmat = Pmat.tocsr()
-            remove = np.array(sorted(list(remove)))
+            remove_array = np.sort(np.array(list(remove)))
             all_indices = np.arange(NF)
-            keep_indices = np.setdiff1d(all_indices, remove)
+            keep_indices = np.setdiff1d(all_indices, remove_array)
             Pmat = Pmat[:,keep_indices]
         else:
             Pmat = None
         
-        pec_ids = set(pec_ids)
-        solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids])
+        pec_ids_set = set(pec_ids)
+        solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids_set])
         
         if has_periodic:
             mask = np.zeros((NF,))

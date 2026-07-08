@@ -16,12 +16,14 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-import gmsh
+import gmsh # type: ignore
 from .material import Material, AIR
-from .selection import FaceSelection, DomainSelection, EdgeSelection, PointSelection
+from .selection import FaceSelection, DomainSelection, EdgeSelection, PointSelection, Selection
 from loguru import logger
-from typing import Literal, Any
+from typing import Literal, Any, Iterable, TypeVar
 import numpy as np
+
+
 
 def _map_tags(tags: list[int], mapping: dict[int, list[int]]):
     new_tags = []
@@ -48,12 +50,12 @@ class _GeometryManager:
         self.geometry_list: dict[str, list[GeoObject]] = dict()
         self.active: str = ''
 
-    def all_geometries(self, model: str = None) -> list[GeoObject]:
+    def all_geometries(self, model: str | None = None) -> list[GeoObject]:
         if model is None:
             model = self.active
         return [geo for geo in self.geometry_list[model] if geo._exists]
 
-    def submit_geometry(self, geo: GeoObject, model: str = None) -> None:
+    def submit_geometry(self, geo: GeoObject, model: str | None = None) -> None:
         if model is None:
             model = self.active
         self.geometry_list[model].append(geo)
@@ -135,7 +137,7 @@ class _FacePointer:
     def translate(self, dx, dy, dz):
         self.o = self.o + np.array([dx, dy, dz])
     
-    def mirror(self, c0: np.ndarray, pln: np.ndarray):
+    def mirror(self, c0: np.ndarray, pln: np.ndarray) -> None:
         """
         Reflect self.o and self.n across the plane passing through c0
         with normal pln.
@@ -205,9 +207,11 @@ class GeoObject:
     """A generalization of any OpenCASCADE entity described by a dimension and a set of tags.
     """
     dim: int = -1
-    def __init__(self):
+    def __init__(self, tags: list[int] | None = None):
+        if tags is None:
+            tags = []
         self.old_tags: list[int] = []
-        self.tags: list[int] = []
+        self.tags: list[int] = tags
         self.material: Material = AIR
         self.mesh_multiplier: float = 1.0
         self.max_meshsize: float = 1e9
@@ -225,7 +229,7 @@ class GeoObject:
         _GEOMANAGER.submit_geometry(self)
 
     @property
-    def color_rgb(self) -> tuple[int,int,int]:
+    def color_rgb(self) -> tuple[float, float, float]:
         return self.material.color_rgb
     
     @property
@@ -233,7 +237,7 @@ class GeoObject:
         return self.material.opacity
     
     @property
-    def select(self) -> FaceSelection | DomainSelection | EdgeSelection | None:
+    def select(self) -> Selection:
         '''Returns a corresponding Face/Domain or Edge Selection object'''
         if self.dim==1:
             return EdgeSelection(self.tags)
@@ -241,11 +245,14 @@ class GeoObject:
             return FaceSelection(self.tags)
         elif self.dim==3:
             return DomainSelection(self.tags)
+        else:
+            return Selection(self.tags)
     
     @staticmethod
-    def merged(objects: list[GeoObject]) -> list[GeoObject]:
+    def merged(objects: list[GeoPoint | GeoEdge | GeoSurface | GeoVolume | GeoObject]) -> list[GeoPoint | GeoEdge | GeoSurface | GeoVolume | GeoObject] | GeoPoint | GeoEdge | GeoSurface | GeoVolume | GeoObject:
         dim = objects[0].dim
         tags = []
+        out: GeoObject | None = None
         for obj in objects:
             tags.extend(obj.tags)
         if dim==2:
@@ -260,8 +267,8 @@ class GeoObject:
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.dim},{self.tags})'
 
-    def _data(self, *labels) -> tuple[Any]:
-        return tuple([self._aux_data.get(lab, None) for lab in labels])
+    def _data(self, *labels) -> tuple[Any | None, ...]:
+        return tuple([self._aux_data[lab] for lab in labels])
     
     def _add_face_pointer(self, 
                           name: str,
@@ -325,7 +332,7 @@ class GeoObject:
             self._tools.update(obj._tools)
         return self
     
-    def _face_tags(self, name: FaceNames, tool: GeoObject = None) -> list[int]:
+    def _face_tags(self, name: FaceNames, tool: GeoObject | None = None) -> list[int]:
         names = self._all_pointer_names
         if name not in names:
             raise ValueError(f'The face {name} does not exist in {self}')
@@ -380,7 +387,7 @@ class GeoObject:
         self._priority -= 1
         return self
 
-    def outside(self, *exclude: FaceNames, tags: list[int] = None) -> FaceSelection:
+    def outside(self, *exclude: FaceNames, tags: list[int] | None = None) -> FaceSelection:
         """Returns the complete set of outside faces.
 
         If implemented, it is possible to exclude a set of faces based on their name
@@ -394,7 +401,7 @@ class GeoObject:
         dimtags = gmsh.model.get_boundary(self.dimtags, True, False)
         return FaceSelection([t for d,t in dimtags if t not in tags])
     
-    def face(self, name: FaceNames, tool: GeoObject = None) -> FaceSelection:
+    def face(self, name: FaceNames, tool: GeoObject | None = None) -> FaceSelection:
         """Returns the FaceSelection for a given face name.
         
         The face name must be defined for the type of geometry.
@@ -422,7 +429,7 @@ class GeoObject:
             return FaceSelection([t[1] for t in tags])
         if self.dim == 2:
             return FaceSelection(self.tags)
-        if self.dim < 2:
+        else:
             raise ValueError('Can only generate faces for objects of dimension 2 or higher.')
 
     @staticmethod
@@ -443,12 +450,13 @@ class GeoVolume(GeoObject):
     '''GeoVolume is an interface to the GMSH CAD kernel. It does not represent EMerge
     specific geometry data.'''
     dim = 3
-    def __init__(self, tag: int | list[int]):
+    def __init__(self, tag: int | Iterable[int]):
         super().__init__()
-        if isinstance(tag, list):
-            self.tags: list[int] = tag
+        self.tags: list[int] = []
+        if isinstance(tag, Iterable):
+            self.tags = list(tag)
         else:
-            self.tags: list[int] = [tag,]
+            self.tags = [tag,]
 
     @property
     def select(self) -> DomainSelection:
@@ -463,10 +471,12 @@ class GeoPoint(GeoObject):
     
     def __init__(self, tag: int | list[int]):
         super().__init__()
-        if isinstance(tag, list):
-            self.tags: list[int] = tag
+
+        self.tags: list[int] = []
+        if isinstance(tag, Iterable):
+            self.tags = list(tag)
         else:
-            self.tags: list[int] = [tag,]
+            self.tags = [tag,]
 
 class GeoEdge(GeoObject):
     dim = 1
@@ -477,10 +487,11 @@ class GeoEdge(GeoObject):
     
     def __init__(self, tag: int | list[int]):
         super().__init__()
-        if isinstance(tag, list):
-            self.tags: list[int] = tag
+        self.tags: list[int] = []
+        if isinstance(tag, Iterable):
+            self.tags = list(tag)
         else:
-            self.tags: list[int] = [tag,]
+            self.tags = [tag,]
         
 
 class GeoSurface(GeoObject):
@@ -494,17 +505,20 @@ class GeoSurface(GeoObject):
     
     def __init__(self, tag: int | list[int]):
         super().__init__()
-        if isinstance(tag, list):
-            self.tags: list[int] = tag
+        self.tags: list[int] = []
+        if isinstance(tag, Iterable):
+            self.tags = list(tag)
         else:
-            self.tags: list[int] = [tag,]
+            self.tags = [tag,]
 
 class GeoPolygon(GeoSurface):
     
     def __init__(self,
                  tags: list[int]):
         super().__init__(tags)
-        self.points: list[int] = None
-        self.lines: list[int] = None
+        self.points: list[int] = []
+        self.lines: list[int] = []
 
+    
+T = TypeVar('T', GeoVolume, GeoEdge, GeoPoint, GeoSurface)
     

@@ -17,11 +17,11 @@
 
 
 from __future__ import annotations
-from scipy.sparse import lil_matrix, csc_matrix
-from scipy.sparse.csgraph import reverse_cuthill_mckee
-from scipy.sparse.linalg import bicgstab, gmres, gcrotmk, eigs, splu
-from scipy.linalg import eig
-from scipy import sparse
+from scipy.sparse import lil_matrix, csc_matrix, csr_matrix # type: ignore
+from scipy.sparse.csgraph import reverse_cuthill_mckee # type: ignore
+from scipy.sparse.linalg import bicgstab, gmres, gcrotmk, eigs, splu # type: ignore
+from scipy.linalg import eig # type: ignore
+from scipy import sparse # type: ignore
 from dataclasses import dataclass
 import numpy as np
 from loguru import logger
@@ -44,7 +44,7 @@ if 'arm' not in platform.processor():
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
 try:
-    import scikits.umfpack as um
+    import scikits.umfpack as um # type: ignore
     _UMFPACK_AVAILABLE = True
 except ModuleNotFoundError as e:
     logger.debug('UMFPACK not found, defaulting to SuperLU')
@@ -108,8 +108,8 @@ def filter_unique_eigenpairs(eigen_values: list[complex], eigen_vectors: list[np
         unique_values (np.ndarray): Filtered eigenvalues
         unique_vectors (np.ndarray): Corresponding orthogonal eigenvectors
     """
-    selected = []
-    indices = []
+    selected: list = []
+    indices: list = []
     for i in range(len(eigen_vectors)):
         
         vec = eigen_vectors[i]
@@ -166,7 +166,7 @@ class Sorter:
         self.perm = None
         self.inv_perm = None
 
-    def reset(self) -> str:
+    def reset(self):
         """ Reset the permuation vectors."""
         self.perm = None
         self.inv_perm = None
@@ -234,7 +234,7 @@ class EigSolver:
     def __str__(self) -> str:
         return f'{self.__class__.__name__}'
     
-    def eig(self, A: lil_matrix, B: np.ndarray, nmodes: int = 6, target_k0: float = None, which: str = 'LM', sign: float = 1.):
+    def eig(self, A: lil_matrix | csr_matrix, B: lil_matrix | csr_matrix, nmodes: int = 6, target_k0: float = 0.0, which: str = 'LM', sign: float = 1.):
         raise NotImplementedError("This classes eigenmdoe solver method is not implemented.")
     
     def reset(self) -> None:
@@ -255,7 +255,7 @@ class SolveReport:
     simtime: float
     ndof: int
     nnz: int
-    code: int = None
+    code: int = 0
 
 
 class ReverseCuthillMckee(Sorter):
@@ -339,7 +339,7 @@ class SolverGCROTMK(Solver):
         convergence = np.linalg.norm((self.A @ xk - self.b))
         logger.info(f'Iteration {convergence:.4f}')
 
-    def solve(self, A, b, precon, id: int = -1):
+    def solve(self, A: lil_matrix, b: np.ndarray, precon: Preconditioner, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling GCRO-T(m,k) algorithm. ID={id}')
         self.A = A
         self.b = b
@@ -482,10 +482,10 @@ class SolverLAPACK(EigSolver):
         super().__init__()
     
     def eig(self, 
-            A: np.ndarray, 
-            B: np.ndarray,
+            A: lil_matrix | csr_matrix, 
+            B: lil_matrix | csr_matrix,
             nmodes: int = 6,
-            target_k0: float = 0,
+            target_k0: float | None = 0,
             which: str = 'LM',
             sign: float = 1.0):
         """
@@ -521,8 +521,8 @@ class SolverARPACK(EigSolver):
         super().__init__()
 
     def eig(self, 
-            A: np.ndarray, 
-            B: np.ndarray,
+            A: lil_matrix | csr_matrix, 
+            B: lil_matrix | csr_matrix,
             nmodes: int = 6,
             target_k0: float = 0,
             which: str = 'LM',
@@ -544,8 +544,8 @@ class SmartARPACK_BMA(EigSolver):
         self.energy_limit: float = 1e-4
 
     def eig(self, 
-            A: np.ndarray, 
-            B: np.ndarray,
+            A: lil_matrix | csr_matrix, 
+            B: lil_matrix | csr_matrix,
             nmodes: int = 6,
             target_k0: float = 0,
             which: str = 'LM',
@@ -593,8 +593,8 @@ class SmartARPACK(EigSolver):
         self.energy_limit: float = 1e-4
 
     def eig(self, 
-            A: np.ndarray, 
-            B: np.ndarray,
+            A: lil_matrix | csr_matrix, 
+            B: lil_matrix | csr_matrix,
             nmodes: int = 6,
             target_k0: float = 0,
             which: str = 'LM',
@@ -625,8 +625,8 @@ class SmartARPACK(EigSolver):
             if len(tot_eigen_values)>nmodes:
                 break
         #Sort solutions on mode energy
-        val, mode = filter_unique_eigenpairs(np.array(tot_eigen_values), np.array(tot_eigen_modes))
-        val, mode = zip(*sorted(zip(val,mode), key=lambda x: x[0], reverse=False))
+        val, mode = filter_unique_eigenpairs(tot_eigen_values, tot_eigen_modes)
+        val, mode = zip(*sorted(zip(val,mode), key=lambda x: x[0], reverse=False)) # type: ignore
         eigen_values = np.array(val[:nmodes])
         eigen_modes = np.array(mode[:nmodes]).T
 
@@ -648,7 +648,7 @@ class EMSolver(Enum):
     SMART_ARPACK = 6
     SMART_ARPACK_BMA = 7
 
-    def get_solver(self) -> Solver:
+    def get_solver(self) -> Solver | EigSolver:
         if self==EMSolver.SUPERLU:
             return SolverSuperLU()
         elif self==EMSolver.UMFPACK:
@@ -669,7 +669,7 @@ class EMSolver(Enum):
             return SmartARPACK()
         elif self==EMSolver.SMART_ARPACK_BMA:
             return SmartARPACK_BMA()
-    
+
 
 ############################################################
 #                       SOLVE ROUTINE                      #
@@ -686,21 +686,21 @@ class SolveRoutine:
         
         self.sorter: Sorter = ReverseCuthillMckee()
         self.precon: Preconditioner = ILUPrecon()
-        self.solvers: dict[EMSolver, Solver] = {slv: slv.get_solver() for slv in EMSolver}
+        self.solvers: dict[EMSolver, Solver | EigSolver] = {slv: slv.get_solver() for slv in EMSolver}
 
         self.parallel: Literal['SI','MT','MP'] = 'SI'
         self.smart_search: bool = False
-        self.forced_solver: list[Solver] = []
-        self.disabled_solver: list[Solver] = []
+        self.forced_solver: list[Solver | EigSolver] = []
+        self.disabled_solver: list[type[Solver]|type[EigSolver]] = []
 
         self.use_sorter: bool = False
         self.use_preconditioner: bool = False
         self.use_direct: bool = True
 
     def __str__(self) -> str:
-        return f'SolveRoutine({self.sorter},{self.precon},{self.iterative_solver}, {self.direct_solver})'
+        return 'SolveRoutine()'
     
-    def _legal_solver(self, solver: Solver) -> bool:
+    def _legal_solver(self, solver: Solver | EigSolver) -> bool:
         """Checks if a solver is a legal option.
 
         Args:
@@ -718,7 +718,7 @@ class SolveRoutine:
         return list([solver for solver in self.solvers.values() if not isinstance(solver, EigSolver)])
     
     @property
-    def all_eig_solvers(self) -> list[Solver]:
+    def all_eig_solvers(self) -> list[EigSolver]:
         return list([solver for solver in self.solvers.values() if isinstance(solver, EigSolver)])
     
 
@@ -736,7 +736,7 @@ class SolveRoutine:
         """
         solver = self.solvers[solver_type]
         if self._legal_solver(solver):
-            return solver
+            return solver  # type: ignore
         for alternative in self.all_solvers:
             if self._legal_solver(alternative):
                 logger.debug(f'Falling back on legal solver: {alternative}')
@@ -803,10 +803,10 @@ class SolveRoutine:
         for solver in self.solvers.values():
             solver.reset()
         self.sorter.reset()
-        self.parallel: Literal['SI','MT','MP'] = 'SI'
-        self.smart_search: bool = False
+        self.parallel = 'SI'
+        self.smart_search = False
         self.forced_solver = []
-        self.disabled_solver: list[Solver] = []
+        self.disabled_solver = []
 
     def _get_solver(self, A: lil_matrix, b: np.ndarray) -> Solver:
         """Returns the relevant Solver object given a certain matrix and source vector
@@ -844,7 +844,7 @@ class SolveRoutine:
         """
         return self._try_solver(EMSolver.SUPERLU)
     
-    def _get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
+    def _get_eig_solver(self, A: lil_matrix, b: lil_matrix, direct: bool | None = None) -> EigSolver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
 
         This is the default implementation for the SolveRoutine Class.
@@ -860,13 +860,13 @@ class SolveRoutine:
         """
         for solver in self.forced_solver:
             if isinstance(solver, EigSolver):
-                return solver
+                return solver  # type: ignore
         if direct or A.shape[0] < 1000:
-            return self.solvers[EMSolver.LAPACK]
+            return self.solvers[EMSolver.LAPACK] # type: ignore
         else:
-            return self.solvers[EMSolver.SMART_ARPACK]
+            return self.solvers[EMSolver.SMART_ARPACK] # type: ignore
             
-    def _get_eig_solver_bma(self, A: lil_matrix, b: lil_matrix, direct: bool = None) -> Solver:
+    def _get_eig_solver_bma(self, A: lil_matrix, b: lil_matrix, direct: bool | None = None) -> EigSolver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
 
         This is the default implementation for the SolveRoutine Class.
@@ -885,11 +885,11 @@ class SolveRoutine:
                 return solver
         
         if direct or A.shape[0] < 1000:
-            return self.solvers[EMSolver.LAPACK]
+            return self.solvers[EMSolver.LAPACK]  # type: ignore
         else:
-            return self.solvers[EMSolver.ARPACK]
+            return self.solvers[EMSolver.ARPACK]  # type: ignore
     
-    def solve(self, A: np.ndarray | lil_matrix | csc_matrix, 
+    def solve(self, A: lil_matrix | csc_matrix, 
               b: np.ndarray, 
               solve_ids: np.ndarray,
               reuse: bool = False,
@@ -937,7 +937,7 @@ class SolveRoutine:
         # Preconditioner
         precon = 'None'
         if self.use_preconditioner:
-            if not self.iterative_solver.own_preconditioner:
+            if not solver.own_preconditioner:
                 self.precon.init(Asorted, bsorted)
                 precon = str(self.precon)
 
@@ -968,12 +968,12 @@ class SolveRoutine:
         return solution, SolveReport(str(solver), sorter, precon, simtime, NS, A.nnz, code)
     
     def eig_boundary(self, 
-            A: np.ndarray | lil_matrix | csc_matrix, 
+            A: lil_matrix | csr_matrix, 
             B: np.ndarray, 
             solve_ids: np.ndarray,
             nmodes: int = 6,
-            direct: bool = None,
-            target_k0: float = None,
+            direct: bool | None = None,
+            target_k0: float = 0.0,
             which: str = 'LM', 
             sign: float=-1) -> tuple[np.ndarray, np.ndarray, SolveReport]:
         """ Find the eigenmodes for the system Ax = λBx for a boundary mode problem
@@ -1010,15 +1010,15 @@ class SolveRoutine:
         end = time.time()
 
         simtime = end-start
-        return eigen_values, eigen_modes, SolveReport(str(solver), 'None', 'None', simtime, NS, A.nnz, simtime)
+        return eigen_values, eigen_modes, SolveReport(str(solver), 'None', 'None', simtime, NS, A.nnz, int(simtime))
 
     def eig(self, 
-            A: np.ndarray | lil_matrix | csc_matrix, 
+            A: lil_matrix | csr_matrix, 
             B: np.ndarray, 
             solve_ids: np.ndarray,
             nmodes: int = 6,
-            direct: bool = None,
-            target_f0: float = None,
+            direct: bool | None = None,
+            target_f0: float = 0.0,
             which: str = 'LM') -> tuple[np.ndarray, np.ndarray, SolveReport]:
         """
         Find the eigenmodes for the system Ax = λBx for a boundary mode problem
@@ -1055,7 +1055,7 @@ class SolveRoutine:
         for i in range(Nsols):
             sols[solve_ids,i] = eigen_modes[:,i]
 
-        return eigen_values, sols, SolveReport(str(solver), 'None', 'None', simtime, NS, A.nnz, simtime)
+        return eigen_values, sols, SolveReport(str(solver), 'None', 'None', simtime, NS, A.nnz, int(simtime))
 
 
 class AutomaticRoutine(SolveRoutine):

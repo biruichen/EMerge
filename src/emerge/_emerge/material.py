@@ -17,7 +17,7 @@
 
 import numpy as np
 from dataclasses import dataclass
-
+from typing import Callable
 @dataclass
 class Material:
     """The Material class generalizes a material in the EMerge FEM environment.
@@ -34,11 +34,11 @@ class Material:
     ur: float = 1
     tand: float = 0
     cond: float = 0
-    _neff: float = None
-    _fer: callable = None
-    _fur: callable = None
+    _neff: float | None = None
+    _fer: Callable | None= None
+    _fur: Callable | None = None
     color: str = "#BEBEBE"
-    _color_rgb: tuple[int,int,int] = None
+    _color_rgb: tuple[float,float,float] = (0.5, 0.5, 0.5)
     opacity: float = 1.0
 
     def __post_init__(self):
@@ -73,34 +73,34 @@ class Material:
         return np.abs(np.sqrt(er*(1-1j*self.tand)*ur))
     
     @property
-    def fer2d(self) -> callable:
+    def fer2d(self) -> Callable:
         if self._fer is None:
             return lambda x,y: self.er*(1-1j*self.tand)*np.ones_like(x)
         else:
             return self._fer
         
     @property
-    def fur2d(self) -> callable:
+    def fur2d(self) -> Callable:
         if self._fur is None:
 
             return lambda x,y: self.ur*np.ones_like(x)
         else:
             return self._fur
     @property
-    def fer3d(self) -> callable:
+    def fer3d(self) -> Callable:
         if self._fer is None:
             return lambda x,y,z: self.er*(1-1j*self.tand)*np.ones_like(x)
         else:
             return self._fer
     
     @property
-    def fur3d(self) -> callable:
+    def fur3d(self) -> Callable:
         if self._fur is None:
             return lambda x,y,z: self.ur*np.ones_like(x)
         else:
             return self._fur
     @property
-    def fer3d_mat(self) -> callable:
+    def fer3d_mat(self) -> Callable:
         if self._fer is None:
             
             return lambda x,y,z: np.repeat(self.ermat[:, :, np.newaxis], x.shape[0], axis=2)
@@ -108,7 +108,7 @@ class Material:
             return self._fer
     
     @property
-    def fur3d_mat(self) -> callable:
+    def fur3d_mat(self) -> Callable:
         if self._fur is None:
             return lambda x,y,z: np.repeat(self.urmat[:, :, np.newaxis], x.shape[0], axis=2)
         else:

@@ -17,21 +17,33 @@
 
 import numpy as np
 from ....elements.nedleg2 import NedelecLegrange2
-from scipy.sparse import coo_matrix
+from scipy.sparse import csr_matrix
 from numba_progress import ProgressBar, ProgressBarType
 from ....mth.optimized import local_mapping, matinv, compute_distances
 from numba import c16, types, f8, i8, njit, prange
+
+
+
+############################################################
+#                      FIELD MAPPING                      #
+############################################################
 
 @njit(i8[:,:](i8, i8[:,:], i8[:,:], i8[:,:]), cache=True, nogil=True)
 def local_tri_to_edgeid(itri: int, tris, edges, tri_to_edge) -> np.ndarray:
     global_edge_map = edges[:, tri_to_edge[:,itri]]
     return local_mapping(tris[:, itri], global_edge_map)
 
+
+
+############################################################
+#                     PYTHON INTERFACE                     #
+############################################################
+
 def generelized_eigenvalue_matrix(field: NedelecLegrange2,
                            er: np.ndarray, 
                            ur: np.ndarray,
                            basis: np.ndarray,
-                           k0: float,) -> tuple[coo_matrix, coo_matrix]:
+                           k0: float,) -> tuple[csr_matrix, csr_matrix]:
     
     tris = field.mesh.tris
     edges = field.mesh.edges
@@ -47,10 +59,15 @@ def generelized_eigenvalue_matrix(field: NedelecLegrange2,
     
     nfield = field.n_field
 
-    E = coo_matrix((dataE, (rows, cols)), shape=(nfield, nfield)).tocsr()
-    B = coo_matrix((dataB, (rows, cols)), shape=(nfield, nfield)).tocsr()
+    E = csr_matrix((dataE, (rows, cols)), shape=(nfield, nfield))
+    B = csr_matrix((dataB, (rows, cols)), shape=(nfield, nfield))
 
     return E, B
+
+
+############################################################
+#                   MATRIX MULTIPLICATION                  #
+############################################################
 
 @njit(c16[:,:](c16[:,:], c16[:,:]), cache=True, nogil=True)
 def matmul(a, b):
@@ -59,7 +76,10 @@ def matmul(a, b):
     out[1,:] = a[1,0]*b[0,:] + a[1,1]*b[1,:]
     return out
 
-### GAUSS QUADRATURE IMPLEMENTATION
+
+############################################################
+#              GAUSS QUADRATURE IMPLEMENTATION             #
+############################################################
 
 @njit(c16(c16[:], c16[:], types.Array(types.float64, 1, 'A', readonly=True)), cache=True, nogil=True)
 def _gqi(v1, v2, W):
@@ -185,7 +205,12 @@ def _nf2_curl(coeff, coords):
     ys = coords[1,:]
     return b3*(c1*(a2 + b2*xs + c2*ys) - c2*(a1 + b1*xs + c1*ys)) - c3*(b1*(a2 + b2*xs + c2*ys) - b2*(a1 + b1*xs + c1*ys)) - 2*(b1*c2 - b2*c1)*(a3 + b3*xs + c3*ys) + 0*1j
 
-####
+
+############################################################
+#     TRIANGLE BARYCENTRIC COORDINATE LIN. COEFFICIENTS    #
+############################################################
+
+
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8))(f8[:], f8[:]), cache = True, nogil=True)
 def tri_coefficients(vxs, vys):
 
@@ -211,12 +236,22 @@ def tri_coefficients(vxs, vys):
     Cs = np.array([c1, c2, c3])*sign
     return As, Bs, Cs, A
 
-#DPTS = gaus_quad_tri(4).astype(np.float64)
+
+############################################################
+#                    CONSTANT DEFINITION                   #
+############################################################
+
 
 DPTS = np.array([[0.22338159, 0.22338159, 0.22338159, 0.10995174, 0.10995174, 0.10995174],
                         [0.10810302, 0.44594849, 0.44594849, 0.81684757, 0.09157621, 0.09157621],
                         [0.44594849, 0.44594849, 0.10810302, 0.09157621, 0.09157621, 0.81684757],
                         [0.44594849, 0.10810302, 0.44594849, 0.09157621, 0.81684757, 0.09157621]], dtype=np.float64)
+
+
+############################################################
+#                 NUMBA OPTIMIZED ASSEMBLER                #
+############################################################
+
 
 @njit(types.Tuple((c16[:,:], c16[:,:]))(f8[:,:], i8[:,:], c16[:,:], c16[:,:], f8), cache=True, nogil=True)
 def generalized_matrix_GQ(tri_vertices, local_edge_map, Ms, Mm, k0):
@@ -402,7 +437,7 @@ def _matrix_builder(nodes, tris, edges, tri_to_field, ur, er, k0, pgb: ProgressB
 
     tri_to_edge = tri_to_field[:3,:]
     
-    for itri in prange(ntritot):
+    for itri in prange(ntritot): # type: ignore
         p = itri*196
         if np.mod(itri,10)==0:
             pgb.update(10)
