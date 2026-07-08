@@ -6,8 +6,13 @@ import matplotlib.ticker as tck
 from typing import (
     Union, Sequence, Callable, List, Optional, Tuple
 )
+from cycler import cycler
 
-_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+#_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+EMERGE_COLORS = ["#1A14CE", "#D54A09", "#1F82A6", "#D3107B", "#119D40"]
+EMERGE_CYCLER = cycler(color=EMERGE_COLORS)
+plt.rc('axes', prop_cycle=EMERGE_CYCLER)
 
 ggplot_styles = {
     "axes.edgecolor": "000000",
@@ -28,6 +33,7 @@ ggplot_styles = {
     "ytick.minor.left": False,
     "lines.linewidth": 2,
 }
+
 plt.rcParams.update(ggplot_styles)
 
 def _gen_grid(xs: tuple, ys: tuple, N = 201) -> list[np.ndarray]:
@@ -327,7 +333,7 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
     for s, ls, cid in zip(Ss, linestyles, colorcycle):
         # Calculate and plot magnitude in dB
         SdB = 20 * np.log10(np.abs(s) + 10**(noise_floor/20) * np.random.rand(*s.shape) + 10**((noise_floor-30)/20))
-        ax_mag.plot(fnew, SdB, label="Magnitude (dB)", linestyle=ls, color=_colors[cid % len(_colors)])
+        ax_mag.plot(fnew, SdB, label="Magnitude (dB)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
         if np.max(SdB) > maxy:
             maxy = np.max(SdB)
         # Calculate and plot phase in degrees
@@ -336,7 +342,7 @@ def plot_sp(f: np.ndarray, S: list[np.ndarray] | np.ndarray,
             phase = np.unwrap(phase, period=360)
             minphase = min(np.min(phase), minphase)
             maxphase = max(np.max(phase), maxphase)
-        ax_phase.plot(fnew, phase, label="Phase (degrees)", linestyle=ls, color=_colors[cid % len(_colors)])
+        ax_phase.plot(fnew, phase, label="Phase (degrees)", linestyle=ls, color=EMERGE_COLORS[cid % len(EMERGE_COLORS)])
 
         # Annotate level indicators if specified
         if isinstance(levelindicator, (int, float)) and levelindicator is not None:

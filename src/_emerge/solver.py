@@ -501,7 +501,7 @@ class SolveRoutine:
         x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse)
         end = time.time()
         logger.info(f'Time taken: {(end-start):.3f} seconds')
-        logger.debug(f'O(N²) performance = {(NS**2)/((end-start)*1e6):.3f} MDoF/s')
+        logger.debug(f'O(N²) performance = {(NS**2)/((end-start+1e-6)*1e6):.3f} MDoF/s')
         if self.use_sorter and solver.req_sorter:
             x = self.sorter.unsort(x_solved)
         else:

@@ -19,7 +19,7 @@ from ...mesher import Mesher
 from ...material import Material
 from ...mesh3d import Mesh3D
 from ...bc import BoundaryCondition, PEC, ModalPort, LumpedPort, PortBC
-from .emdata import EMSimData
+from .emdata import EMSimData, EMDataSet
 from ...elements.femdata import FEMBasis
 from .assembler import Assembler
 from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
@@ -30,14 +30,15 @@ from .port_functions import compute_avg_power_flux
 from typing import Callable
 import numpy as np
 from loguru import logger
-
-class SimulationError(Exception):
-    pass
-
 from .simjob import SimJob
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
+
+class SimulationError(Exception):
+    pass
+
+
 
 def _dimstring(data: list[float]):
     return '(' + ', '.join([f'{x*1000:.1f}mm' for x in data]) + ')'
@@ -645,12 +646,14 @@ class Electrodynamics3D:
 
         return self.freq_data
     
-    def frequency_domain(self) -> EMSimData:
+    
+    def frequency_domain_single(self) -> EMSimData:
         ''' Executes the frequency domain study.'''
         T0 = time.time()
         mesh = self.mesh
         if self._bc_initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
         self._initialize_field()
         self._initialize_bc_data()
         
@@ -666,8 +669,6 @@ class Electrodynamics3D:
             urtri[:,:,itri] = ur[:,:,itet]
 
         ### Does this move
-        logger.debug('Initializing frequency domain sweep.')
-        
         self.freq_data = EMSimData(self.basis)
         
         #### Port settings
@@ -765,7 +766,53 @@ class Electrodynamics3D:
         T2 = time.time()    
         logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
         return self.freq_data
-    
+
+    def frequency_domain(self, 
+                             parallel: bool = False,
+                             njobs: int = 2, 
+                             harddisc_threshold: int = None,
+                             harddisc_path: str = 'EMergeSparse',
+                             frequency_groups: int = -1,
+                             frequency_model: tuple[float, float, int] = None,
+                             ) -> EMDataSet:
+        """Perform a frequency sweep study
+        The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
+        The njobs-parameter defines the number of parallel threads.
+        The harddisc_threshold determines the number of Degrees of Freedom beyond which each CSC
+        sparse matrix is stored to the harddisc to save RAM (not adviced). The harddisc_path will be
+        used as a name for the relative path.
+        Alternatively, one can choose the number of frequency groups to pre-compute before a sub
+        parallel sweep. A multiple of the number of workers is most optimal. Each group iteration will 
+        pre-assemble that many frequency points.
+        
+        Finally, the frequency_model parameter may be provided which takes (fmin, fmax, Nfrequencies).
+        A logarithmic sample space will be used as sample points which is optimal for the use of the
+        Vector Fitting feature for the S-parameters.
+
+        Args:
+            parallel (bool, optional): Wether to use parallel processing. Defaults to False.
+            njobs (int, optional): The number of parallel jobs. Defaults to 2.
+            harddisc_threshold (int, optional): The NDOF threshold. Defaults to None.
+            harddisc_path (str, optional): The subdirectory for sparse matrix caching. Defaults to 'EMergeSparse'.
+            frequency_groups (int, optional): The number of frequencies to pre-assemble. Defaults to -1.
+            frequency_model (tuple[float, float, int], optional): The (fmin, fmax, N) parameter
+            optimal for Vector Fitting.. Defaults to None.
+
+        Returns:
+            EMDataSet: The Resultant dataset.
+        """
+        if frequency_model is not None:
+            f_min, f_max, Npts = frequency_model
+            k = np.arange(Npts)
+            xk = -np.cos((2*k+1)/(2*Npts)*np.pi)        # Chebyshev-L1
+            f_points = 0.5*((f_max-f_min)*xk + (f_max+f_min))
+            self.frequencies = f_points
+        if parallel:
+            return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups)
+        else:
+            return self.frequency_domain_single()
+
+
     def _compute_s_data(self, bc: PortBC, 
                        fieldfunction: Callable, 
                        tri_vertices: np.ndarray, 
