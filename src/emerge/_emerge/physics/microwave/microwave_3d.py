@@ -311,22 +311,25 @@ class Microwave3D:
 
         if points.size==0:
             raise SimulationError(f'The lumped port {port} has no nodes associated with it')
+        
         xs = self.mesh.nodes[0,points]
         ys = self.mesh.nodes[1,points]
         zs = self.mesh.nodes[2,points]
 
         dotprod = xs*field_axis[0] + ys*field_axis[1] + zs*field_axis[2]
 
-        start_id = points[np.argwhere(dotprod == np.min(dotprod))]
+        start_id = np.argwhere(dotprod == np.min(dotprod)).flatten()
         
-        start = _pick_central(self.mesh.nodes[:,start_id.flatten()])
-        logger.info(f'Starting node = {_dimstring(start)}')
-        end = start + port.Vdirection.np*port.height
+        xs = xs[start_id]
+        ys = ys[start_id]
+        zs = zs[start_id]
+        
 
-
-        port.vintline = Line.from_points(start, end, 21)
-
-        logger.info(f'Ending node = {_dimstring(end)}')
+        for x,y,z in zip(xs, ys, zs):
+            start = np.array([x,y,z])
+            end = start + port.Vdirection.np*port.height
+            port.vintline.append(Line.from_points(start, end, 21))
+            logger.trace(f'Port[{port.port_number}] integration line {start} -> {end}.')
         
         port.v_integration = True
     
@@ -1003,7 +1006,8 @@ class Microwave3D:
             if bc.Z0 is None:
                 raise SimulationError('Trying to compute the impedance of a boundary condition with no characteristic impedance.')
             
-            V = bc.vintline.line_integral(fieldfunction)
+            Voltages = [line.line_integral(fieldfunction) for line in bc.vintline]
+            V = sum(Voltages)/len(Voltages)
             
             if bc.active:
                 if bc.voltage is None:

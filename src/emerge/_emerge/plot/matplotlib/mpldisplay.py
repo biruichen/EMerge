@@ -145,7 +145,7 @@ def _norm(x, y, z):
 
 def _select(obj: GeoObject | Selection) -> Selection:
     if isinstance(obj, GeoObject):
-        return obj.select
+        return obj.selection
     return obj
 
 def _merge(lst: list[GeoObject | Selection]) -> Selection:

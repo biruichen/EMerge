@@ -250,7 +250,7 @@ class GeoObject:
         return self.material._metal
     
     @property
-    def select(self) -> Selection:
+    def selection(self) -> Selection:
         '''Returns a corresponding Face/Domain or Edge Selection object'''
         if self.dim==1:
             return EdgeSelection(self.tags)
@@ -517,14 +517,14 @@ class GeoVolume(GeoObject):
             self.tags = [tag,]
 
     @property
-    def select(self) -> DomainSelection:
+    def selection(self) -> DomainSelection:
         return DomainSelection(self.tags)
     
 class GeoPoint(GeoObject):
     dim = 0
 
     @property
-    def select(self) -> PointSelection:
+    def selection(self) -> PointSelection:
         return PointSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):
@@ -540,7 +540,7 @@ class GeoEdge(GeoObject):
     dim = 1
 
     @property
-    def select(self) -> EdgeSelection:
+    def selection(self) -> EdgeSelection:
         return EdgeSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):
@@ -558,7 +558,7 @@ class GeoSurface(GeoObject):
     dim = 2
 
     @property
-    def select(self) -> FaceSelection:
+    def selection(self) -> FaceSelection:
         return FaceSelection(self.tags)
     
     def __init__(self, tag: int | list[int]):

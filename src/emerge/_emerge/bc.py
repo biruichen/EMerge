@@ -53,7 +53,7 @@ class BoundaryCondition:
         
         
         if isinstance(assignment, GeoObject):
-            assignment = assignment.select
+            assignment = assignment.selection
         
         self.selection: Selection = assignment
         self.tags: list[int] = self.selection.tags
