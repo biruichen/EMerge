@@ -20,7 +20,6 @@
 from __future__ import annotations
 import numpy as np
 from typing import Callable
-from emsutil import Saveable
 
 def gauss3_composite(x: np.ndarray, y: np.ndarray) -> float:
     """
@@ -61,7 +60,7 @@ def gauss3_composite(x: np.ndarray, y: np.ndarray) -> float:
         total += np.dot(weights, poly_vals)
     return total
 
-class Line(Saveable):
+class Line:
     """ A Line class used for convenient definition of integration lines"""
     def __init__(self, xpts: np.ndarray,
                  ypts: np.ndarray,

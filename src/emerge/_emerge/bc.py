@@ -24,10 +24,15 @@ from .selection import Selection, FaceSelection
 import numpy as np
 from .geometry import GeoObject
 from typing import TypeVar, Type
-from emsutil import Saveable
 
 T = TypeVar('T')
 
+class BCDimension(Enum):
+    ANY = -1
+    NODE = 0
+    EDGE = 1
+    FACE = 2
+    DOMAIN = 3
 
 def _unique(input: list[int]) -> list:
     """ Returns a sorted list of all unique integers/floats in a list."""
@@ -37,21 +42,20 @@ def _unique(input: list[int]) -> list:
 #               BASE BOUNDARY CONDITION CLASS              #
 ############################################################
 
-class BoundaryCondition(Saveable):
+class BoundaryCondition:
     """A generalized class for all boundary condition objects.
     """
     _color: str = "#a54141"
     _name: str = "UnnamedBC"
     _texture: str = "None"
-    dim: int = -1
     
     def __init__(self, assignment: GeoObject | Selection):
-        
-        if assignment.dim != self.dim and self.dim != -1:
-            raise ValueError(f'Boundary condition of type {type(self).__name__} requires a selection of dimension {self.dim}, but got dimension {assignment.dim} instead.')
+
+        self.dimension: BCDimension = BCDimension.ANY
         self.indices: list[int] = []
         self.face_indices: list[int] = []
         self.edge_indices: list[int] = []
+        
         
         if isinstance(assignment, GeoObject):
             assignment = assignment.selection
@@ -63,6 +67,10 @@ class BoundaryCondition(Saveable):
     def _size_constraint(self) -> float | None:
         return None
     
+    @property
+    def dim(self) -> int:
+        ''' The dimension of the boundary condition as integer (0,1,2,3).'''
+        return self.dimension.value
     
     def __repr__(self) -> str:
         return f'{type(self).__name__}{self.tags}'
@@ -70,12 +78,32 @@ class BoundaryCondition(Saveable):
     def __str__(self) -> str:
         return self.__repr__()
     
+    def check_dimension(self, tags: list[tuple[int,int]]) -> None:
+        # check if all tags have the same dimension (dim, tag)
+        if not isinstance(tags, list):
+            raise TypeError(f'Argument tags must be of type list, instead its {type(tags)}')
+        if len(tags) == 0:
+            return
+        if not all(isinstance(x, tuple) and len(x) == 2 for x in tags):
+            raise TypeError(f'Argument tags must be of type list of tuples, instead its {type(tags)}')
+        if not all(isinstance(x[0], int) and isinstance(x[1], int) for x in tags):
+            raise TypeError(f'Argument tags must be of type list of tuples of ints, instead its {type(tags)}')
+        if not all(x[0] == tags[0][0] for x in tags):
+            raise ValueError(f'All tags must have the same dimension, instead its {tags}')
+        dimension = tags[0][0]
+        if self.dimension is BCDimension.ANY:
+            logger.info(f'Assigning {self} to dimension{BCDimension(dimension)}')
+            self.dimension = BCDimension(dimension)
+        elif self.dimension != BCDimension(dimension):
+            raise ValueError(f'Current boundary condition has dimension {self.dimension}, but tags have dimension {BCDimension(dimension)}')
+        
     def add_tags(self, dimtags: list[tuple[int,int]]) -> None:
         """Adds the given taggs to this boundary condition.
 
         Args:
             tags (list[tuple[int,int]]): The tags to include
         """
+        self.check_dimension(dimtags)
         tags = [x[1] for x in dimtags]
         self.tags = _unique(self.tags + tags)
     
@@ -106,7 +134,7 @@ class BoundaryCondition(Saveable):
         """
         return self.remove_tags(other.tags)
 
-class BoundaryConditionSet(Saveable):
+class BoundaryConditionSet:
 
     def __init__(self):
 
@@ -199,12 +227,11 @@ class BoundaryConditionSet(Saveable):
                 logger.debug(f'Removed the {excluded} tags from object with dimension {bc.dim} BC {existing_bc}')
         self.boundary_conditions.append(bc)
 
-class Periodic(BoundaryCondition, Saveable):
+class Periodic(BoundaryCondition):
 
     _color: str = "#5d4fda"
     _name: str = "PeriodicBC"
     _texture: str = "tex6.png"
-    dim: int = 2
     def __init__(self, 
                  selection1: Selection,
                  selection2: Selection,

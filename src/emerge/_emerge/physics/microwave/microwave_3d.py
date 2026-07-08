@@ -859,10 +859,8 @@ class Microwave3D:
                     # Distribute taks
                     group_results = pool.map(run_job_multi, jobs)
                     results.extend(group_results)
-        
         if parallel:
             thread_local.__dict__.clear()
-        
         logger.info('Solving complete')
 
         for freq, job in zip(self.frequencies, results):
@@ -912,6 +910,7 @@ class Microwave3D:
         zs = self.mesh.centers[2,:]
         
         matassign = -1*np.ones((self.mesh.n_tets,), dtype=np.int64)
+        
         
         for volume in sorted(volumes, key=lambda x: x._priority):
         
@@ -1167,10 +1166,6 @@ class Microwave3D:
 
             # Recording port information
             for active_port in all_ports:
-                
-                if not active_port.driven:
-                    continue
-                
                 port_tets = self.mesh.get_face_tets(active_port.tags)
                 
                 fielddata.add_port_properties(active_port.port_number,

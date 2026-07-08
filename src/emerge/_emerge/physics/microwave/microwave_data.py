@@ -30,7 +30,6 @@ from ...mesh3d import Mesh3D
 from ...const import MU0
 from ...coord import Line
 from emsutil.emdata import EHField, EHFieldFF
-from ...file import Saveable
 
 EMField = Literal[
     "er", "ur", "freq", "k0",
@@ -231,7 +230,7 @@ class Sparam:
         self.set(port1, port2, value)
 
 @dataclass
-class PortProperties(Saveable):
+class PortProperties:
     port_number: int = -1
     k0: float | None= None
     beta: float | None = None
@@ -239,7 +238,7 @@ class PortProperties(Saveable):
     Pout: float | None = None
     mode_number: int = 1
 
-class MWData(Saveable):
+class MWData:
     scalar: BaseDataset[MWScalar, MWScalarNdim]
     field:   BaseDataset[MWField, None]
 
@@ -274,7 +273,7 @@ class MWData(Saveable):
         export_ffdata(filename, thetas, phis, np.array(freq_data), ffsets, precision=precision)
         
         
-class _EHSign(Saveable):
+class _EHSign:
     """A small class to manage the sign of field components when computing the far-field with Stratton-Chu
     """
     def __init__(self):
@@ -326,7 +325,7 @@ class _EHSign(Saveable):
         Hx, Hy, Hz = H
         return (Ex*self.Ex, Ey*self.Ey, Ez*self.Ez), (Hx*self.Hx, Hy*self.Hy, Hz*self.Hz)
     
-class MWField(Saveable):
+class MWField:
     
     def __init__(self):
         self._der: np.ndarray = None
@@ -434,7 +433,7 @@ class MWField(Saveable):
         xf = xs.flatten()
         yf = ys.flatten()
         zf = zs.flatten()
-        logger.info(f'Interpolating {xf.shape[0]} field points')
+        logger.debug(f'Interpolating {xf.shape[0]} field points')
         Ex, Ey, Ez = self.basis.interpolate(self._field, xf, yf, zf, usenan=usenan)
         logger.debug('E Interpolation complete')
         self.Ex = Ex.reshape(shp)
@@ -915,7 +914,7 @@ class MWField(Saveable):
     
         return dict(freq=freq, ff_function=function)
         
-class MWScalar(Saveable):
+class MWScalar:
     """The MWDataSet class stores solution data of FEM Time Harmonic simulations.
     """
     _fields: list[str] = ['freq','k0','Sp','beta','Pout','Z0']
@@ -975,7 +974,7 @@ class MWScalar(Saveable):
         self.Z0[i] = Z0
         self.Pout[i] = Pout
     
-class MWScalarNdim(Saveable):
+class MWScalarNdim:
     _fields: list[str] = ['freq','k0','Sp','beta','Pout','Z0']
     _copy: list[str] = ['_portmap','_portnumbers']
 

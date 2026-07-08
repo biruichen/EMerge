@@ -37,7 +37,7 @@ f2 = 1.60e9             # stop frequency
 # --- Create simulation object -------------------------------------------
 model = em.Simulation('PatchAntenna')
 
-model.check_version("2.1.1") # Checks version compatibility.
+model.check_version("2.1.0") # Checks version compatibility.
 
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
@@ -147,5 +147,6 @@ field = data.field.find(freq=1.59e9)
 ff3d = field.farfield_3d(boundary_selection, origin=(0,0,0))
 surf = ff3d.surfplot('normE', rmax=40 * mm,
                       offset=(0, 0, 20 * mm))
+
 model.display.add_surf(*surf.xyzf)
 model.display.show()
