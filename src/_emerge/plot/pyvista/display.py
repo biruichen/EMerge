@@ -24,6 +24,7 @@ import numpy as np
 import pyvista as pv
 from typing import Iterable, Literal, Callable
 from ..display import BaseDisplay
+from .display_settings import PVDisplaySettings
 from matplotlib.colors import ListedColormap
 ### Color scale
 
@@ -190,11 +191,12 @@ class PVDisplay(BaseDisplay):
 
     def __init__(self, mesh: Mesh3D, plotter: pv.Plotter = None):
         self._mesh: Mesh3D = mesh
+        self.set: PVDisplaySettings = PVDisplaySettings()
         if plotter is None:
-            plotter = pv.Plotter()
-
-        self._plot: pv.Plotter = plotter
-
+            self._reset()
+        else:
+            self._plot: pv.Plotter = plotter
+        
         # Animation options
         self._stop: bool = False
         self._objs: list[_AnimObject] = []
@@ -202,10 +204,9 @@ class PVDisplay(BaseDisplay):
         self._Nsteps: int = None
         self._fps: int = 25
 
-
     def show(self):
         """ Shows the Pyvista display. """
-        self._plot.add_axes()
+        self._add_aux_items()
         if self._do_animate:
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
             self._animate()
@@ -486,3 +487,207 @@ class PVDisplay(BaseDisplay):
                 obj.actor.GetMapper().SetInputData(new_contour)
             
             self._objs.append(_AnimObject(field, lambda x: x, grid, actor, on_update))
+
+    def _add_aux_items(self) -> None:
+        saved_camera = {
+            "position": self._plot.camera.position,
+            "focal_point": self._plot.camera.focal_point,
+            "view_up": self._plot.camera.up,
+            "view_angle": self._plot.camera.view_angle,
+            "clipping_range": self._plot.camera.clipping_range
+        }
+                
+        bounds = self._plot.bounds
+        max_size = max([abs(dim) for dim in [bounds.x_max, bounds.x_min, bounds.y_max, bounds.y_min, bounds.z_max, bounds.z_min]])
+        length = self.set.plane_ratio*max_size*2
+        if self.set.draw_xplane:
+            plane = pv.Plane(
+                center=(0, 0, 0),
+                direction=(1, 0, 0),    # normal vector pointing along +X
+                i_size=length,
+                j_size=length,
+                i_resolution=1,
+                j_resolution=1
+            )
+            self._plot.add_mesh(
+                plane,
+                color='red',
+                opacity=self.set.plane_opacity,
+                show_edges=False,
+            )
+            self._plot.add_mesh(
+                plane,
+                edge_opacity=1.0,
+                edge_color='red',
+                color='red',
+                line_width=self.set.plane_edge_width,
+                style='wireframe',
+            )
+            
+        if self.set.draw_yplane:
+            plane = pv.Plane(
+                center=(0, 0, 0),
+                direction=(0, 1, 0),    # normal vector pointing along +X
+                i_size=length,
+                j_size=length,
+                i_resolution=1,
+                j_resolution=1
+            )
+            self._plot.add_mesh(
+                plane,
+                color='green',
+                opacity=self.set.plane_opacity,
+                show_edges=False,
+            )
+            self._plot.add_mesh(
+                plane,
+                edge_opacity=1.0,
+                edge_color='green',
+                color='green',
+                line_width=self.set.plane_edge_width,
+                style='wireframe',
+            )
+        if self.set.draw_zplane:
+            plane = pv.Plane(
+                center=(0, 0, 0),
+                direction=(0, 0, 1),    # normal vector pointing along +X
+                i_size=length,
+                j_size=length,
+                i_resolution=1,
+                j_resolution=1
+            )
+            self._plot.add_mesh(
+                plane,
+                color='blue',
+                opacity=self.set.plane_opacity,
+                show_edges=False,
+            )
+            self._plot.add_mesh(
+                plane,
+                edge_opacity=1.0,
+                edge_color='blue',
+                color='blue',
+                line_width=self.set.plane_edge_width,
+                style='wireframe',
+            )
+        # Draw X-axis
+        if getattr(self.set, 'draw_xax', False):
+            x_line = pv.Line(
+                pointa=(-length, 0, 0),
+                pointb=(length, 0, 0),
+            )
+            self._plot.add_mesh(
+                x_line,
+                color='red',
+                line_width=self.set.axis_line_width,
+            )
+
+        # Draw Y-axis
+        if getattr(self.set, 'draw_yax', False):
+            y_line = pv.Line(
+                pointa=(0, -length, 0),
+                pointb=(0, length, 0),
+            )
+            self._plot.add_mesh(
+                y_line,
+                color='green',
+                line_width=self.set.axis_line_width,
+            )
+
+        # Draw Z-axis
+        if getattr(self.set, 'draw_zax', False):
+            z_line = pv.Line(
+                pointa=(0, 0, -length),
+                pointb=(0, 0, length),
+            )
+            self._plot.add_mesh(
+                z_line,
+                color='blue',
+                line_width=self.set.axis_line_width,
+            )
+
+        exponent = np.floor(np.log10(length))
+        gs = 10 ** exponent
+        N = np.ceil(length/gs)
+        if N < 5:
+            gs = gs/10
+        L = (2*np.ceil(length/(2*gs))+1)*gs
+
+        # XY grid at Z=0
+        if self.set.show_zgrid:
+            x_vals = np.arange(-L, L+gs, gs)
+            y_vals = np.arange(-L, L+gs, gs)
+
+            # lines parallel to X
+            for y in y_vals:
+                line = pv.Line(
+                    pointa=(-L, y, 0),
+                    pointb=(L, y, 0)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+            # lines parallel to Y
+            for x in x_vals:
+                line = pv.Line(
+                    pointa=(x, -L, 0),
+                    pointb=(x, L, 0)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+
+        # YZ grid at X=0
+        if self.set.show_xgrid:
+            y_vals = np.arange(-L, L+gs, gs)
+            z_vals = np.arange(-L, L+gs, gs)
+
+            # lines parallel to Y
+            for z in z_vals:
+                line = pv.Line(
+                    pointa=(0, -L, z),
+                    pointb=(0, L, z)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+            # lines parallel to Z
+            for y in y_vals:
+                line = pv.Line(
+                    pointa=(0, y, -L),
+                    pointb=(0, y, L)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+
+        # XZ grid at Y=0
+        if self.set.show_ygrid:
+            x_vals = np.arange(-L, L+gs, gs)
+            z_vals = np.arange(-L, L+gs, gs)
+
+            # lines parallel to X
+            for z in z_vals:
+                line = pv.Line(
+                    pointa=(-length, 0, z),
+                    pointb=(length, 0, z)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+            # lines parallel to Z
+            for x in x_vals:
+                line = pv.Line(
+                    pointa=(x, 0, -length),
+                    pointb=(x, 0, length)
+                )
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+
+        if self.set.add_light:
+            light = pv.Light()
+            light.set_direction_angle(*self.set.light_angle)
+            self._plot.add_light(light)
+
+        self._plot.set_background(self.set.background_bottom, top=self.set.background_top)
+        self._plot.add_axes()
+
+        self._plot.camera.position = saved_camera["position"]
+        self._plot.camera.focal_point = saved_camera["focal_point"]
+        self._plot.camera.up = saved_camera["view_up"]
+        self._plot.camera.view_angle = saved_camera["view_angle"]
+        self._plot.camera.clipping_range = saved_camera["clipping_range"]

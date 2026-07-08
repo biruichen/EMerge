@@ -20,7 +20,7 @@ import gmsh
 import numpy as np
 from scipy.spatial import ConvexHull
 from .cs import Axis, CoordinateSystem, _parse_vector
-from typing import Callable
+from typing import Callable, TypeVar
 
 def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np.ndarray]:
     """Tries to find a rectangle as convex-hull of a set of points with a given normal vector.
@@ -89,6 +89,8 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
       "corners": np.array(corners).reshape(4,3)
     }
 
+TSelection = TypeVar("TSelection", bound="Selection")
+
 class Selection:
     """A generalized class representing a slection of tags.
 
@@ -96,12 +98,29 @@ class Selection:
     dim: int = -1
     def __init__(self, tags: list[int] = None):
 
-        self.tags: list[int] = []
-        if tags is not None:
-            if not isinstance(tags, list):
-                raise TypeError(f'Argument tags must be of type list, instead its {type(tags)}')
-            self.tags = tags
+        self._tags: set[int] = {}
 
+        if tags is not None:
+            if not isinstance(tags, (list,set,tuple)):
+                raise TypeError(f'Argument tags must be of type list, tuple or set, instead its {type(tags)}')
+            self._tags = set(tags)
+    
+    @staticmethod
+    def from_dim_tags(dim: int, tags: list[int]) -> DomainSelection | PointSelection | FaceSelection | EdgeSelection:
+        if dim==0:
+            return PointSelection(tags)
+        elif dim==1:
+            return EdgeSelection(tags)
+        elif dim==2:
+            return FaceSelection(tags)
+        elif dim==3:
+            return DomainSelection(tags)
+        raise ValueError(f'Dimension must be 0,1,2 or 3. Not {dim}')
+    
+    @property
+    def tags(self) -> list[int]:
+        return list(self._tags)
+    
     @property
     def color_rgb(self) -> tuple[int,int,int]:
         return (0.5,0.5,1.0)
@@ -113,12 +132,6 @@ class Selection:
     def __repr__(self) -> str:
         return f'{type(self).__name__}({self.tags})'
     
-
-    def __add__(self, other: Selection) -> Selection:
-        if self.dim != other.dim:
-            raise ValueError(f'Cannot add selections of different dimensions {self.dim} and {other.dim}')
-        return SELECT_CLASS[self.dim](self.tags + other.tags)
-
     ####### PROPERTIES
     @property
     def dimtags(self) -> list[tuple[int,int]]:
@@ -167,10 +180,32 @@ class Selection:
         Returns:
             Selection: This Selection modified without the excluded points.
         """
-        include = [xyz_excl_function(*gmsh.model.occ.getCenterOfMass(*tag)) for tag in self.dimtags]
+        include = [~xyz_excl_function(*gmsh.model.occ.getCenterOfMass(*tag)) for tag in self.dimtags]
         
-        self.tags = [t for incl, t in zip(include, self.tags) if incl]
+        self._tags = [t for incl, t in zip(include, self._tags) if incl]
         return self
+
+    def __operable__(self, other: Selection) -> None:
+        if not self.dim == other.dim:
+            raise ValueError(f'Selection dimensions must be equal. Trying to operate on dim {self.dim} and {other.dim}')
+        pass
+
+    def __add__(self, other: TSelection) -> TSelection:
+        self.__operable__(other)
+        return Selection.from_dim_tags(self.dim, self._tags + other._tags)
+    
+    def __and__(self, other: TSelection) -> TSelection:
+        self.__operable__(other)
+        return Selection.from_dim_tags(self.dim, self._tags.intersection(other._tags))
+    
+    def __or__(self, other: TSelection) -> TSelection:
+        self.__operable__(other)
+        return Selection.from_dim_tags(self.dim, self._tags.union(other._tags))
+    
+    def __sub__(self, other: TSelection) -> TSelection:
+        self.__operable__(other)
+        return Selection.from_dim_tags(self.dim, self._tags.difference(other.tags))
+    
 
 
 class PointSelection(Selection):
@@ -393,5 +428,43 @@ class Selector:
             if 0 < np.dot(vector, c_local) < L:
                 output.append(dimtags[i][1])
         return SELECT_CLASS[self._current_dim](output)
+    
+    def inplane(self,
+                x: float,
+                y: float,
+                z: float,
+                nx: float,
+                ny: float,
+                nz: float,
+                tolerance: float = 1e-6) -> FaceSelection:
+        """Returns a FaceSelection for all faces that lie in a provided infinite plane
+        specified by an origin plus a plane normal vector.
+
+        Args:
+            x (float): The plane origin X-coordinate
+            y (float): The plane origin Y-coordinate
+            z (float): The plane origin Z-coordinate
+            nx (float): The plane normal X-component
+            ny (float): The plane normal Y-component
+            nz (float): The plane normal Z-component
+            tolerance (float, optional): An in plane tolerance (displacement and normal dot product). Defaults to 1e-6.
+
+        Returns:
+            FaceSelection: All faces that lie in the specified plane
+        """
+        orig = np.array([x,y,z])
+        norm = np.array([nx,ny,nz])
+        norm = norm/np.linalg.norm(norm)
+        
+        dimtags = gmsh.model.getEntities(2)
+        coords = [gmsh.model.occ.getCenterOfMass(*tag) for tag in dimtags]
+        normals = [gmsh.model.get_normal(t, (0,0)) for d,t, in dimtags]
+        tags = []
+        for (d,t), o, n in zip(dimtags, coords, normals):
+            normdist = np.abs((o-orig)@norm)
+            dotnorm = np.abs(n@norm)
+            if normdist < tolerance and dotnorm > 1-tolerance:
+                tags.append(t)
+        return FaceSelection(tags)
     
 SELECTOR_OBJ = Selector()

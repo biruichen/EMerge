@@ -308,6 +308,7 @@ class GeoObject:
         """
         self._priority = level
         return self
+    
     def outside(self, *exclude: FaceNames, tags: list[int] = None) -> FaceSelection:
         """Returns the complete set of outside faces.
 
