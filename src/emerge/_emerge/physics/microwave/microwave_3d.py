@@ -695,6 +695,7 @@ class Microwave3D:
         Returns:
             MWSimData: The dataset.
         """
+        
         self._completed = False
         self._simstart = time.time()
         if self.bc._initialized is False:
@@ -1259,7 +1260,7 @@ class Microwave3D:
         logger.info('Simulation Complete!')
         self._simend = time.time()    
         logger.info(f'Elapsed time = {(self._simend-self._simstart):.2f} seconds.')
-
+        self._state.set_modified()
     
     def _compute_s_data(self, 
                         bc: PortBC, 

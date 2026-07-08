@@ -290,6 +290,30 @@ def calc_area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> float:
     av = cross(e1, e2)
     return np.sqrt(av[0]**2 + av[1]**2 + av[2]**2)/2
 
+
+@njit(f8(f8[:], f8[:], f8[:], f8[:]), cache=True, fastmath=True, nogil=True)
+def calc_volume(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray, x4: np.ndarray) -> float:
+    """Computes the volume of the tetrahedron spun by four nodes.
+
+    Args:
+        x1 (np.ndarray): Node 1 (3,) array
+        x2 (np.ndarray): Node 2 (3,) array
+        x3 (np.ndarray): Node 3 (3,) array
+        x4 (np.ndarray): Node 4 (3,) array
+
+    Returns:
+        float: The volume
+    """
+    a_x, a_y, a_z = x1[0] - x4[0], x1[1] - x4[1], x1[2] - x4[2]
+    b_x, b_y, b_z = x2[0] - x4[0], x2[1] - x4[1], x2[2] - x4[2]
+    c_x, c_y, c_z = x3[0] - x4[0], x3[1] - x4[1], x3[2] - x4[2]
+
+    vol = (a_x * (b_y * c_z - b_z * c_y) -
+           a_y * (b_x * c_z - b_z * c_x) +
+           a_z * (b_x * c_y - b_y * c_x))
+    
+    return abs(vol) / 6.0
+
 @njit(i8[:, :](i8[:], i8[:, :]), cache=True, nogil=True)
 def local_mapping(vertex_ids, triangle_ids):
     """
@@ -482,6 +506,46 @@ def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
     e2 = x3 - x1
     av = np.array([e1[1]*e2[2] - e1[2]*e2[1], e1[2]*e2[0] - e1[0]*e2[2], e1[0]*e2[1] - e1[1]*e2[0]])
     return np.sqrt(av[0]**2 + av[1]**2 + av[2]**2)/2
+
+
+@njit(types.Tuple((f8[:], f8[:], f8[:], f8[:], f8[:], i8[:]))(f8[:,:], i8[:,:], f8[:,:]), cache=True, nogil=True)
+def generate_int_data_tet(nodes: np.ndarray,
+                          tetrahedra: np.ndarray,
+                          PTS: np.ndarray):
+
+    nDPTs = PTS.shape[1]
+    xall = np.zeros((nDPTs, tetrahedra.shape[1]))
+    yall = np.zeros((nDPTs, tetrahedra.shape[1]))
+    zall = np.zeros((nDPTs, tetrahedra.shape[1]))
+    wall = np.zeros((nDPTs, tetrahedra.shape[1]))
+    aall = np.zeros((nDPTs, tetrahedra.shape[1]))
+    for it in range(tetrahedra.shape[1]):
+        
+        vertex_ids = tetrahedra[:, it]
+
+        x1, x2, x3, x4 = nodes[0, vertex_ids]
+        y1, y2, y3, y4 = nodes[1, vertex_ids]
+        z1, z2, z3, z4 = nodes[2, vertex_ids]
+
+        xspts = x1*PTS[1,:] + x2*PTS[2,:] + x3*PTS[3,:] + x4*PTS[4,:]
+        yspts = y1*PTS[1,:] + y2*PTS[2,:] + y3*PTS[3,:] + y4*PTS[4,:]
+        zspts = z1*PTS[1,:] + z2*PTS[2,:] + z3*PTS[3,:] + z4*PTS[4,:]
+
+        xall[:, it] = xspts
+        yall[:, it] = yspts
+        zall[:, it] = zspts
+        wall[:, it] = PTS[0,:]
+        aall[:, it] = calc_volume(nodes[:,vertex_ids[0]], nodes[:,vertex_ids[1]], nodes[:,vertex_ids[2]], nodes[:,vertex_ids[3]])
+
+    xall_flat = xall.flatten()
+    yall_flat = yall.flatten()
+    zall_flat = zall.flatten()
+    wall_flat = wall.flatten()
+    aall_flat = aall.flatten()
+    
+    shape = np.array((nDPTs, tetrahedra.shape[1]))
+
+    return xall_flat, yall_flat, zall_flat, wall_flat, aall_flat, shape
 
 
 @njit(types.Tuple((f8[:], f8[:], f8[:], f8[:], f8[:], i8[:]))(f8[:,:], i8[:,:], f8[:,:]), cache=True, nogil=True)

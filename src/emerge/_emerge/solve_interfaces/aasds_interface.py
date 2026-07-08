@@ -4,6 +4,7 @@ Apple Accelerate Sparse Solver Interface
 
 from emerge_aasds import AccelerateInterface, Factorization, Symmetry, Scaling, Ordering
 import time
+from loguru import logger
 
 
 class AASDSInterface:
@@ -69,7 +70,8 @@ class AASDSInterface:
         self._solver.analyse(A)
         
         if self.verbose > 0:
-            print(f"Analyse: {time.time()-t0:.3f}s")
+            # ALLOWED PRINT
+            logger.info(f"Analyse: {time.time()-t0:.3f}s")
         
         self._factored = False
     
@@ -106,7 +108,7 @@ class AASDSInterface:
             raise RuntimeError(error_msg)
         
         if self.verbose > 0:
-            print(f"factorize: {time.time()-t0:.3f}s")
+            logger.info(f"factorize: {time.time()-t0:.3f}s")
         
         self._factored = True
     
@@ -133,7 +135,7 @@ class AASDSInterface:
         x, info = self._solver.solve(b)
         
         if self.verbose > 0:
-            print(f"Run: {time.time()-t0:.3f}s")
+            logger.info(f"Run: {time.time()-t0:.3f}s")
         
         return x, info
     

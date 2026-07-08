@@ -155,9 +155,14 @@ class DataEntry(Saveable):
         self.vars: dict[str, float] = variables
         self.data: dict[str, Any] = dict()
     
+    def is_non_empty(self) -> bool:
+        return (len(self.data) > 0)
+    
+    # ALLOWED PRINT
     def print(self) -> None:
         """Print the content of the DataEntry object"""
         for key, value in self.data.items():
+            # ALLOWED PRINT
             print(f'    {key} = {value}')
 
     def values(self) -> list[Any]:
@@ -190,12 +195,15 @@ class DataEntry(Saveable):
 
 class DataContainer(Saveable):
     """The DataContainer class is a generalized class to store data for a set of parameter sweeps"""
+    
     def __init__(self):
         self.entries: list[DataEntry] = []
-        
+    
+    # ALLOWED PRINT
     def print(self) -> None:
         """ Print an overview of all data in the DataContainer"""
         for entry in self.entries:
+            # ALLOWED PRINT
             entry.print()
 
     def new(self, **variables: float) -> DataEntry:
@@ -241,7 +249,9 @@ class DataContainer(Saveable):
         """Writes a value to the requested default DataEntry"""
         self.last[key] = value
     
-
+    def remove_empty_datasets(self) -> None:
+        self.entries = [entry for entry in self.entries if entry.is_non_empty()]
+        
 class BaseDataset(Generic[T,M], Saveable):
     #skip_fields = ('_datatype','_matrixtype')
     

@@ -128,11 +128,17 @@ class TouchstoneData:
         return self.Fdata
     
     def summarize_data(self):
+        # ALLOWED PRINT
         print(f'Frequency unit: {self.freq_unit}')
+        # ALLOWED PRINT
         print(f'Parameter type: {self.param_type}')
+        # ALLOWED PRINT
         print(f'Data type: {self.data_type}')
+        # ALLOWED PRINT
         print(f'Converter: {self._converter}')
+        # ALLOWED PRINT
         print(f'Reference impedance: {self.refimp}')
+        # ALLOWED PRINT
         print(f'Number of ports: {self.n_ports}')
 
     def _parse_touchstone(self) -> None:

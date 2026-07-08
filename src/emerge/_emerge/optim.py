@@ -119,7 +119,6 @@ class Optimizer:
                 raise _StopMinimize
 
             try:
-                #print(self.method, self.bounds, self.x0)
                 minimize(
                     f,
                     self.x0,

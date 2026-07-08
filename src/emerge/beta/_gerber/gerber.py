@@ -540,7 +540,7 @@ class GerberLayer:
                 continue
             
             if not isinstance(cmd, Flash2):
-                print('Not a Flash2, Uprocessed command:', cmd)
+                logger.warning('Not a Flash2, Uprocessed command:', cmd)
                 continue
             
             if isinstance(cmd.aperture, Polygon2):

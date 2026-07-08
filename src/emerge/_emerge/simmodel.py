@@ -107,6 +107,7 @@ class Simulation:
         self.opt: Optimizer = Optimizer()
         self.opt.callback = self._optim_callback
         self.settings._save_method = store_system
+        
         ## Display
         self.display: PVDisplay = PVDisplay(self.state)
         
@@ -156,7 +157,6 @@ class Simulation:
         
     def _reset_data(self) -> None:
         self.state.data.reset()
-        self.state.init_data()
     
     @property
     def data(self) -> SimulationDataset:
@@ -311,9 +311,13 @@ class Simulation:
     def clean(self) -> None:
         """ Cleans up the simulation object references by deleting all major components.
         """
+        
+        ## SIGN OFF SIMUALTION STATE
         if self.state is not None:
             self.state.sign_off()
         self.state = None
+        
+        ## Remove the State object
         if self.display:
             self.display.clean()
         self.mesher = None
@@ -508,6 +512,12 @@ class Simulation:
     def save(self, _force_save: bool = True) -> None:
         """Saves the current model in the provided project directory."""
         # Ensure directory exists
+        
+        if not self.state.has_been_modified:
+            logger.warning('Simulation state has not been modified. Saving is aborted to prevent overwrite.')
+            return
+        else:
+            logger.trace('Modified simulation data detected, proceeding with storing data!')
         
         if self._saved and not _force_save:
             logger.debug('File already saved. Terminating save procedure.')
@@ -711,6 +721,7 @@ class Simulation:
                 logger.trace('[GMSH] ' + log)
         except Exception:
             logger.error('GMSH Mesh error detected.')
+            # ALLOWED PRINT
             print(_GMSH_ERROR_TEXT)
             raise
         
@@ -780,6 +791,7 @@ class Simulation:
                 logger.trace('[GMSH] ' + log)
         except Exception:
             logger.error('GMSH Mesh error detected.')
+            # ALLOWED PRINT
             print(_GMSH_ERROR_TEXT)
             raise
         
@@ -827,7 +839,6 @@ class Simulation:
                 self.reset(geometry=True, physics=True, mesh=True)
             
             params = {key: dim[i_iter] for key,dim in zip(paramlist, dims_flat)}
-            
             self.state.set_parameters(params)
             
             logger.info(f'Iterating: {params}')

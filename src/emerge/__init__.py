@@ -77,6 +77,7 @@ from ._emerge.mesher import Algorithm2D, Algorithm3D
 from ._emerge.howto import _HowtoClass
 from ._emerge.emerge_update import update_emerge
 from ._emerge.cleanup import cleanup
+from . import integrals as intf
 from .auxilliary.touchstone import TouchstoneData
 from emsutil import isola, rogers, const, lib
 from emsutil.material import Material, MatProperty, FreqDependent, CoordDependent, FreqCoordDependent

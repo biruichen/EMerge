@@ -103,6 +103,7 @@ def _rot_mat(angle: float) -> np.ndarray:
 #                          CLASSES                         #
 ############################################################
 
+
 @dataclass
 class Via:
     x: float
@@ -120,7 +121,6 @@ class RouteElement:
     _DEFNAME: str = 'RouteElement'
     
     def __init__(self):
-        self._kwargs: dict = None
         self.width: float = None
         self.x: float = None
         self.y: float = None
@@ -130,31 +130,12 @@ class RouteElement:
         self.rcutprev: bool = False
         self.lcutnext: bool = False
         self.lcutprev: bool = False
-        self.clr: float | None = None
-    
-    def _backclr(self, dist: float) -> RouteElement:
-        obj2 = self.__class__.__new__(self.__class__)
-        obj2.__dict__ = self.__dict__.copy()
-        obj2._back(dist)
-        return obj2
     
     def _back(self, dist: float) -> None:
         """Moves the start of this element back in its primary direction"""
         self.x = self.x - self.direction[0]*dist
         self.y = self.y - self.direction[1]*dist
 
-    def _clr(self) -> StripTurn:
-        obj2 = self.__class__.__new__(self.__class__)
-        obj2.__dict__ = self.__dict__.copy()
-        obj2.width = self.width + 2*self.clr
-        return obj2
-        # kwargs = self._kwargs.copy()
-        # kwargs['width'] = self.width+2*self.clr
-        # return self.__class__(**kwargs)
-    
-    def proximate(self, other: RouteElement):
-        return ((((self.x-other.x)**2+(self.y-other.y)**2)**0.5) <= max([self.width, other.width]))
-    
     @property
     def pnt(self) -> Anchor:
         return Anchor((self.x, self.y, 0.0))
@@ -188,9 +169,7 @@ class StripLine(RouteElement):
                  x: float | Anchor,
                  y: float,
                  width: float,
-                 direction: tuple[float, float],
-                 clr: float = 0.0):
-        self._kwargs = dict(x=x,y=y,width=width, direction=direction)
+                 direction: tuple[float, float]):
         x, y, _ = argparse_xyz(x,y)
         self.x = x
         self.y = y
@@ -201,11 +180,10 @@ class StripLine(RouteElement):
         self.rcutprev: bool = False
         self.lcutnext: bool = False
         self.lcutprev: bool = False
-        self.clr: float = clr
 
     def __str__(self) -> str:
         return f'StripLine[{self.x},{self.y},w={self.width},d=({self.direction})]'
-        
+    
     @property
     def right(self) -> list[tuple[float, float]]:
         return [(self.x + self.width/2 * self.dirright[0], self.y + self.width/2 * self.dirright[1])]
@@ -224,9 +202,7 @@ class StripTurn(RouteElement):
                  angle: float,
                  corner_type: str = 'round',
                  champher_distance: float | None = None,
-                 dsratio: float = 1.0,
-                 clr: float = 0.0):
-        self._kwargs: dict = dict(x = x, y=y, width=width, direction=direction, angle=angle, corner_type=corner_type, champher_distance=champher_distance, dsratio=dsratio)
+                 dsratio: float = 1.0):
         x, y, _ = argparse_xyz(x,y)
         self.xold: float = x
         self.yold: float = y
@@ -240,7 +216,6 @@ class StripTurn(RouteElement):
         self.rcutprev: bool = False
         self.lcutnext: bool = False
         self.lcutprev: bool = False
-        self.clr: float = clr
         
         hang = np.abs(angle * np.pi/180 * 0.5)
         if champher_distance is None:
@@ -356,9 +331,7 @@ class StripCurve(StripTurn):
                  direction: tuple[float, float],
                  angle: float,
                  radius: float,
-                 dang: float = 10.0,
-                 clr: float = 0.0):
-        self._kwargs = dict(x=x,y=y, width=width, direction=direction, angle=angle, radius=radius, dang=dang)
+                 dang: float = 10.0):
         x, y, _ = argparse_xyz(x,y)
         self.xold: float = x
         self.yold: float = y
@@ -386,7 +359,7 @@ class StripCurve(StripTurn):
 
     def __str__(self) -> str:
         return f'StripCurve[{self.x},{self.y},w={self.width},d=({self.direction})]'
-    
+
     @property
     def right(self) -> list[tuple[float, float]]:
         points: list[tuple[float, float]] = []
@@ -420,23 +393,18 @@ class PCBPoly:
                  ys: list[float],
                  z: float = 0,
                  material: Material = PEC,
-                 name: str | None = None,
-                 polarity: bool = True):
+                 name: str | None = None):
         self.xs: list[float] = xs
         self.ys: list[float] = ys
         self.z: float = z
         self.material: Material = material
         self.name: str = _NAME_MANAGER(name, self._DEFNAME)
-        self.polarity: bool = polarity
+        #self.cleanup_close_points()
     
     @property
     def xys(self) -> list[tuple[float, float]]:
         return list([(x,y) for x,y in zip(self.xs, self.ys)])
     
-    def set_hole(self) -> PCBPoly:
-        self.polarity = False
-        return self
-
     def segment(self, index: int) -> StripLine:
         N = len(self.xs)
         x1 = self.xs[index%N]
@@ -469,68 +437,18 @@ class StripPath:
         self.z: float = 0
         self.name: str = _NAME_MANAGER(name, self._DEFNAME)
         self._consume: float = 0
+        
     
-    @property
-    def _has_clearance(self) -> bool:
-        return any([re.clr>0 for re in self.path])
-    
-    def iter_right(self, clearance: bool = False) -> Generator[tuple[RouteElement, RouteElement, RouteElement], None, None]:
-        N = len(self.path)
-        if clearance:
-            print(N)
-        for i in range(N):
-            a,b,c = self.path[(i-1)%N], self.path[i], self.path[(i+1)%N]
-            if clearance:
-                ca, cb, cc = a.clr, b.clr, c.clr
-                a,b,c = a._clr(), b._clr(), c._clr()
-                # Is First
-                if i == 0:
-                    b = b._backclr(cb)
-                # Is Last
-                elif i==(N-1):
-                    b = b._backclr(-cb)
-                # Step down
-                elif b.width > c.width and b.proximate(c):
-                    b = b._backclr(-cb)
-                # Stepped down
-                elif b.width < a.width and a.proximate(b):
-                    b = b._backclr(-ca)
-                # Step up
-                elif b.width < c.width and b.proximate(c):
-                    b = b._backclr(cc)
-                elif b.width > a.width and a.proximate(b):
-                    b = b._backclr(cb)
-            yield (a,b,c)
-            
-
-    def iter_left(self, clearance: bool = False) -> Generator[tuple[RouteElement, RouteElement, RouteElement], None, None]:
+    def iter_right(self) -> Generator[tuple[RouteElement, RouteElement, RouteElement], None, None]:
         N = len(self.path)
         for i in range(N):
+            yield self.path[(i-1)%N], self.path[i], self.path[(i+1)%N]
             
-            a,b,c = self.path[(i-1)%N], self.path[i], self.path[(i+1)%N]
-            if clearance:
-                ca, cb, cc = a.clr, b.clr, c.clr
-                a,b,c = a._clr(), b._clr(), c._clr()
-                # Is First
-                if i == 0:
-                    b = b._backclr(cb)
-                # Is Last
-                elif i==(N-1):
-                    b = b._backclr(-cb)
-                # Step down
-                elif b.width > c.width and b.proximate(c):
-                    b = b._backclr(-cb)
-                # Stepped down
-                elif b.width < a.width and a.proximate(b):
-                    b = b._backclr(-ca)
-                # Step up
-                elif b.width < c.width and b.proximate(c):
-                    b = b._backclr(cc)
-                elif b.width > a.width and a.proximate(b):
-                    b = b._backclr(cb)
-                
-            yield (a,b,c)
-    
+    def iter_left(self) -> Generator[tuple[RouteElement, RouteElement, RouteElement], None, None]:
+        N = len(self.path)
+        for i in range(N):
+            yield self.path[(i-1)%N], self.path[i], self.path[(i+1)%N]
+            
     def _has(self, element: RouteElement) -> bool:
         if element in self.path:
             return True
@@ -572,11 +490,6 @@ class StripPath:
         self._consume = w
         return self
     
-    def _parse_clr(self, clr: float) -> float:
-        if clr==0.0:
-            return self.end.clr
-        return clr
-
     def _cons(self, dist: float) -> float:
         dist = dist - self._consume
         self._consume = 0
@@ -592,11 +505,10 @@ class StripPath:
              y: float, 
              width: float, 
              direction: tuple[float, float],
-             z: float = 0,
-             clr: float = 0.0) -> StripPath:
+             z: float = 0) -> StripPath:
         """ Initializes the StripPath object for routing. """
         x, y, _ = argparse_xyz(x,y)
-        self.path.append(StripLine(x, y, width, direction, clr=clr))
+        self.path.append(StripLine(x, y, width, direction))
         self.z = z
         return self
     
@@ -614,8 +526,7 @@ class StripPath:
                  distance: float, 
                  width: float | None = None, 
                  dx: float = 0, 
-                 dy: float = 0,
-                 clr: float = 0.0) -> StripPath:
+                 dy: float = 0) -> StripPath:
         """Add A straight section to the stripline.
 
         Adds a straight section with a length determined by "distance". Optionally, a 
@@ -628,12 +539,11 @@ class StripPath:
             width (float, optional): The width of the stripline. Defaults to None.
             dx (float, optional): An x-direction offset. Defaults to 0.
             dy (float, optional): A y-direction offset. Defaults to 0.
-            clr (float, optional): Route clearance
 
         Returns:
             StripPath: The current StripPath object.
         """
-        clr = self._parse_clr(clr)
+        
         x = self.end.x + dx
         y = self.end.y + dy
 
@@ -644,15 +554,13 @@ class StripPath:
 
         if width is not None:
             if width != self.end.width:
-                self._add_element(StripLine(x, y, width, (dx_2, dy_2), clr=clr))
+                self._add_element(StripLine(x, y, width, (dx_2, dy_2)))
 
-        self._add_element(StripLine(x1, y1, self.end.width, (dx_2, dy_2), clr=clr))
+        self._add_element(StripLine(x1, y1, self.end.width, (dx_2, dy_2)))
         return self
     
-    def taper(self, 
-                 distance: float, 
-                 width: float,
-                 clr: float = 0.0) -> StripPath:
+    def taper(self, distance: float, 
+                 width: float) -> StripPath:
         """Add A taper section to the stripline.
 
         Adds a taper section with a length determined by "distance". Optionally, a 
@@ -665,12 +573,11 @@ class StripPath:
             width (float, optional): The width of the stripline. Defaults to None.
             dx (float, optional): An x-direction offset. Defaults to 0.
             dy (float, optional): A y-direction offset. Defaults to 0.
-            clr (float, optional): The path clearance for the next line piece. 
 
         Returns:
             StripPath: The current StripPath object.
         """
-        clr = self._parse_clr(clr)
+        
         x = self.end.x 
         y = self.end.y 
 
@@ -679,7 +586,7 @@ class StripPath:
         x1 = x + distance * dx_2
         y1 = y + distance * dy_2
 
-        self._add_element(StripLine(x1, y1, width, (dx_2, dy_2), clr=clr))
+        self._add_element(StripLine(x1, y1, width, (dx_2, dy_2)))
         
         return self
     
@@ -687,8 +594,7 @@ class StripPath:
              angle: float, 
              width: float | None = None, 
              corner_type: Literal['champher','square'] = 'square',
-             dsratio: float = 0.7,
-             clr: float = 0.0) -> StripPath:
+             dsratio: float = 0.7) -> StripPath:
         """Adds a turn to the strip path.
 
         The angle is specified in degrees. The width of the turn will be the same as the last segment.
@@ -700,12 +606,10 @@ class StripPath:
             width (float, optional): The stripline width. Defaults to None.
             corner_type (str, optional): The corner type. Defaults to 'champher'.
             dsratio: (float, optional): The chamfer distance expressed as the proportional of the corner diagonal.
-            clr (float, optional): The path clearance around the path.
 
         Returns:
             StripPath: The current StripPath object
         """
-        clr = self._parse_clr(clr)
         x, y = self.end.x, self.end.y
         dx, dy = self.end.direction
         if abs(angle) <= 20:
@@ -713,17 +617,16 @@ class StripPath:
             logger.warning('Small turn detected, defaulting to rectangular corners because chamfers would add to much detail.')
         if width is not None:
             if width != self.end.width:
-                self._add_element(StripLine(x, y, width, (dx, dy), clr=clr))
+                self._add_element(StripLine(x, y, width, (dx, dy)))
         else:
             width=self.end.width
-        self._add_element(StripTurn(x, y, width, (dx, dy), angle, corner_type, dsratio=dsratio, clr=clr))
+        self._add_element(StripTurn(x, y, width, (dx, dy), angle, corner_type, dsratio=dsratio))
         return self
 
     def pturn(self, 
              angle: float, 
              corner_type: Literal['champher','square'] = 'square',
-             dsratio: float = 0.7,
-             clr: float = 0.0) -> StripPath:
+             dsratio: float = 0.7) -> StripPath:
         """Adds a turn to the strip path.
 
         The angle is specified in degrees. The width of the turn will be the same as the last segment.
@@ -735,18 +638,15 @@ class StripPath:
             width (float, optional): The stripline width. Defaults to None.
             corner_type (str, optional): The corner type. Defaults to 'champher'.
             dsratio: (float, optional): The chamfer distance expressed as the proportional of the corner diagonal.
-            clr (float, optional): The path clearance for the next line piece. 
 
         Returns:
             StripPath: The current StripPath object
         """
-        clr = self._parse_clr(clr)
-        return self.bck.turn(angle, corner_type=corner_type, dsratio=dsratio, clr=clr).skip
+        return self.bck.turn(angle, corner_type=corner_type, dsratio=dsratio).skip
     
     def curve(self, angle: float, radius: float,
              width: float | None = None,
-             dang: float = 10,
-             clr: float = 0.0) -> StripPath:
+             dang: float = 10) -> StripPath:
         """Adds a bend to the strip path.
 
         The angle is specified in degrees. The width of the turn will be the same as the last segment.
@@ -756,12 +656,10 @@ class StripPath:
         Args:
             angle (float): The turning angle
             width (float, optional): The stripline width. Defaults to None.
-            clr (float, optional): The path clearance for the next line piece. 
 
         Returns:
             StripPath: The current StripPath object
         """
-        clr = self._parse_clr(clr)
         if angle == 0:
             logger.trace('Zero angle turn, passing action')
             return self
@@ -769,10 +667,10 @@ class StripPath:
         dx, dy = self.end.direction
         if width is not None:
             if width != self.end.width:
-                self._add_element(StripLine(x, y, width, (dx, dy), clr=clr))
+                self._add_element(StripLine(x, y, width, (dx, dy)))
         else:
             width=self.end.width
-        self._add_element(StripCurve(x, y, width, (dx, dy), angle, radius, dang=dang, clr=clr))
+        self._add_element(StripCurve(x, y, width, (dx, dy), angle, radius, dang=dang))
         return self
     
     def store(self, name: str) -> StripPath:
@@ -794,19 +692,16 @@ class StripPath:
     
     def split(self, 
               direction: tuple[float, float]  | None= None,
-              width: float  | None= None,
-              clr: float = 0.0) -> StripPath:
+              width: float  | None= None) -> StripPath:
         """Split the current path in N new paths given by a new departure direction
 
         Args:
             directions (list[tuple[float, float]]): a list of directions example: [(1,0),(-1,0)]
             widths (list[float], optional): The width for each new path. Defaults to None.
-            clr (float, optional): The path clearance for the next line piece. 
 
         Returns:
             list[StripPath]: A list of new StripPath objects
         """
-        clr = self._parse_clr(clr)
         if width is None:
             width = self.end.width
         if direction is None:
@@ -814,7 +709,7 @@ class StripPath:
         x = self.end.x
         y = self.end.y
         z = self.z
-        paths = self.pcb.new(x,y,width, direction, z, clr=clr)
+        paths = self.pcb.new(x,y,width, direction, z)
         self.pcb._checkpoint.append(self)
         return paths
 
@@ -884,13 +779,11 @@ class StripPath:
              direction: tuple[float, float],
              width: float,
              length: float, 
-             clr: float = 0.0,
              mirror: bool = False) -> StripPath:
         """ Add a single rectangular strip line section at the current coordinate"""
-        clr = self._parse_clr(clr)
-        self.pcb.new(self.end.x, self.end.y, width, direction, self.z, clr=clr).straight(length+clr, clr=clr)
+        self.pcb.new(self.end.x, self.end.y, width, direction, self.z).straight(length)
         if mirror:
-            self.pcb.new(self.end.x, self.end.y, width, (-direction[0], -direction[1]), self.z, clr=clr).straight(length+clr, clr=clr)
+            self.pcb.new(self.end.x, self.end.y, width, (-direction[0], -direction[1]), self.z).straight(length)
         return self
     
     def merge(self) -> StripPath:
@@ -959,13 +852,13 @@ class StripPath:
                 direction = self.end.direction
             dx = direction[0]*extra
             dy = direction[1]*extra
-            return self.pcb.new(x-dx, y-dy, width, direction, z2, clr=self.end.clr)
+            return self.pcb.new(x-dx, y-dy, width, direction, z2)
         return self
     
     def short(self, 
               ground_layer: int = 1,
               radius: float | None = None,
-              reverse: float = 0,) -> StripPath:
+              reverse: float = 0) -> StripPath:
         """Create a short circuit via at the current location.
 
         Args:
@@ -988,8 +881,7 @@ class StripPath:
              direction: tuple[float, float] | None = None,
              gap: float | None = None,
              side: Literal['left','right'] | None = None,
-             reverse: float | None = None,
-             clr: float = 0.0) -> StripPath:
+             reverse: float | None = None) -> StripPath:
         """Add an unconnected jump to the currenet stripline.
 
         The last stripline path will be terminated and a new one will be started based on the 
@@ -1008,7 +900,6 @@ class StripPath:
             gap (float, optional): The gap between the current and next stripline. Defaults to None.
             side (Literal[left, right], optional): The lateral jump direction. Defaults to None.
             reverse (float, optional): How much to move back if a lateral jump is made. Defaults to None.
-            clr (float, optional): The path clearance for the next line piece. 
 
         Example:
         The current example would yield a coupled line filter parallel jump.
@@ -1017,7 +908,6 @@ class StripPath:
         Returns:
             StripPath: The new StripPath object
         """
-        clr = self._parse_clr(clr)
         if width is None:
             width = self.end.width
         if direction is None:
@@ -1036,29 +926,18 @@ class StripPath:
         else:
             x = ending.x + dx
             y = ending.y + dy
-        return self.pcb.new(x, y, width, direction, clr=clr)
+        return self.pcb.new(x, y, width, direction)
     
     def to(self, 
            dest: tuple[float, float] | Anchor, 
            arrival_dir: tuple[float, float] | None = None,
            arrival_margin: float  | None= None,
-           angle_step: float = 90,
-           clr: float = 0.0) -> StripPath:
-        """Extend the path from current end point to dest (x, y).
+           angle_step: float = 90) -> StripPath:
+        """
+        Extend the path from current end point to dest (x, y).
         Optionally ensure arrival in arrival_dir after a straight segment of arrival_margin.
         Turns are quantized to multiples of angle_step (divisor of 360, <=90).
-
-        Args:
-            dest (tuple[float, float] | Anchor): The coordinate to route towards
-            arrival_dir (tuple[float, float] | None, optional): The direction at which the line arrives. Defaults to None.
-            arrival_margin (float | None, optional): The minimum length distance before reaching the destination. Defaults to None.
-            angle_step (float, optional): The routing step discretization . Defaults to 90.
-            clr (float, optional): The clearance around the trace. Defaults to 0.0.
-
-        Returns:
-            StripPath: _description_
         """
-        clr = self._parse_clr(clr)
         dest = _parse_vector(dest)[:2]
         # Validate angle_step
         if 360 % angle_step != 0 or angle_step > 90 or angle_step <= 0:
@@ -1161,14 +1040,14 @@ class StripPath:
         
         backoff = math.tan(abs(back_ang)*np.pi/360)*self.end.width/2
 
-        self.straight(s - backoff, clr=clr)
-        self.turn(-back_ang, clr=clr)
+        self.straight(s - backoff)
+        self.turn(-back_ang)
 
         x0 = self.end.x
         y0 = self.end.y
         D = math.hypot(tx-x0, ty-y0)
         # 4) Final straight into destination by arrival_margin + t
-        self.straight(D, clr=clr)
+        self.straight(D)
 
         return self
 
@@ -1294,7 +1173,6 @@ class PCBNew:
         
         self.hole_polies: list[PCBPoly] = []
         self.via_holes: list[PCBPoly] = []
-        self.clearances: GeoSurface | GeoVolume = None
         
         self.lumped_ports: list[StripLine] = []
         self.lumped_elements: list[GeoPolygon] = []
@@ -1427,7 +1305,7 @@ class PCBNew:
         for x,y in xys:
             px, py, pz = self.cs.in_global_cs(x*self.unit, y*self.unit, z*self.unit)
             ptags.append(gmsh.model.occ.addPoint(px, py, pz))
-            #print(f'Tag={ptags[-1]} = {px:.7f},{py:.7f},{pz:.7f}')
+
         
         ltags = []
         for t1, t2 in zip(ptags[:-1], ptags[1:]):
@@ -1597,7 +1475,7 @@ class PCBNew:
         """
         if width is None or height is None or origin is None:
             if self.width is None or self.length is None or self.origin is None:
-                raise RouteException('Cannot define a plane with no possible definition of its size. Call .determine_bounds() first!')
+                raise RouteException('Cannot define a plane with no possible definition of its size.')
             width = self.width
             height = self.length
             origin = (self.origin[0]*self.unit, self.origin[1]*self.unit)
@@ -1623,9 +1501,6 @@ class PCBNew:
             holes.append(self._gen_poly(via_hole.xys, via_hole.z, name=via_hole.name))
         if len(holes)>0:
             plane = remove(plane, unite(*holes))
-            
-        if self.clearances is not None:
-            plane = remove(plane, self.clearances, remove_tool=False)
         return plane # type: ignore
     
     def radial_stub(self, pos: tuple[float, float] | Anchor, 
@@ -1745,7 +1620,6 @@ class PCBNew:
             width: float, 
             direction: tuple[float, float],
             z: float = 0,
-            clr: float = 0.0,
             name: str | None = None) -> StripPath:
         """Start a new trace
 
@@ -1757,7 +1631,6 @@ class PCBNew:
             y (float): The starting Y-coordinate (local)
             width (float): The (micro)-stripline width
             direction (tuple[float, float]): The direction.
-            clr (float, optional): routing clearance around this trace
 
         Returns:
             StripPath: A StripPath object that can be extended with method chaining.
@@ -1767,7 +1640,7 @@ class PCBNew:
 
         """
         path = StripPath(self, name=name)
-        path.init(x, y, width, direction, z=z, clr=clr)
+        path.init(x, y, width, direction, z=z)
         self.paths.append(path)  
         return path
     
@@ -2008,43 +1881,6 @@ class PCBNew:
         
         self.hole_polies.append(poly)
     
-    def _compile_path_elem(self, path, allx: list[float], ally: list[float], clearance: bool = False) -> GeoPolygon | GeoVolume:
-        z = path.z
-        self.zs.append(z)
-        xysL = []
-        xysR = []
-        for eprev, elemn, enext in path.iter_right(clearance):
-            coords = elemn.right
-            if enext.rcutprev and coords:
-                coords.pop(-1)
-            if eprev.rcutnext and coords:
-                coords.pop(0)
-            
-            xysR.extend(coords)
-            
-        for eprev, elemn, enext in path.iter_left(clearance):
-            coords = elemn.left
-            if enext.lcutprev and coords:
-                coords.pop(-1)
-            if eprev.lcutnext and coords:
-                coords.pop(0)
-            
-            xysL.extend(coords)
-
-        xys = xysR + xysL[::-1]
-        xm, ym = xys[0]
-        xys2 = [(xm,ym),]
-        
-        for x,y in xys[1:]:
-            if ((x-xm)**2 + (y-ym)**2)>1e-6:
-                xys2.append((x,y))
-                xm, ym = x, y
-                if not clearance:
-                    allx.append(x)
-                    ally.append(y)
-        
-        return self._gen_poly(xys2, z)
-        
     @overload
     def compile_paths(self, merge: Literal[True]) -> GeoSurface | GeoVolume: ...
     
@@ -2064,20 +1900,47 @@ class PCBNew:
             list[Polygon] | GeoSurface: The output stripline polygons possibly merged if merge = True.
         """
         polys: list[GeoSurface] = []
-        clearances: list[GeoSurface] = []
-        holes = []
         allx = []
         ally = []
 
         for path in self.paths:
+            z = path.z
+            self.zs.append(z)
+            xysL = []
+            xysR = []
             
-            poly = self._compile_path_elem(path, allx, ally)
+            for eprev, elemn, enext in path.iter_right():
+                coords = elemn.right
+                if enext.rcutprev and coords:
+                    coords.pop(-1)
+                if eprev.rcutnext and coords:
+                    coords.pop(0)
+                
+                xysR.extend(coords)
+                
+            for eprev, elemn, enext in path.iter_left():
+                coords = elemn.left
+                if enext.lcutprev and coords:
+                    coords.pop(-1)
+                if eprev.lcutnext and coords:
+                    coords.pop(0)
+                
+                xysL.extend(coords)
+
+            xys = xysR + xysL[::-1]
+            xm, ym = xys[0]
+            xys2 = [(xm,ym),]
+            
+            for x,y in xys[1:]:
+                if ((x-xm)**2 + (y-ym)**2)>1e-6:
+                    xys2.append((x,y))
+                    xm, ym = x, y
+                    allx.append(x)
+                    ally.append(y)
+            
+            poly = self._gen_poly(xys2, z)
             poly.material = self.trace_material
             polys.append(poly)
-            
-            if path._has_clearance:
-                poly_clr = self._compile_path_elem(path, allx, ally, True)
-                clearances.append(poly_clr)
 
         for pcbpoly in self.polies:
             self.zs.append(pcbpoly.z)
@@ -2088,7 +1951,7 @@ class PCBNew:
             allx.extend(xs)
             ally.extend(ys)
         
-        
+        holes = []
         for holepoly in self.hole_polies + self.via_holes:
             self.zs.append(holepoly.z)
             poly = self._gen_poly(holepoly.xys, holepoly.z, name=holepoly.name)
@@ -2098,9 +1961,7 @@ class PCBNew:
         self.ys = ally
 
         self.traces = polys
-        if len(clearances) > 0:
-            self.clearances = unite(*clearances)
-            self.clearances._self_destruct = True
+        
         if merge:
             polys = unite(*polys)
             if holes:

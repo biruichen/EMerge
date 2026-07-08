@@ -17,7 +17,7 @@
 
 import gmsh
 from ..geometry import GeoObject, GeoSurface, GeoVolume
-from ..cs import CoordinateSystem, GCS, Axis, _parse_vector, Anchor
+from ..cs import CoordinateSystem, GCS, Axis, _parse_vector, Anchor, _parse_axis
 import numpy as np
 from enum import Enum
 from .operations import subtract
@@ -467,6 +467,7 @@ class CoaxCylinder(GeoVolume):
         return self.face('back')
     
 class HalfSphere(GeoVolume):
+    
     """A half sphere volume."""
     _default_name: str = 'HalfSphere'
     def __init__(self,
@@ -481,7 +482,7 @@ class HalfSphere(GeoVolume):
 
         dx, dy, dz = _parse_vector(direction)
         
-        zax = Axis(direction)
+        zax = _parse_axis(direction)
         
         znp = zax.np
         phi   = np.arctan2(znp[1], znp[0])
@@ -502,11 +503,11 @@ class HalfSphere(GeoVolume):
 
         super().__init__([dt[1] for dt in dimtags], name=name)
         
-        self._add_face_pointer('front', np.array(position), np.array(direction))
-        self._add_face_pointer('back', np.array(position), np.array(direction))
-        self._add_face_pointer('bottom', np.array(position), np.array(direction))
-        self._add_face_pointer('face', np.array(position), np.array(direction))
-        self._add_face_pointer('disc', np.array(position), np.array(direction))
+        self._add_face_pointer('front', np.array(position), znp)
+        self._add_face_pointer('back', np.array(position), znp)
+        self._add_face_pointer('bottom', np.array(position), znp)
+        self._add_face_pointer('face', np.array(position), znp)
+        self._add_face_pointer('disc', np.array(position), znp)
         
         gmsh.model.occ.synchronize()
         self._add_face_pointer('outside', tag=self.boundary(exclude='disc').tags[0])
