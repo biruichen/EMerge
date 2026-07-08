@@ -17,7 +17,7 @@
 
 import gmsh
 from ..geometry import GeoObject, GeoSurface, GeoVolume
-from ..cs import CoordinateSystem, GCS, Axis, _parse_vector, Frame
+from ..cs import CoordinateSystem, GCS
 import numpy as np
 from enum import Enum
 from .operations import subtract
@@ -25,10 +25,6 @@ from ..selection import FaceSelection, Selector, SELECTOR_OBJ
 
 from typing import Literal
 from functools import reduce
-
-_dx = np.array([1.0, 0.0, 0.0])
-_dy = np.array([0.0, 1.0, 0.0])
-_dz = np.array([0.0, 0.0, 1.0])
 
 class Alignment(Enum):
     """The alignment Enum describes if a box, cube or rectangle location
@@ -59,7 +55,7 @@ class Box(GeoVolume):
                  width: float, 
                  depth: float, 
                  height: float, 
-                 position: tuple | Frame = (0,0,0),
+                 position: tuple = (0,0,0),
                  alignment: Alignment = Alignment.CORNER,
                  cs: CoordinateSystem = GCS,
                  name: str | None = None):
@@ -78,7 +74,7 @@ class Box(GeoVolume):
         if alignment is Alignment.CENTER:
             position = (position[0]-width/2, position[1]-depth/2, position[2]-height/2)
         
-        x,y,z = _parse_vector(position)
+        x,y,z = position
 
         tag = gmsh.model.occ.addBox(x,y,z,width,depth,height)
         super().__init__(tag, name=name)
@@ -100,12 +96,6 @@ class Box(GeoVolume):
         self._add_face_pointer('right', pc + width/2*wax, wax)
         self._add_face_pointer('top', pc + height/2*hax, hax)
         self._add_face_pointer('bottom', pc - height/2*hax, -hax)
-        
-        dx = wax * width/2
-        dy = dax * depth/2
-        dz = hax * height/2
-        
-        self.anch.init(np.array(p0), dx, dy, dz)
         
     @property
     def left(self) -> FaceSelection:
@@ -159,7 +149,7 @@ class Sphere(GeoVolume):
     _default_name: str = 'Sphere'
     def __init__(self, 
                  radius: float,
-                 position: tuple | Frame = (0,0,0)):
+                 position: tuple = (0,0,0)):
         """Generates a sphere objected centered ont he position with the given radius
 
         Args:
@@ -167,13 +157,11 @@ class Sphere(GeoVolume):
             position (tuple, optional): The center position. Defaults to (0,0,0).
         """
         super().__init__([])
-        x,y,z = _parse_vector(position)
+        x,y,z = position
         self.tags: list[int] = [gmsh.model.occ.addSphere(x,y,z,radius),]
 
         gmsh.model.occ.synchronize()
         self._add_face_pointer('outside', tag=self.boundary().tags[0])
-        
-        self.anch.init(np.array([x,y,z]), radius*_dx, radius*_dy, radius*_dz)
         
     @property
     def outside(self) -> FaceSelection:
@@ -217,8 +205,6 @@ class XYPlate(GeoSurface):
         
         x,y,z = position
         self.tags: list[int] = [gmsh.model.occ.addRectangle(x,y,z,width,depth),]
-        
-        self.anch.init(np.array([x,y,z])+width/2*_dx + depth/2*_dy, width/2*_dx, depth/2*_dy, 0*_dz)
 
 
 class Plate(GeoSurface):
@@ -237,7 +223,7 @@ class Plate(GeoSurface):
         """
     _default_name: str = 'Plate'
     def __init__(self,
-                origin: tuple[float, float, float] | Frame,
+                origin: tuple[float, float, float],
                 u: tuple[float, float, float],
                 v: tuple[float, float, float],
                 name: str | None = None):
@@ -255,7 +241,7 @@ class Plate(GeoSurface):
             v (tuple[float, float, float]): The v-axis of the plate
         """
         
-        origin = _parse_vector(origin)
+        origin = np.array(origin)
         u = np.array(u)
         v = np.array(v)
         
@@ -273,9 +259,6 @@ class Plate(GeoSurface):
 
         tags: list[int] = [gmsh.model.occ.addPlaneSurface([tag_wire,]),]
         super().__init__(tags, name=name)
-        
-        c = origin + u/2 + v/2
-        self.anch.init(c, u/2, v/2, 0*_dz)
 
 
 class Cylinder(GeoVolume):
@@ -342,8 +325,6 @@ class Cylinder(GeoVolume):
         self.cs: CoordinateSystem = cs
         self.radius = radius
         self.height = height
-        
-        self.anch.init(cs.origin + height*cs.zax.np/2, cs.xax.np, cs.yax.np, cs.zax.np)
 
     def face_points(self, nRadius: int = 10, Angle: int = 10, face_number: int = 1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Returns the points of the cylinder."""
@@ -392,7 +373,6 @@ class CoaxCylinder(GeoVolume):
             cs (CoordinateSystem, optional): The coordinate system. Defaults to GCS.
             Nsections (int, optional): The number of sections. Defaults to None.
         """
-        
     _default_name: str = 'CoaxCylinder'
     def __init__(self, 
                  rout: float,
@@ -440,7 +420,6 @@ class CoaxCylinder(GeoVolume):
         self._add_face_pointer('right', cs.origin+height*cs.zax.np, cs.zax.np)
 
         self.cs = cs
-        self.anch.init(cs.origin + height*cs.zax.np/2, cs.xax.np, cs.yax.np, cs.zax.np)
 
     def face_points(self, nRadius: int = 10, Angle: int = 10, face_number: int = 1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Returns the points of the coaxial cylinder."""
@@ -471,47 +450,35 @@ class HalfSphere(GeoVolume):
     _default_name: str = 'HalfSphere'
     def __init__(self,
                  radius: float,
-                 position: tuple[float, float, float] | Frame = (0,0,0),
-                 direction: tuple | Axis = (1,0,0),
+                 position: tuple = (0,0,0),
+                 direction: tuple = (1,0,0),
                  name: str | None = None):
         
         sphere = Sphere(radius, position=position)
-        c = _parse_vector(position)
         cx, cy, cz = position
 
-        dx, dy, dz = _parse_vector(direction)
+        dx, dy, dz = direction
+        fx = 0.5**dx
+        fy = 0.5**dy
+        fz = 0.5**dz
+        box = Box(2.2*radius*fx, 2.2*radius*fy, 2.2*radius*fz, position=(cx-radius*1.1*dx*0.5,cy-radius*1.1*dy*0.5, cz-radius*1.1*dz*0.5), alignment=Alignment.CENTER)
         
-        zax = Axis(direction)
-        
-        znp = zax.np
-        phi   = np.arctan2(znp[1], znp[0])
-        theta = np.arccos(znp[2])
-
-        cphi, sphi = np.cos(phi), np.sin(phi)
-        ctheta, stheta = np.cos(theta), np.sin(theta)
-
-        xnp = np.array([ cphi*ctheta,  sphi*ctheta, -stheta ])
-        ynp = np.array([ -sphi,     cphi,     0.0 ])
-
-        cyl = Cylinder(1.1*radius, 1.1*radius, zax.construct_cs(c-radius*1.1*zax.np))
-        
-        dimtags, _ = gmsh.model.occ.cut(sphere.dimtags, cyl.dimtags)
+        dimtags, _ = gmsh.model.occ.cut(sphere.dimtags, box.dimtags)
         
         sphere._exists = False
-        cyl._exists = False
+        box._exists = False
 
         super().__init__([dt[1] for dt in dimtags], name=name)
         
-        self._add_face_pointer('front', np.array(position), np.array(direction))
-        self._add_face_pointer('back', np.array(position), np.array(direction))
-        self._add_face_pointer('bottom', np.array(position), np.array(direction))
-        self._add_face_pointer('face', np.array(position), np.array(direction))
-        self._add_face_pointer('disc', np.array(position), np.array(direction))
+        self._add_face_pointer('front',np.array(position), np.array(direction))
+        self._add_face_pointer('back',np.array(position), np.array(direction))
+        self._add_face_pointer('bottom',np.array(position), np.array(direction))
+        self._add_face_pointer('face',np.array(position), np.array(direction))
+        self._add_face_pointer('disc',np.array(position), np.array(direction))
         
         gmsh.model.occ.synchronize()
         self._add_face_pointer('outside', tag=self.boundary(exclude='disc').tags[0])
         
-        self.anch.init(np.array([cx, cy, cz])+znp*radius/2, xnp*radius, ynp*radius, znp*radius/2)
     @property
     def outside(self) -> FaceSelection:
         """The outside boundary of the half sphere.
@@ -535,7 +502,7 @@ class OldBox(GeoVolume):
                  width: float, 
                  depth: float, 
                  height: float, 
-                 position: tuple | Frame = (0,0,0),
+                 position: tuple = (0,0,0),
                  cs: CoordinateSystem = GCS,
                  alignment: Alignment = Alignment.CORNER):
         """Creates a box volume object with selectable sides.
@@ -551,7 +518,6 @@ class OldBox(GeoVolume):
             alignment (Alignment, optional): Which point of the box is placed at the position. 
                 Defaults to Alignment.CORNER.
         """
-        position = _parse_vector(position)
         if alignment is Alignment.CORNER:
             position = (position[0]+width/2, position[1]+depth/2, position[2])
         elif alignment is Alignment.CENTER:
@@ -658,8 +624,8 @@ class Cone(GeoVolume):
         """
     _default_name: str = 'Cone'
     
-    def __init__(self, p0: tuple[float, float, float] | Frame,
-                 direction: tuple[float, float, float] | Axis,
+    def __init__(self, p0: tuple[float, float, float],
+                 direction: tuple[float, float, float],
                  r1: float,
                  r2: float,
                  name: str | None = None):
@@ -672,14 +638,11 @@ class Cone(GeoVolume):
             r1 (float): _description_
             r2 (float): _description_
         """
-        p0 = _parse_vector(p0)
-        direction = _parse_vector(direction)
-        
         tag = gmsh.model.occ.add_cone(*p0, *direction, r1, r2)
         super().__init__(tag, name=name)
         
-        p0 = _parse_vector(p0)
-        ds = _parse_vector(direction)
+        p0 = np.array(p0)
+        ds = np.array(direction)
         
         self._add_face_pointer('front', p0, ds)
         if r2>0:

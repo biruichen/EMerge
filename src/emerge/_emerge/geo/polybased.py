@@ -14,11 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
-
-
 from __future__ import annotations
 import numpy as np
-from ..cs import CoordinateSystem, GCS, Axis, _parse_axis, _parse_vector, Frame
+from ..cs import CoordinateSystem, GCS, Axis, _parse_axis
 from ..geometry import GeoVolume, GeoPolygon, GeoEdge, GeoSurface
 from .shapes import Alignment
 import gmsh
@@ -254,8 +252,8 @@ class XYPolygon:
     """This class generalizes a polygon in an un-embedded XY space that can be embedded in 3D space.
     """
     def __init__(self, 
-                 xs: np.ndarray | list[float] | tuple[float,...] | None = None,
-                 ys: np.ndarray | list[float] | tuple[float,...] | None = None,
+                 xs: np.ndarray | list | tuple | None = None,
+                 ys: np.ndarray | list | tuple | None = None,
                  cs: CoordinateSystem | None = None,
                  resolution: float = 1e-6):
         """Constructs an XY-plane placed polygon.
@@ -471,11 +469,7 @@ class XYPolygon:
             cs = GCS
         return self._finalize(cs) 
     
-    def revolve(self, cs: CoordinateSystem, 
-                origin: tuple[float, float, float] | Frame, 
-                axis: tuple[float, float,float] | Axis, 
-                angle: float = 360.0, 
-                name: str = 'Revolution') -> GeoPrism:
+    def revolve(self, cs: CoordinateSystem, origin: tuple[float, float, float], axis: tuple[float, float,float], angle: float = 360.0, name: str = 'Revolution') -> GeoPrism:
         """Applies a revolution to the XYPolygon along the provided rotation ais
 
         Args:
@@ -485,13 +479,12 @@ class XYPolygon:
         Returns:
             Prism: The resultant 
         """
-        
         if cs is None:
             cs = GCS
         poly_fin = self._finalize(cs)
         
-        x,y,z = _parse_vector(origin)
-        ax, ay, az = _parse_axis(axis).tuple
+        x,y,z = origin
+        ax, ay, az = axis
         
         volume = gmsh.model.occ.revolve(poly_fin.dimtags, x,y,z, ax, ay, az, angle*np.pi/180)
         
@@ -535,7 +528,7 @@ class XYPolygon:
     @staticmethod
     def rect(width: float,
              height: float,
-             origin: tuple[float, float] | Frame,
+             origin: tuple[float, float],
              alignment: Alignment = Alignment.CORNER) -> XYPolygon:
         """Create a rectangle in the XY-plane as polygon
 
@@ -548,8 +541,6 @@ class XYPolygon:
         Returns:
             XYPolygon: A new XYpolygon object
         """
-        origin = _parse_vector(origin)[:-1]
-        
         if alignment is Alignment.CORNER:
             x0, y0 = origin
         else:
@@ -559,8 +550,7 @@ class XYPolygon:
         ys = np.array([y0, y0+height, y0+height, y0])
         return XYPolygon(xs, ys)
     
-    def parametric(self, 
-                   xfunc: Callable,
+    def parametric(self, xfunc: Callable,
                    yfunc: Callable,
                    xmin: float = 1e-3,
                    tolerance: float = 1e-5,
@@ -623,10 +613,9 @@ class XYPolygon:
 class Disc(GeoSurface):
     _default_name: str = 'Disc'
     
-    def __init__(self, 
-                 origin: tuple[float, float, float] | Frame,
+    def __init__(self, origin: tuple[float, float, float],
                  radius: float,
-                 axis: tuple[float, float, float] | Axis = (0.,0.,1.),
+                 axis: tuple[float, float, float] = (0,0,1.0),
                  radius_opt: float | None = None,
                  axis_opt: tuple[float, float, float] | None = None,
                  name: str | None = None):
@@ -638,9 +627,6 @@ class Disc(GeoSurface):
             axis (tuple[float, float, float], optional): The disc normal axis. Defaults to (0,0,1.0).
             radius_opt (float, None): Secondary radius in case where one wants to make an ellipse.
         """
-        origin = _parse_vector(origin)
-        axis = _parse_vector(axis)
-        
         if radius_opt is None:
             radius_opt = radius
             axis_opt = []
@@ -716,9 +702,8 @@ class Curve(GeoEdge):
         return (self.xpts[0], self.ypts[0], self.zpts[0])
 
     @staticmethod
-    def helix_rh(
-              pstart: tuple[float, float, float] | Frame,
-              pend: tuple[float, float, float] | Frame,
+    def helix_rh(pstart: tuple[float, float, float],
+              pend: tuple[float, float, float],
               r_start: float,
               pitch: float,
               r_end: float | None = None,
@@ -737,9 +722,6 @@ class Curve(GeoEdge):
         Returns:
             Curve: The Curve geometry object
         """
-        pstart = _parse_vector(pstart)
-        pend = _parse_vector(pend)
-        
         if r_end is None:
             r_end = r_start
         
@@ -798,9 +780,8 @@ class Curve(GeoEdge):
         return Curve(xp, yp, zp, ctype='Spline')
     
     @staticmethod
-    def helix_lh(
-              pstart: tuple[float, float, float] | Frame,
-              pend: tuple[float, float, float] | Frame,
+    def helix_lh(pstart: tuple[float, float, float],
+              pend: tuple[float, float, float],
               r_start: float,
               pitch: float,
               r_end: float | None = None,
@@ -819,9 +800,6 @@ class Curve(GeoEdge):
         Returns:
             Curve: The Curve geometry object
         """
-        pstart = _parse_vector(pstart)
-        pend = _parse_vector(pend)
-        
         if r_end is None:
             r_end = r_start
         
@@ -879,8 +857,7 @@ class Curve(GeoEdge):
         
         return Curve(xp, yp, zp, ctype='Spline')
         
-    def pipe(self, 
-             crossection: GeoSurface | XYPolygon, 
+    def pipe(self, crossection: GeoSurface | XYPolygon, 
              max_mesh_size: float | None = None,
              start_tangent: Axis | tuple[float, float, float] | np.ndarray | None = None,
              x_axis: Axis | tuple[float, float, float] | np.ndarray | None = None,

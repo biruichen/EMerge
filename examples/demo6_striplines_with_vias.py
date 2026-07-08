@@ -14,7 +14,7 @@ mm = 0.001    # Define a millimeter
 th = 1.0      # mm
 
 model = em.Simulation('StriplineWithVias')
-model.check_version("2.1.0") # Checks version compatibility.
+model.check_version("2.0.3") # Checks version compatibility.
 
 # As usual we start by creating our layouter
 ly = em.geo.PCB(th, mm, em.GCS, layers=3, material=em.lib.DIEL_RO4350B, trace_material=em.lib.PEC)
@@ -27,13 +27,9 @@ ly = em.geo.PCB(th, mm, em.GCS, layers=3, material=em.lib.DIEL_RO4350B, trace_ma
 # docstring of the method. The vias can be created later.
 w0 = ly.calc.z0(50, 1, 0)*0.9
 w1 = ly.calc.z0(50,2,0)
-ly.new(0,0,w0,(1,0), -th/2)['p1'].straight(10).turn(90)\
-    .straight(10).turn(-90, corner_type='champher')\
-    .straight(5).via(0, 0.2, True, width=w1)\
-    .straight(8).via(-th/2, 0.2, width=w0).straight(5)\
-    .turn(-90).straight(10).turn(90).straight(10)['p2']
-
-# Notice the champher corner type. This champher minimizes reflections when going around the corner.
+ly.new(0,0,w0,(1,0), -th/2)['p1'].straight(10).turn(90).straight(10).turn(-90)\
+    .straight(5).via(0, 0.2, True, width=w1).straight(8).via(-th/2, 0.2, width=w0).straight(5)\
+        .turn(-90).straight(10).turn(90).straight(10)['p2']
 
 # As usual we compile the traces as a merger of polygons
 trace = ly.compile_paths(True)
