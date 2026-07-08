@@ -334,6 +334,7 @@ class Material:
         state = self.__dict__.copy()
         for k in self._pickle_exclude:
             state.pop(k, None)
+        
         return state
     
     def __setstate__(self, state):
