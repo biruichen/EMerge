@@ -33,7 +33,7 @@ class Material:
     er: float = 1
     ur: float = 1
     tand: float = 0
-    sigma: float = 0
+    cond: float = 0
     _neff: float = None
     _fer: callable = None
     _fur: callable = None
@@ -106,4 +106,4 @@ class Material:
             return self._fur
         
 AIR = Material(color=(0.8,0.9,1.0), opacity=0.2)
-COPPER = Material(color=(0.6, 0.2, 0.1))
+COPPER = Material(cond=5.8e7, color=(0.6, 0.2, 0.1))

@@ -29,7 +29,8 @@ from .simjob import SimJob
 from numba import types, njit, f8, i8, c16
 from collections import defaultdict
 
-c0 = 299792458
+C0 = 299792458
+EPS0 = 8.854187818814e-12
 
 def matprint(mat: np.ndarray) -> None:
     factor = np.max(np.abs(mat.flatten()))
@@ -209,6 +210,7 @@ class Assembler:
 
     def __init__(self):
         self.cached_matrices = None
+        self.conductivity_limit = 1e7
 
     @staticmethod
     
@@ -244,11 +246,12 @@ class Assembler:
         
         return K, solve_ids
     
-    @staticmethod
     
-    def assemble_bma_matrices(field: Nedelec2,
+    def assemble_bma_matrices(self,
+                              field: Nedelec2,
                         er: np.ndarray, 
                         ur: np.ndarray, 
+                        sig: np.ndarray,
                         k0: float,
                         port: PortBC,
                         bcs: list[BoundaryCondition]) -> tuple[np.ndarray, np.ndarray, np.ndarray, NedelecLegrange2]:
@@ -262,16 +265,28 @@ class Assembler:
 
         boundary_surface = mesh.boundary_surface(port.tags, origin)
         nedlegfield = NedelecLegrange2(boundary_surface, port.cs)
+
         ermesh = er[:,:,tri_ids]
         urmesh = ur[:,:,tri_ids]
+        sigmesh = sig[tri_ids]
+
+        ermesh = ermesh - 1j * sigmesh/(k0*C0*EPS0)
+
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)
         
-        pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
-        
-        # Process all PEC Boundary Conditions
-        pec_ids = []
+
         logger.debug('Implementing PEC BCs')
 
+        pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
+        
+        pec_ids = []
+
+        # Process all concutors. Everything above the conductivity limit is considered pec.
+        for it in range(boundary_surface.n_tris):
+            if sigmesh[it] > self.conductivity_limit:
+                pec_ids.extend(list(nedlegfield.tri_to_field[:,it]))
+
+        # Process all PEC Boundary Conditions
         pec_edges = []
         pec_vertices = []
         for pec in pecs:
@@ -310,11 +325,10 @@ class Assembler:
         #matplot(B, solve_ids)
         return E, B, np.array(solve_ids), nedlegfield
 
-        
-    
     def assemble_freq_matrix(self, field: Nedelec2, 
                         er: np.ndarray, 
                         ur: np.ndarray, 
+                        sig: np.ndarray,
                         bcs: list[BoundaryCondition],
                         frequency: float,
                         cache_matrices: bool = False) -> SimJob:
@@ -322,17 +336,21 @@ class Assembler:
         from .optimized_assembly import tet_mass_stiffness_matrices
 
         mesh = field.mesh
-        k0 = 2*np.pi*frequency/299792458
+        w0 = 2*np.pi*frequency
+        k0 = w0/C0
+
+        er = er - 1j*sig/(w0*EPS0)
         
-        if cache_matrices:
-            if self.cached_matrices is not None:
-                logger.debug('Retreiving cached matricies')
-                E, B = self.cached_matrices
-            else:
-                logger.debug('Assembling matrices')
-                E, B = tet_mass_stiffness_matrices(field, er, ur)
-                self.cached_matrices = (E, B)
+        f_dependent_properties = np.any((sig > 0) & (sig < self.conductivity_limit))
         
+        if cache_matrices and not f_dependent_properties and self.cached_matrices is not None:
+            logger.debug('Retreiving cached matricies')
+            E, B = self.cached_matrices
+        else:
+            logger.debug('Assembling matrices')
+            E, B = tet_mass_stiffness_matrices(field, er, ur)
+            self.cached_matrices = (E, B)
+
         K: csr_matrix = (E - B*(k0**2)).tocsr()
 
         NF = E.shape[0]
@@ -349,7 +367,12 @@ class Assembler:
         pec_ids = []
         logger.debug('Implementing PEC BCs')
         
-        # PEC
+        # Conductivity above al imit, consider it all PEC
+        for itet in range(field.n_tets):
+            if sig[itet] > self.conductivity_limit:
+                pec_ids.extend(field.tet_to_field[:,itet])
+        
+        # PEC Boundary conditions
         for pec in pecs:
             face_tags = pec.tags
             tri_ids = mesh.get_triangles(face_tags)

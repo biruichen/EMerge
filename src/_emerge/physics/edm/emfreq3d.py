@@ -194,6 +194,18 @@ class Electrodynamics3D:
         """
         self.resolution = resolution
 
+    def set_conductivity_limit(self, condutivity: float) -> None:
+        """Sets the limit of a material conductivity value beyond which
+        the assembler considers it PEC. By default this value is
+        set to 1·10⁷S/m which means copper conductivity is ignored.
+
+        Args:
+            condutivity (float): The conductivity level in S/m
+        """
+        if condutivity < 0:
+            logger.warning('Conductivity values must be above 0. Ignoring assignment')
+            
+        self.assembler.conductivity_limit = condutivity
     def get_discretizer(self) -> Callable:
         """Returns a discretizer function that defines the maximum mesh size.
 
@@ -227,8 +239,7 @@ class Electrodynamics3D:
         for bc in self.boundary_conditions:
             if isinstance(bc, LumpedPort):
                 self.define_lumped_port_integration_points(bc)
-
-    
+ 
     def modal_analysis(self, port: ModalPort, 
                        nmodes: int = 6, 
                        direct: bool = True,
@@ -265,14 +276,17 @@ class Electrodynamics3D:
         logger.debug('Retreiving material properties.')
         ertet = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         urtet = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+        condtet = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
 
         er = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
         ur = np.zeros((3,3,self.mesh.n_tris,), dtype=np.complex128)
+        cond = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
         for itri in range(self.mesh.n_tris):
             itet = self.mesh.tri_to_tet[0,itri]
             er[:,:,itri] = ertet[:,:,itet]
             ur[:,:,itri] = urtet[:,:,itet]
+            cond[itri] = condtet[:,:,itet]
 
         ermean = np.mean(er[er>0].flatten())
         urmean = np.mean(ur[ur>0].flatten())
@@ -287,9 +301,9 @@ class Electrodynamics3D:
         k0 = 2*np.pi*freq/299792458
         kmax = k0*np.sqrt(ermax*urmax)
 
-        logger.info('Assembling boundary mode analysic Matrices')
+        logger.info('Assembling BMA Matrices')
         
-        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, k0, port, self.boundary_conditions)
+        Amatrix, Bmatrix, solve_ids, nlf = self.assembler.assemble_bma_matrices(self.basis, er, ur, cond, k0, port, self.boundary_conditions)
         
         logger.debug(f'Total of {Amatrix.shape[0]} Degrees of freedom.')
         logger.debug(f'Applied frequency: {freq/1e9:.2f}GHz')
@@ -497,14 +511,16 @@ class Electrodynamics3D:
         
         er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        
+        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
         ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
         urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
         for itri in range(self.mesh.n_tris):
             itet = self.mesh.tri_to_tet[0,itri]
             ertri[:,:,itri] = er[:,:,itet]
             urtri[:,:,itri] = ur[:,:,itet]
+            condtri[itri] = cond[itet]
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
@@ -569,7 +585,7 @@ class Electrodynamics3D:
                     logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
                     
                     # Assembling matrix problem
-                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=True)
                     job.store_limit = harddisc_threshold
                     job.relative_path = harddisc_path
                     jobs.append(job)
@@ -646,7 +662,6 @@ class Electrodynamics3D:
 
         return self.freq_data
     
-    
     def frequency_domain_single(self) -> EMSimData:
         ''' Executes the frequency domain study.'''
         T0 = time.time()
@@ -659,14 +674,17 @@ class Electrodynamics3D:
         
         er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        
+        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+
         ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
         urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
 
         for itri in range(self.mesh.n_tris):
             itet = self.mesh.tri_to_tet[0,itri]
             ertri[:,:,itri] = er[:,:,itet]
             urtri[:,:,itri] = ur[:,:,itet]
+            condtri[itri] = cond[itet]
 
         ### Does this move
         self.freq_data = EMSimData(self.basis)
@@ -701,7 +719,7 @@ class Electrodynamics3D:
         for freq in self.frequencies:
             logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
             # Assembling matrix problem
-            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=True)
             
             logger.debug(f'Routine: {self.solveroutine}')
 
@@ -774,7 +792,7 @@ class Electrodynamics3D:
                              harddisc_path: str = 'EMergeSparse',
                              frequency_groups: int = -1,
                              frequency_model: tuple[float, float, int] = None,
-                             ) -> EMDataSet:
+                             ) -> EMSimData:
         """Perform a frequency sweep study
         The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
         The njobs-parameter defines the number of parallel threads.
@@ -811,7 +829,6 @@ class Electrodynamics3D:
             return self.frequency_domain_par(njobs, harddisc_threshold, harddisc_path, frequency_groups)
         else:
             return self.frequency_domain_single()
-
 
     def _compute_s_data(self, bc: PortBC, 
                        fieldfunction: Callable, 
@@ -859,8 +876,7 @@ class Electrodynamics3D:
             field_p = sparam_field_power(self.mesh.nodes, tri_vertices, bc, k0, fieldfunction, const)
             mode_p = sparam_mode_power(self.mesh.nodes, tri_vertices, bc, k0, const)
             return field_p, mode_p
-        
-    
+          
     def assign(self, 
                *bcs: BoundaryCondition) -> None:
         """Assign a boundary-condition object to a domain or list of domains.

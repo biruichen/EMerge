@@ -157,7 +157,7 @@ class Mesher:
                        0,0,0,1]
         gmsh.model.mesh.set_periodic(2, face2.tags, face1.tags, translation)
         
-    def set_size_in_domain(self, tags: list[int], max_size: float) -> None:
+    def _set_size_in_domain(self, tags: list[int], max_size: float) -> None:
         """Define the size of the mesh inside a domain
 
         Args:
@@ -172,19 +172,25 @@ class Mesher:
     def set_mesh_size(self, discretizer: Callable, resolution: float):
         
         dimtags = gmsh.model.occ.get_entities(2)
+
         for dim, tag in dimtags:
             gmsh.model.mesh.setSizeFromBoundary(2, tag, 0)
 
         mintag = gmsh.model.mesh.field.add("Min")
+        size_mapping = dict()
 
-        for obj in self.objects:
+        for obj in sorted(self.objects, key=lambda x: x._priority):
             if obj._unset_constraints:
                 self.unset_constraints(obj.dimtags)
 
             size = discretizer(obj.material)*resolution*obj.mesh_multiplier
             size = min(size, obj.max_meshsize)
             logger.info(f'Setting mesh size for domain {obj.dim} {obj.tags} to {size}')
-            self.set_size_in_domain(obj.tags, size)
+            for tag in obj.tags:
+                size_mapping[tag] = size
+        
+        for tag, size in size_mapping.items():
+            self._set_size_in_domain([tag,], size)
 
         gmsh.model.mesh.field.setNumbers(mintag, "FieldsList", self.mesh_fields)
         gmsh.model.mesh.field.setAsBackgroundMesh(mintag)
@@ -234,6 +240,9 @@ class Mesher:
     
         self.mesh_fields.append(thtag)
 
+    def set_domain_size(self, obj: GeoVolume | Selection, size: float):
+        self._set_size_in_domain(obj.tags, size)
+        
     def refine_conductor_edge(self, dimtags: list[tuple[int,int]], size):
         nodes = gmsh.model.getBoundary(dimtags, combined=False, recursive=False)
 
