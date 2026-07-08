@@ -33,3 +33,5 @@ version_update.txt
 *.fig
 
 manual_scripts/
+
+*.EMResults

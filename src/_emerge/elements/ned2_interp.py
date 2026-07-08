@@ -558,7 +558,7 @@ def ned2_tri_interp_full(coords: np.ndarray,
         Ez[inside] = ez
     return Ex, Ey, Ez
 
-@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], f8[:,:], i8[:,:], c16[:,:,:], f8), cache=True, nogil=True)
+@njit(types.Tuple((c16[:], c16[:], c16[:]))(f8[:,:], c16[:], i8[:,:], f8[:,:], i8[:,:], c16[:,:,:], c16), cache=True, nogil=True)
 def ned2_tri_interp_curl(coords: np.ndarray,
                     solutions: np.ndarray, 
                     tris: np.ndarray,
