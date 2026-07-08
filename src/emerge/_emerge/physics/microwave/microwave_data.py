@@ -745,6 +745,55 @@ class MWField:
             X,Y = np.meshgrid(xs, ys)
             Z = z*np.ones_like(Y)
         return self.interpolate(X,Y,Z)
+    def cutplane_normal(self,
+             point=(0,0,0),
+             normal=(0,0,1),
+             npoints: int = 300) -> EHField:
+        """
+        Take a 2D slice of the field along an arbitrary plane.
+        Args:
+            point: (x0,y0,z0), a point on the plane
+            normal: (nx,ny,nz), plane normal vector
+            npoints: number of grid points per axis
+        """
+
+        n = np.array(normal, dtype=float)
+        n /= np.linalg.norm(n)
+        point = np.array(point) 
+
+        tmp = np.array([1,0,0]) if abs(n[0]) < 0.9 else np.array([0,1,0])
+        u = np.cross(n, tmp)
+        u /= np.linalg.norm(u)
+        v = np.cross(n, u)
+        
+        xb, yb, zb = self.basis.bounds
+        nx, ny, nz = 5, 5, 5
+        Xg = np.linspace(xb[0], xb[1], nx)
+        Yg = np.linspace(yb[0], yb[1], ny)
+        Zg = np.linspace(zb[0], zb[1], nz)
+        Xg, Yg, Zg = np.meshgrid(Xg, Yg, Zg, indexing='ij')
+        geometry = np.vstack([Xg.ravel(), Yg.ravel(), Zg.ravel()]).T  # Nx3
+        
+        rel_pts = geometry - point
+        S = rel_pts @ u
+        T = rel_pts @ v 
+        
+        margin = 0.01
+        s_min, s_max = S.min(), S.max()
+        t_min, t_max = T.min(), T.max()
+        s_bounds = (s_min - margin*(s_max-s_min), s_max + margin*(s_max-s_min))
+        t_bounds = (t_min - margin*(t_max-t_min), t_max + margin*(t_max-t_min))
+
+        S_grid = np.linspace(s_bounds[0], s_bounds[1], npoints)
+        T_grid = np.linspace(t_bounds[0], t_bounds[1], npoints)
+        S_mesh, T_mesh = np.meshgrid(S_grid, T_grid)
+
+        X = point[0] + S_mesh*u[0] + T_mesh*v[0]
+        Y = point[1] + S_mesh*u[1] + T_mesh*v[1]
+        Z = point[2] + S_mesh*u[2] + T_mesh*v[2]
+
+        return self.interpolate(X, Y, Z)
+    
     
     def grid(self, ds: float) -> EHField:
         """Interpolate a uniform grid sampled at ds
