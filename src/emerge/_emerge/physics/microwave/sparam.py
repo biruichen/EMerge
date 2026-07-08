@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from .microwave_bc import PortBC
 from ...mth.integrals import surface_integral
 import numpy as np
@@ -87,18 +88,14 @@ def sparam_mode_power(nodes: np.ndarray,
     gq_order: int = 4 the Gauss-Quadrature order (default = 4)
     '''
 
-    def modef(x, y, z):
-        return bc.port_mode_3d_global(x, y, z, k0, mode_nr=mode_nr)
-    
     def inproduct2(x, y, z):
-        Ex1, Ey1, Ez1 = modef(x,y,z)
+        Ex1, Ey1, Ez1 = bc.port_mode_3d_global(x, y, z, k0, mode_nr=mode_nr)
         Ex2 = np.conj(Ex1)
         Ey2 = np.conj(Ey1)
         Ez2 = np.conj(Ez1)
         return (Ex1*Ex2 + Ey1*Ey2 + Ez1*Ez2)/(2*bc.Zmode(k0))
-    
+
     norm = surface_integral(nodes, tri_vertices, inproduct2, const, gq_order=gq_order)
-    
     return norm
 
 def sparam_field_power(nodes: np.ndarray,
@@ -122,22 +119,17 @@ def sparam_field_power(nodes: np.ndarray,
     gq_order: int = 4 the Gauss-Quadrature order (default = 4)
     '''
     
-    def modef(x, y, z):
-        return bc.port_mode_3d_global(x, y, z, k0, mode_nr=mode_nr)
-    
+
     Q = 0
     if active:
         Q = 1
-
-    def fieldf_p(x, y, z):
-        return fieldf(x,y,z) - Q * modef(x,y,z)
     
     def inproduct1(x, y, z):
-        Ex1, Ey1, Ez1 = fieldf_p(x,y,z)
-        Ex2, Ey2, Ez2 = np.conj(modef(x,y,z))
+        mode_field = bc.port_mode_3d_global(x, y, z, k0, mode_nr=mode_nr)
+        Ex1, Ey1, Ez1 = fieldf(x,y,z) - Q * mode_field
+        Ex2, Ey2, Ez2 = np.conj(mode_field)
         return (Ex1*Ex2 + Ey1*Ey2 + Ez1*Ez2) / (2*bc.Zmode(k0))
     
     mode_dot_field = surface_integral(nodes, tri_vertices, inproduct1, const, gq_order=gq_order)
-    
     svec = mode_dot_field
     return svec

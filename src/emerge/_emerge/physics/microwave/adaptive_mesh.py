@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from .microwave_data import MWField
 import numpy as np
 from ...mth.optimized import matmul, outward_normal

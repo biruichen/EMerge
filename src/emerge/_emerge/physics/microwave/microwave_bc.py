@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from __future__ import annotations
 import numpy as np
 from loguru import logger
@@ -607,7 +608,7 @@ class ModalPort(PortBC, Saveable):
         self.N_mesh_tris: int = 50
         
         if cs is None:
-            logger.info('Constructing coordinate system from normal port')
+            logger.info('Constructing coordinate system from port normal')
             self.cs = Axis(self.selection.normal).construct_cs() # type: ignore
         else:
             raise ValueError('No Coordinate System could be derived.')
@@ -928,7 +929,7 @@ class RectangularWaveguide(PortBC, Saveable):
             self.cs = cs
             
         if self.cs is None:
-            logger.info(' - Constructing coordinate system from normal port')
+            logger.info(' - Constructing coordinate system from port normal')
             self.cs = Axis(self.selection.normal).construct_cs()
             logger.debug(f' - Port CS: {self.cs}')
         
@@ -1334,7 +1335,6 @@ class LumpedPort(PortBC, Saveable):
         self.Vdirection: Axis = _parse_axis(direction) # type: ignore
         self.type = 'TEM'
         
-        # logger.info('Constructing coordinate system from normal port')
         # self.cs = Axis(self.selection.normal).construct_cs()  # type: ignore
         self.cs = GCS
         self.vintline: list[Line] = []

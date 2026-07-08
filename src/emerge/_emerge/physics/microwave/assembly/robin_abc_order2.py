@@ -16,6 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 
+# Last Cleanup: 2026-03-04
 import numpy as np
 from ....elements import Nedelec2
 from ....mth.optimized import local_mapping, compute_distances

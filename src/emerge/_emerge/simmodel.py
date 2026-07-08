@@ -15,6 +15,7 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
+# Last Cleanup: 2026-03-04
 from __future__ import annotations
 
 
@@ -809,7 +810,7 @@ class Simulation:
                                        'To disable this message. Set the .size_check parameter in model.settings to False.')
             
             raise SimulationError('Simulation requires too many elements.')
-        logger.trace(' (2) Calling GMSH mesher')
+        logger.info('Calling GMSH mesher')
         try:
             gmsh.logger.start()
             gmsh.model.mesh.generate(3)
@@ -825,6 +826,7 @@ class Simulation:
         
         logger.info('GMSH Meshing complete!')
         self.mesh._pre_update(self.mesher._get_periodic_bcs())
+
         self.mesh.exterior_face_tags = self.mesher.domain_boundary_face_tags
         gmsh.model.occ.synchronize()
         self.state.store_geometry_data()

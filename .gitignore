@@ -52,3 +52,4 @@ benchmarks/
 pytest.ini
 search_globals.py
 search_prints.py
+check_directory_cleanup.py
