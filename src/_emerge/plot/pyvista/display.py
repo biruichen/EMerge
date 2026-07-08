@@ -723,7 +723,7 @@ class ScreenRuler:
     def toggle_ruler(self):
         if not self.state:
             self.state = True
-            self.disp._plot.enable_point_picking(self._add_point, left_clicking=True)
+            self.disp._plot.enable_point_picking(self._add_point, left_clicking=True, tolerance=0.001)
         else:
             self.state = False
             self.disp._plot.disable_picking()
