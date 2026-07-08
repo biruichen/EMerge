@@ -35,6 +35,7 @@ class SimulationError(Exception):
     pass
 
 from .simjob import SimJob
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
 
@@ -458,8 +459,31 @@ class Electrodynamics3D:
     def frequency_domain_par(self, 
                              njobs: int = 2, 
                              harddisc_threshold: int = None,
-                             harddisc_path: str = 'EMergeSparse') -> EMSimData:
-        ''' Executes the frequency domain study.'''
+                             harddisc_path: str = 'EMergeSparse',
+                             frequency_groups: int = -1) -> EMSimData:
+        """Executes a parallel frequency domain study
+
+        The study is distributed over "njobs" workers.
+        As optional parameter you may set a harddisc_threshold as integer. This determines the maximum
+        number of degrees of freedom before which the jobs will be cahced to the harddisk. The
+        path that will be used to cache the sparse matrices can be specified.
+        Additionally the term frequency_groups may be specified. This number will define in how
+        many groups the matrices will be pre-computed before they are send to workers. This can minimize
+        the total amound of RAM memory used. For example with 11 frequencies in gruops of 4, the following
+        frequency indices will be precomputed and then solved: [[1,2,3,4],[5,6,7,8],[9,10,11]]
+
+        Args:
+            njobs (int, optional): The number of jobs. Defaults to 2.
+            harddisc_threshold (int, optional): The number of DOF limit. Defaults to None.
+            harddisc_path (str, optional): The cached matrix path name. Defaults to 'EMergeSparse'.
+            frequency_groups (int, optional): The number of frequency points in a solve group. Defaults to -1.
+
+        Raises:
+            SimulationError: An error associated witha a problem during the simulation.
+
+        Returns:
+            EMSimData: The dataset.
+        """
         T0 = time.time()
         mesh = self.mesh
         if self._bc_initialized is False:
@@ -509,30 +533,46 @@ class Electrodynamics3D:
 
         logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
 
-        jobs = []
+        # Thread-local storage for per-thread resources
+        thread_local = threading.local()
 
-        # ITERATE OVER FREQUENCIES
-        for freq in self.frequencies:
-            logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
-            
-            # Assembling matrix problem
-            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
-            job.store_limit = harddisc_threshold
-            job.relative_path = harddisc_path
-            jobs.append(job)
-        
-        
-        logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
-        
+        def get_routine():
+            if not hasattr(thread_local, "routine"):
+                thread_local.routine = ParallelRoutine()
+            return thread_local.routine
+
         def run_job(job: SimJob):
-            routine = ParallelRoutine()
+            routine = get_routine()
             for A, b, ids, reuse in job.iter_Ab():
                 solution = routine.solve(A, b, ids, reuse)
                 job.submit_solution(solution)
-            return job  
+            return job
+        
+        freq_groups = []
+        if frequency_groups == -1:
+            freq_groups=[self.frequencies,]
+        else:
+            n = frequency_groups
+            freq_groups = [self.frequencies[i:i+n] for i in range(0, len(self.frequencies), n)]
 
+        results: list[SimJob] = []
         with ThreadPoolExecutor(max_workers=njobs) as executor:
-           results: list[SimJob] = list(executor.map(run_job, jobs))
+            # ITERATE OVER FREQUENCIES
+            for i_group, fgroup in enumerate(freq_groups):
+                logger.debug(f'Precomputing group {i_group}.')
+                jobs = []
+                for freq in fgroup:
+                    logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
+                    
+                    # Assembling matrix problem
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+                    job.store_limit = harddisc_threshold
+                    job.relative_path = harddisc_path
+                    jobs.append(job)
+                
+                logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
+                group_results = list(executor.map(run_job, jobs))
+                results.extend(group_results)
         #results = Parallel(n_jobs=njobs, backend='loky')(delayed(run_job)(job) for job in jobs)
         logger.info('Solving complete')
 
