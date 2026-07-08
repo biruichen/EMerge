@@ -88,7 +88,7 @@ model.commit_geometry()
 
 # --- Mesh refinement settings --------------------------------------------
 # Finer boundary mesh on patch edges for accuracy
-model.mesher.set_boundary_size(rpatch, 1 * mm, 1.2)
+model.mesher.set_boundary_size(rpatch, 4 * mm, 1.2)
 # Refined mesh on port face for excitation accuracy
 model.mesher.set_face_size(port, 0.5 * mm)
 
@@ -112,9 +112,8 @@ pec_selection = em.select(rpatch,ground)
 
 # Assigning the boundary conditions
 abc = model.mw.bc.AbsorbingBoundary(boundary_selection)
-
-model._beta_adaptive_mesh_refinement()
 # --- Run frequency-domain solver ----------------------------------------
+
 data = model.mw.run_sweep()
 
 # --- Post-process S-parameters ------------------------------------------

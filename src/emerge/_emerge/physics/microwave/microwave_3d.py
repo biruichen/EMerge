@@ -1075,7 +1075,8 @@ class Microwave3D:
         logger.info('Computing S-parameters')
         
 
-        for freq, job, mats in zip(self.frequencies, results, materials):
+        for job, mats in zip(results, materials):
+            freq = job.freq
             er, ur, cond = mats
             ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
             urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)

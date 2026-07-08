@@ -27,7 +27,7 @@ pcbmat = em.Material(er=er, color="#217627", opacity=0.2)
 
 # We start by creating our simulation object.
 
-m = em.Simulation('SteppedImpedanceFilter')
+m = em.SimulationBeta('SteppedImpedanceFilter')
 m.check_version("1.0.7") # Checks version compatibility.
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -78,7 +78,7 @@ m.mw.set_frequency_range(0.2e9, 8e9, 41)
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
 # This is adviced for small stripline structures.
 # The growth_rate setting allows us to change how fast the mesh size will recover to the original size.
-m.mesher.set_boundary_size(polies, 1*mm, growth_rate=1.2)
+m.mesher.set_boundary_size(polies, 5*mm, growth_rate=1.2)
 m.mesher.set_face_size(p1, 2*mm)
 m.mesher.set_face_size(p2, 2*mm)
 
@@ -107,7 +107,7 @@ if False:
     m.display.add_portmode(port2, 21)
     m.display.show()
 
-
+m.adaptive_mesh_refinement(show_mesh=True, frequency=1e9)
 # Finally we execute the frequency domain sweep and compute the Scattering Parameters.
 sol = m.mw.run_sweep(parallel=True, n_workers=4, frequency_groups=8)
 

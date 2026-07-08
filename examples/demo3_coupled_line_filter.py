@@ -37,7 +37,7 @@ Dtot = 750              # total clearance (mil)
 extra = 100             # extra margin (mil)
 
 # --- Simulation setup ----------------------------------------------------
-model = em.Simulation('CoupledLineFilter')
+model = em.SimulationBeta('CoupledLineFilter')
 model.check_version("1.0.7") # Checks version compatibility.
 # --- Material and layouter -----------------------------------------------
 mat = em.Material(er=3.55, color="#488343", opacity=0.4)
@@ -101,6 +101,7 @@ model.commit_geometry()
 model.mesher.set_boundary_size(stripline, 0.5 * mm, 1.2)
 model.mesher.set_face_size(p1, 0.5*mm)
 model.mesher.set_face_size(p2, 0.5*mm)
+
 # --- Mesh generation and view --------------------------------------------
 model.generate_mesh()                    # build mesh
 model.view()                             # visualize with Gmsh viewer
