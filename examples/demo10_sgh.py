@@ -32,8 +32,8 @@ th = 1 * mm              # PML thickness
 dx = 2 * mm              # distance from horn exit to PML start
 
 # Create simulation object
-m = em.Simulation('HornAntenna')
-m.check_version("1.0.3") # Checks version compatibility.
+m = em.Simulation('StandardGainHornAntenna')
+m.check_version("1.0.4") # Checks version compatibility.
 # --- Coordinate system for horn geometry -------------------------------
 hornCS = em.CS(em.YAX, em.ZAX, em.XAX)
 
