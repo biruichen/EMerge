@@ -21,6 +21,7 @@ from ...mesh3d import Mesh3D
 from ...coord import Line
 from ...elements.femdata import FEMBasis
 from ...solver import DEFAULT_ROUTINE, SolveRoutine, ParallelRoutine
+from ...system import called_from_main_function
 from ...selection import FaceSelection
 from .microwave_bc import MWBoundaryConditionSet, PEC, ModalPort, LumpedPort, PortBC
 from .microwave_data import MWData
@@ -34,20 +35,12 @@ from typing import Callable
 import time
 import threading
 import multiprocessing as mp
-import inspect, os
 from cmath import sqrt as csqrt
-def _running_as_main():
-    for frame_info in inspect.stack():
-        # look for the very first frame in '<module>' context
-        if frame_info.function == "<module>" and \
-           os.path.abspath(frame_info.filename) == os.path.abspath(__file__):
-            return True
-    return False
 
 def run_job_multi(job: SimJob):
     routine = ParallelRoutine()
     for A, b, ids, reuse in job.iter_Ab():
-        solution, report = routine.solve(A, b, ids, reuse)
+        solution, report = routine.solve(A, b, ids, reuse, id=job.id)
         job.submit_solution(solution, report)
     return job
 
@@ -115,6 +108,8 @@ class Microwave3D:
 
         ## Data
         self._params: dict[str, float] = dict()
+        self._simstart: int = 0
+        self._simend: int = 0
 
     def reset_data(self):
         self.data = MWData()
@@ -538,13 +533,14 @@ class Microwave3D:
         logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
         return None
     
-    def frequency_domain_par(self, 
-                             njobs: int = 2, 
-                             harddisc_threshold: int = None,
-                             harddisc_path: str = 'EMergeSparse',
-                             frequency_groups: int = -1,
-                             multi_processing: bool = False,
-                             automatic_modal_analysis: bool = False) -> MWData:
+    def frequency_domain(self, 
+                         parallel: bool = False,
+                         njobs: int = 2, 
+                         harddisc_threshold: int = None,
+                         harddisc_path: str = 'EMergeSparse',
+                         frequency_groups: int = -1,
+                         multi_processing: bool = False,
+                         automatic_modal_analysis: bool = True) -> MWData:
         """Executes a parallel frequency domain study
 
         The study is distributed over "njobs" workers.
@@ -562,6 +558,7 @@ class Microwave3D:
             harddisc_path (str, optional): The cached matrix path name. Defaults to 'EMergeSparse'.
             frequency_groups (int, optional): The number of frequency points in a solve group. Defaults to -1.
             automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to False.
+            multi_processing (bool, optional): Whether to use multiprocessing instead of multi-threaded (slower on most machines).
 
         Raises:
             SimulationError: An error associated witha a problem during the simulation.
@@ -569,8 +566,8 @@ class Microwave3D:
         Returns:
             MWSimData: The dataset.
         """
-        T0 = time.time()
-        mesh = self.mesh
+        
+        self._simstart = time.time()
         if self.bc._initialized is False:
             raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
         self._initialize_field()
@@ -579,47 +576,26 @@ class Microwave3D:
         er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
         ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
         cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
-        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
-
-        for itri in range(self.mesh.n_tris):
-            itet = self.mesh.tri_to_tet[0,itri]
-            ertri[:,:,itri] = er[:,:,itet]
-            urtri[:,:,itri] = ur[:,:,itet]
-            condtri[itri] = cond[itet]
 
         ### Does this move
         logger.debug('Initializing frequency domain sweep.')
         
         #### Port settings
         all_ports = self.bc.oftype(PortBC)
-        port_numbers = [port.port_number for port in all_ports]
 
         ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
         ### COMPUTE WHICH TETS ARE CONNECTED TO PORT INDICES
 
-        all_port_vertices = set()
         for port in all_ports:
             port.active=False
-            tris = mesh.get_triangles(port.tags)
-            tri_vertices = mesh.tris[:,tris]
-            port._tri_ids = tris
-            port._tri_vertices = tri_vertices
-            all_port_vertices.update(set(list(tri_vertices.flatten())))
-        
-        all_port_tets = []
-        for itet in range(self.mesh.n_tets):
-            if not set(self.mesh.tets[:,itet]).isdisjoint(all_port_vertices):
-                all_port_tets.append(itet)
-        
-        all_port_tets = np.array(all_port_tets)
+            
 
         logger.info(f'Pre-assembling matrices of {len(self.frequencies)} frequency points.')
 
         # Thread-local storage for per-thread resources
         thread_local = threading.local()
 
+        ## DEFINE SOLVE FUNCTIONS
         def get_routine():
             if not hasattr(thread_local, "routine"):
                 thread_local.routine = ParallelRoutine()
@@ -628,10 +604,18 @@ class Microwave3D:
         def run_job(job: SimJob):
             routine = get_routine()
             for A, b, ids, reuse in job.iter_Ab():
-                solution, report = routine.solve(A, b, ids, reuse)
+                solution, report = routine.solve(A, b, ids, reuse, id=job.id)
                 job.submit_solution(solution, report)
             return job
         
+        def run_job_single(job: SimJob):
+            for A, b, ids, reuse in job.iter_Ab():
+                solution, report = self.solveroutine.solve(A, b, ids, reuse, id=job.id)
+                job.submit_solution(solution, report)
+            return job
+        
+        ## GROUP FREQUENCIES
+        # Each frequency group will be pre-assembled before submitting them to the parallel pool
         freq_groups = []
         if frequency_groups == -1:
             freq_groups=[self.frequencies,]
@@ -641,68 +625,128 @@ class Microwave3D:
 
         results: list[SimJob] = []
 
-
-        if not multi_processing:
+        ## Single threaded
+        job_id = 1
+        if not parallel:
+            # ITERATE OVER FREQUENCIES
+            freq_groups
+            for i_group, fgroup in enumerate(freq_groups):
+                logger.debug(f'Precomputing group {i_group}.')
+                jobs = []
+                ## Assemble jobs
+                for ifreq, freq in enumerate(fgroup):
+                    logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+                    if automatic_modal_analysis:
+                        self._compute_modes(freq)
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
+                                                            self.bc.boundary_conditions, 
+                                                            freq, 
+                                                            cache_matrices=self.cache_matrices)
+                    job.store_limit = harddisc_threshold
+                    job.relative_path = harddisc_path
+                    job.id = job_id
+                    job_id += 1
+                    jobs.append(job)
+                
+                logger.info(f'Starting single threaded solve of {len(jobs)} jobs.')
+                group_results = [run_job_single(job) for job in jobs]
+                results.extend(group_results)
+        elif not multi_processing:
+             # MULTI THREADED
             with ThreadPoolExecutor(max_workers=njobs) as executor:
                 # ITERATE OVER FREQUENCIES
                 for i_group, fgroup in enumerate(freq_groups):
                     logger.debug(f'Precomputing group {i_group}.')
                     jobs = []
-                    
+                    ## Assemble jobs
                     for freq in fgroup:
                         logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                         if automatic_modal_analysis:
                             self._compute_modes(freq)
-                        # Assembling matrix problem
                         job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, 
                                                                 self.bc.boundary_conditions, 
                                                                 freq, 
                                                                 cache_matrices=self.cache_matrices)
                         job.store_limit = harddisc_threshold
                         job.relative_path = harddisc_path
+                        job.id = job_id
+                        job_id += 1
                         jobs.append(job)
                     
-                    logger.info(f'Starting parallel solve of {len(jobs)} jobs with {njobs} processes in parallel')
+                    logger.info(f'Starting distributed solve of {len(jobs)} jobs with {njobs} threads.')
                     group_results = list(executor.map(run_job, jobs))
                     results.extend(group_results)
         else:
-            # MULTI-PROCESSING VERSION
-            # Make sure run_job and any methods it needs are top-level (pickleable).
-            # You can also use initializer/initargs to set up per-process state if needed.
-            #if not _running_as_main():
-            #    logger.error('Parallel processing must be run from an if __name__ == "__main__": context.')
-            #    raise SimulationError('Parallel processing must be run from an if __name__ == "__main__": context.')
+            ### MULTI PROCESSING
+            # Check for if __name__=="__main__" Guard
+            if not called_from_main_function():
+                raise SimulationError(
+                    "Multiprocess support must be launched from your "
+                    "if __name__ == '__main__' guard in the top-level script."
+                )
+            # Start parallel pool
             with mp.Pool(processes=njobs) as pool:
                 for i_group, fgroup in enumerate(freq_groups):
                     logger.debug(f'Precomputing group {i_group}.')
                     jobs = []
+                    # Assemble jobs
                     for freq in fgroup:
                         logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz')
                         if automatic_modal_analysis:
-                            # This runs in the main process before distribution;
-                            # if you need it per-worker, move it into run_job.
                             self._compute_modes(freq)
+                        
                         job = self.assembler.assemble_freq_matrix(
                             self.basis, er, ur, cond,
                             self.bc.boundary_conditions,
                             freq,
                             cache_matrices=self.cache_matrices
                         )
-                        job.store_limit    = harddisc_threshold
+
+                        job.store_limit = harddisc_threshold
                         job.relative_path = harddisc_path
+                        job.id = job_id
+                        job_id += 1
                         jobs.append(job)
 
                     logger.info(
-                        f'Starting parallel solve of {len(jobs)} jobs '
+                        f'Starting distributed solve of {len(jobs)} jobs '
                         f'with {njobs} processes in parallel'
                     )
-                    # pool.map returns a list of results in the same order
+                    # Distribute taks
                     group_results = pool.map(run_job_multi, jobs)
                     results.extend(group_results)
 
         logger.info('Solving complete')
 
-        logger.debug('Computing S-parameters')
+        ### Compute S-parameters and return
+        self._post_process(results, er, ur, cond)
+        return self.data
+
+    def _post_process(self, results: list[SimJob], er: np.ndarray, ur: np.ndarray, cond: np.ndarray):
+        """Compute the S-parameters after Frequency sweep
+
+        Args:
+            results (list[SimJob]): The set of simulation results
+            er (np.ndarray): The domain εᵣ
+            ur (np.ndarray): The domain μᵣ
+            cond (np.ndarray): The domain conductivity
+        """
+        mesh = self.mesh
+        all_ports = self.bc.oftype(PortBC)
+        port_numbers = [port.port_number for port in all_ports]
+        all_port_tets = self.mesh.get_face_tets(*[port.tags for port in all_ports])
+
+        logger.info('Computing S-parameters')
+        
+        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
+
+        for itri in range(self.mesh.n_tris):
+            itet = self.mesh.tri_to_tet[0,itri]
+            ertri[:,:,itri] = er[:,:,itet]
+            urtri[:,:,itri] = ur[:,:,itet]
+            condtri[itri] = cond[itet]
 
         for freq, job in zip(self.frequencies, results):
 
@@ -720,7 +764,7 @@ class Microwave3D:
 
             self.data.setreport(job.reports, freq=freq, **self._params)
 
-            logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+            logger.info(f'Post Processing simulation frequency = {freq/1e9:.3f} GHz') 
 
             # Recording port information
             for active_port in all_ports:
@@ -745,22 +789,18 @@ class Microwave3D:
 
                 # Active port power
                 logger.debug('Active ports:')
-                tris = active_port._tri_ids
-                tri_vertices = active_port._tri_vertices
-                erp = ertri[:,:,tris]
-                urp = urtri[:,:,tris]
-                pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, erp, urp)
+                tris = mesh.get_triangles(active_port.tags)
+                tri_vertices = mesh.tris[:,tris]
+                pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
                 logger.debug(f'    Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
                 Pout = pmode
                 
                 #Passive ports
                 logger.debug('Passive ports:')
                 for bc in all_ports:
-                    tris = bc._tri_ids
-                    tri_vertices = bc._tri_vertices
-                    erp = ertri[:,:,tris]
-                    urp = urtri[:,:,tris]
-                    pfield, pmode = self._compute_s_data(bc, fieldf,tri_vertices, k0, erp, urp)
+                    tris = mesh.get_triangles(bc.tags)
+                    tri_vertices = mesh.tris[:,tris]
+                    pfield, pmode = self._compute_s_data(bc, fieldf,tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
                     logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
                     scalardata.write_S(bc.port_number, active_port.port_number, pfield/Pout)
                 active_port.active=False
@@ -768,201 +808,10 @@ class Microwave3D:
             fielddata.set_field_vector()
 
         logger.info('Simulation Complete!')
-        T2 = time.time()    
-        logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
+        self._simend = time.time()    
+        logger.info(f'Elapsed time = {(self._simend-self._simstart):.2f} seconds.')
 
-        return self.data
     
-    def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> MWData:
-        """Execute a frequency domain study without distributed frequency sweep.
-
-        Args:
-            automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to False.
-
-        Raises:
-            SimulationError: _description_
-
-        Returns:
-            MWSimData: The Simulation data.
-        """
-        T0 = time.time()
-        mesh = self.mesh
-        if self.bc._initialized is False:
-            raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
-        
-        self._initialize_field()
-        self._initialize_bc_data()
-        
-        er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
-        ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
-        cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
-
-        ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
-        condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
-
-        for itri in range(self.mesh.n_tris):
-            itet = self.mesh.tri_to_tet[0,itri]
-            ertri[:,:,itri] = er[:,:,itet]
-            urtri[:,:,itri] = ur[:,:,itet]
-            condtri[itri] = cond[itet]
-        
-        #### Port settings
-
-        all_ports = self.bc.oftype(PortBC)
-        port_numbers = [port.port_number for port in all_ports]
-
-        ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
-        ### COMPUTE WHICH TETS ARE CONNECTED TO PORT INDICES
-
-        all_port_vertices = set()
-        for port in all_ports:
-            port.active=False
-            tris = mesh.get_triangles(port.tags)
-            tri_vertices = mesh.tris[:,tris]
-            port._tri_ids = tris
-            port._tri_vertices = tri_vertices
-            all_port_vertices.update(set(list(tri_vertices.flatten())))
-        
-        all_port_tets = []
-        for itet in range(self.mesh.n_tets):
-            if not set(self.mesh.tets[:,itet]).isdisjoint(all_port_vertices):
-                all_port_tets.append(itet)
-        
-        all_port_tets = np.array(all_port_tets)
-
-        logger.debug(f'Starting the simulation of {len(self.frequencies)} frequency points.')
-
-        # ITERATE OVER FREQUENCIES
-        for freq in self.frequencies:
-            logger.info(f'Simulation frequency = {freq/1e9:.3f} GHz') 
-            
-            # Assembling matrix problem
-            if automatic_modal_analysis:
-                self._compute_modes(freq)
-            
-            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.bc.boundary_conditions, freq, cache_matrices=self.cache_matrices)
-            
-
-            logger.debug(f'Routine: {self.solveroutine}')
-
-            for A, b, ids, reuse in job.iter_Ab():
-                solution, report = self.solveroutine.solve(A, b, ids, reuse)
-                job.submit_solution(solution, report)
-
-            self.data.setreport(job.reports, freq=freq, **self._params)
-
-            k0 = 2*np.pi*freq/299792458
-
-            scalardata = self.data.scalar.new(freq=freq, **self._params)
-            scalardata.init_sp(port_numbers)
-            scalardata.freq = freq
-            scalardata.k0 = k0
-
-            fielddata = self.data.field.new(freq=freq, **self._params)
-            fielddata.freq = freq
-            fielddata.er = np.squeeze(er[0,0,:])
-            fielddata.ur = np.squeeze(ur[0,0,:])
-
-            # Recording port information
-            for i, port in enumerate(all_ports):
-                fielddata.add_port_properties(port.port_number,
-                                         mode_number=port.mode_number,
-                                         k0 = k0,
-                                         beta = port.get_beta(k0),
-                                         Z0 = port.portZ0(k0),
-                                         Pout= port.power)
-            
-            for active_port in all_ports:
-                
-                active_port.active = True
-                solution = job._fields[active_port.port_number]
-
-                fielddata._fields[active_port.port_number] = solution # TODO: THIS IS VERY FRAIL
-                fielddata.basis = self.basis
-
-                # Compute the S-parameters
-                # Define the field interpolation function
-                fieldf = self.basis.interpolate_Ef(solution, tetids=all_port_tets)
-                Pout = 0
-
-                # Active port power
-                logger.debug('Active ports:')
-                tris = active_port._tri_ids
-                tri_vertices = active_port._tri_vertices
-                erp = ertri[:,:,tris]
-                urp = urtri[:,:,tris]
-                pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, erp, urp)
-                logger.debug(f'    Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
-                Pout = pmode
-                
-                #Passive ports
-                logger.debug('Passive ports:')
-                for bc in all_ports:
-                    tris = bc._tri_ids
-                    tri_vertices = bc._tri_vertices
-                    erp = ertri[:,:,tris]
-                    urp = urtri[:,:,tris]
-                    pfield, pmode = self._compute_s_data(bc, fieldf, tri_vertices, k0, erp, urp)
-                    logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
-                    scalardata.write_S(bc.port_number, active_port.port_number, pfield/Pout)
-
-                active_port.active=False
-            
-            fielddata.set_field_vector()
-
-        logger.info('Simulation Complete!')
-        T2 = time.time()    
-        logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
-        return self.data
-
-    def frequency_domain(self, 
-                             parallel: bool = False,
-                             njobs: int = 2, 
-                             harddisc_threshold: int = None,
-                             harddisc_path: str = 'EMergeSparse',
-                             frequency_groups: int = -1,
-                             automatic_modal_analysis: bool = True,
-                             multi_processing: bool = False
-                             ) -> MWData:
-        """Perform a frequency sweep study
-        The frequency domain sweep can be set as a parallel sweep by setting parallel=True.
-        The njobs-parameter defines the number of parallel threads.
-        The harddisc_threshold determines the number of Degrees of Freedom beyond which each CSC
-        sparse matrix is stored to the harddisc to save RAM (not adviced). The harddisc_path will be
-        used as a name for the relative path.
-
-        Alternatively, one can choose the number of frequency groups to pre-compute before a sub
-        parallel sweep. A multiple of the number of workers is most optimal. Each group iteration will 
-        pre-assemble that many frequency points.
-
-        The automatic modal analysis argument (default True) tells the frequency domain solver to automatically
-        compute ModalPort modes. The port mode will be recomputed if and only if the mixed_matrial property is True.
-        Otherwise only a single port mode is computed and reused.
-        
-        Args:
-            parallel (bool, optional): Wether to use parallel processing. Defaults to False.
-            njobs (int, optional): The number of parallel jobs. Defaults to 2.
-            harddisc_threshold (int, optional): The NDOF threshold. Defaults to None.
-            harddisc_path (str, optional): The subdirectory for sparse matrix caching. Defaults to 'EMergeSparse'.
-            frequency_groups (int, optional): The number of frequencies to pre-assemble. Defaults to -1.
-            automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to True
-
-        Returns:
-            MWDataSet: The Resultant dataset.
-        """
-        if parallel:
-            if njobs == 1:
-                logger.warning('Only one parallel thread indicated, defaulting to single threaded.')
-                return self.frequency_domain_single(automatic_modal_analysis=automatic_modal_analysis)
-            return self.frequency_domain_par(njobs, harddisc_threshold, 
-                                             harddisc_path, 
-                                             frequency_groups, 
-                                             automatic_modal_analysis=automatic_modal_analysis,
-                                             multi_processing=multi_processing)
-        else:
-            return self.frequency_domain_single(automatic_modal_analysis=automatic_modal_analysis)
-
     def _compute_s_data(self, bc: PortBC, 
                        fieldfunction: Callable, 
                        tri_vertices: np.ndarray, 
@@ -1009,7 +858,133 @@ class Microwave3D:
             mode_p = sparam_mode_power(self.mesh.nodes, tri_vertices, bc, k0, const)
             return field_p, mode_p
 
+    # def frequency_domain_single(self, automatic_modal_analysis: bool = False) -> MWData:
+    #     """Execute a frequency domain study without distributed frequency sweep.
 
+    #     Args:
+    #         automatic_modal_analysis (bool, optional): Automatically compute port modes. Defaults to False.
+
+    #     Raises:
+    #         SimulationError: _description_
+
+    #     Returns:
+    #         MWSimData: The Simulation data.
+    #     """
+    #     T0 = time.time()
+    #     mesh = self.mesh
+    #     if self.bc._initialized is False:
+    #         raise SimulationError('Cannot run a modal analysis because no boundary conditions have been assigned.')
+        
+    #     self._initialize_field()
+    #     self._initialize_bc_data()
+        
+    #     er = self.mesh.retreive(lambda mat,x,y,z: mat.fer3d_mat(x,y,z), self.mesher.volumes)
+    #     ur = self.mesh.retreive(lambda mat,x,y,z: mat.fur3d_mat(x,y,z), self.mesher.volumes)
+    #     cond = self.mesh.retreive(lambda mat,x,y,z: mat.cond, self.mesher.volumes)[0,0,:]
+
+    #     ertri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+    #     urtri = np.zeros((3,3,self.mesh.n_tris), dtype=np.complex128)
+    #     condtri = np.zeros((self.mesh.n_tris,), dtype=np.complex128)
+
+    #     for itri in range(self.mesh.n_tris):
+    #         itet = self.mesh.tri_to_tet[0,itri]
+    #         ertri[:,:,itri] = er[:,:,itet]
+    #         urtri[:,:,itri] = ur[:,:,itet]
+    #         condtri[itri] = cond[itet]
+        
+    #     #### Port settings
+
+    #     all_ports = self.bc.oftype(PortBC)
+    #     port_numbers = [port.port_number for port in all_ports]
+
+    #     ##### FOR PORT SWEEP SET ALL ACTIVE TO FALSE. THIS SHOULD BE FIXED LATER
+    #     ### COMPUTE WHICH TETS ARE CONNECTED TO PORT INDICES
+
+    #     all_port_tets = []
+    #     for port in all_ports:
+    #         port.active=False
+            
+    #     all_port_tets = mesh.get_face_tets(*[port.tags for port in all_ports])
+        
+
+    #     logger.debug(f'Starting the simulation of {len(self.frequencies)} frequency points.')
+
+    #     # ITERATE OVER FREQUENCIES
+    #     for freq in self.frequencies:
+    #         logger.info(f'Simulation frequency = {freq/1e9:.3f} GHz') 
+            
+    #         # Assembling matrix problem
+    #         if automatic_modal_analysis:
+    #             self._compute_modes(freq)
+            
+    #         job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.bc.boundary_conditions, freq, cache_matrices=self.cache_matrices)
+
+    #         logger.debug(f'Routine: {self.solveroutine}')
+
+    #         for A, b, ids, reuse in job.iter_Ab():
+    #             solution, report = self.solveroutine.solve(A, b, ids, reuse)
+    #             job.submit_solution(solution, report)
+
+    #         self.data.setreport(job.reports, freq=freq, **self._params)
+
+    #         k0 = 2*np.pi*freq/299792458
+
+    #         scalardata = self.data.scalar.new(freq=freq, **self._params)
+    #         scalardata.init_sp(port_numbers)
+    #         scalardata.freq = freq
+    #         scalardata.k0 = k0
+
+    #         fielddata = self.data.field.new(freq=freq, **self._params)
+    #         fielddata.freq = freq
+    #         fielddata.er = np.squeeze(er[0,0,:])
+    #         fielddata.ur = np.squeeze(ur[0,0,:])
+
+    #         # Recording port information
+    #         for i, port in enumerate(all_ports):
+    #             fielddata.add_port_properties(port.port_number,
+    #                                      mode_number=port.mode_number,
+    #                                      k0 = k0,
+    #                                      beta = port.get_beta(k0),
+    #                                      Z0 = port.portZ0(k0),
+    #                                      Pout= port.power)
+            
+    #         for active_port in all_ports:
+                
+    #             active_port.active = True
+    #             solution = job._fields[active_port.port_number]
+
+    #             fielddata._fields[active_port.port_number] = solution # TODO: THIS IS VERY FRAIL
+    #             fielddata.basis = self.basis
+
+    #             # Compute the S-parameters
+    #             # Define the field interpolation function
+    #             fieldf = self.basis.interpolate_Ef(solution, tetids=all_port_tets)
+
+    #             # Active port power
+    #             logger.debug('Active ports:')
+    #             tris = mesh.get_triangles(active_port.tags)
+    #             tri_vertices = mesh.tris[:,tris]
+    #             pfield, pmode = self._compute_s_data(active_port, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
+    #             logger.debug(f'    Field Amplitude = {np.abs(pfield):.3f}, Excitation = {np.abs(pmode):.2f}')
+    #             Pout = pmode
+                
+    #             #Passive ports
+    #             logger.debug('Passive ports:')
+    #             for bc in all_ports:
+    #                 tris = mesh.get_triangles(bc.tags)
+    #                 tri_vertices = mesh.tris[:,tris]
+    #                 pfield, pmode = self._compute_s_data(bc, fieldf, tri_vertices, k0, ertri[:,:,tris], urtri[:,:,tris])
+    #                 logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
+    #                 scalardata.write_S(bc.port_number, active_port.port_number, pfield/Pout)
+
+    #             active_port.active=False
+            
+    #         fielddata.set_field_vector()
+
+    #     logger.info('Simulation Complete!')
+    #     T2 = time.time()    
+    #     logger.info(f'Elapsed time = {(T2-T0):.2f} seconds.')
+    #     return self.data
 ## DEPRICATED
 
 

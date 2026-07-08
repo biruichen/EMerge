@@ -31,7 +31,7 @@ class SimJob:
 
         self._active_port: int = None
         self.reports: list[SolveReport] = []
-
+        self.id: int = -1
         self.store_if_needed()
 
     def maybe_store(self, matrix, name):

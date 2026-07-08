@@ -204,6 +204,13 @@ class Mesh3D:
 
         return np.array(indices)
     
+    def get_face_tets(self, *taglist: list[int]) -> np.ndarray:
+        ''' Return a list of a tetrahedrons that share a node with any of the nodes in the provided face.'''
+        nodes = set()
+        for tags in taglist:
+            nodes.update(self.get_nodes(tags))
+        return np.array([i for i, tet in enumerate(self.tets.T) if not set(tet).isdisjoint(nodes)])
+
     def get_nodes(self, face_tags: Union[int, list[int]]) -> np.ndarray:
         '''Returns a numpyarray of all the nodes that belong to the given face tags'''
         if isinstance(face_tags, int):
