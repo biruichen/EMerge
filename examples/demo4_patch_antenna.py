@@ -34,7 +34,7 @@ f2 = 1.585e9             # stop frequency
 # --- Create simulation object -------------------------------------------
 model = em.Simulation('MyPatchAntenna')
 
-model.check_version("0.6.7") # Checks version compatibility.
+model.check_version("0.6.8") # Checks version compatibility.
 
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
