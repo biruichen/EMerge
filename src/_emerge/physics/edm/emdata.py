@@ -627,7 +627,8 @@ class EMSimData(SimData[EMDataSet]):
                           filename: str,
                           Z0ref: float = None,
                           format: Literal['RI','MA','DB'] = 'RI',
-                          custom_comments: list[str] = None):
+                          custom_comments: list[str] = None,
+                          funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ'):
         """Export the S-parameter data to a touchstone file
 
         This function assumes that all ports are numbered in sequence 1,2,3,4... etc with
@@ -655,7 +656,7 @@ class EMSimData(SimData[EMDataSet]):
                 _, S = self.ax('freq').S(i,j)
                 Smat[:,i-1,j-1] = S
         
-        self.save_smatrix(filename, Smat, freqs, format=format, Z0ref=Z0ref, custom_comments=custom_comments)
+        self.save_smatrix(filename, Smat, freqs, format=format, Z0ref=Z0ref, custom_comments=custom_comments, funit=funit)
 
     def save_smatrix(self, 
                      filename: str,
@@ -663,7 +664,8 @@ class EMSimData(SimData[EMDataSet]):
                      frequencies: np.ndarray, 
                      Z0ref: float = None,
                      format: Literal['RI','MA','DB'] = 'RI',
-                     custom_comments: list[str] = None) -> None:
+                     custom_comments: list[str] = None,
+                     funit: Literal['HZ','KHZ','MHZ','GHZ'] = 'GHZ') -> None:
         """Save an S-parameter matrix to a touchstone file.
         
         Additionally, a reference impedance may be supplied. In this case, a port renormalization will be performed on the S-matrix.
@@ -685,6 +687,6 @@ class EMSimData(SimData[EMDataSet]):
             Smatrix = renormalise_s(Smatrix, Z0s, Z0ref)
 
 
-        generate_touchstone(filename, frequencies, Smatrix, format, custom_comments)
+        generate_touchstone(filename, frequencies, Smatrix, format, custom_comments, funit)
         
         logger.info('Export complete!')
