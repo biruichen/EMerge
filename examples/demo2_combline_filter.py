@@ -42,7 +42,7 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-model = em.Simulation3D('Combline_DEMO')
+model = em.Simulation3D('Combline_DEMO', loglevel='DEBUG')
 
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.

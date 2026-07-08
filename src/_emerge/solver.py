@@ -177,6 +177,22 @@ class Sorter:
     
     def unsort(self, x: np.ndarray) -> np.ndarray:
         return x
+    
+class PreSorter(Sorter):
+    """ A Generic class that executes a sort on the indices.
+    It must implement a sort and unsort method.
+    """
+    def __init__(self):
+        pass
+
+    def __str__(self) -> str:
+        return f'{self.__class__.__name__}'
+    
+    def sort(self, A: lil_matrix, b: np.ndarray, solve_ids: np.ndarray) -> tuple[lil_matrix, np.ndarray]:
+        return A,b, solve_ids
+    
+    def unsort(self, x: np.ndarray) -> np.ndarray:
+        return x
 
 class Preconditioner:
     """A Generic class defining a preconditioner as attribute .M based on the
@@ -234,7 +250,6 @@ class ReverseCuthillMckee(Sorter):
         self.inv_perm = None
 
     def sort(self, A, b, reuse_sorting: bool = False):
-        
         if not reuse_sorting:
             logger.debug('Generating Reverse Cuthill-Mckee sorting.')
             self.perm = reverse_cuthill_mckee(A)
@@ -247,8 +262,6 @@ class ReverseCuthillMckee(Sorter):
     def unsort(self, x: np.ndarray):
         logger.debug('Reversing Reverse Cuthill-Mckee sorting.')
         return  x[self.inv_perm]
-    
-
 ## Preconditioners
 
 class ILUPrecon(Preconditioner):
@@ -351,14 +364,17 @@ class SolverSuperLU(Solver):
         self.A: np.ndarray = None
         self.b: np.ndarray = None
         self._perm_c = None
+        self._perm_r = None
         self.options: dict[str, str] = dict(SymmetricMode=True, Equil=False, IterRefine='SINGLE')
         self.lu = None
+        
     def solve(self, A, b, precon, reuse_factorization: bool = False, id: int = -1):
         logger.info(f'Calling SuperLU Solver, ID={id}')
         self.single = True
         if not reuse_factorization:
             self.lu = splu(A, permc_spec='MMD_AT_PLUS_A', relax=2, diag_pivot_thresh=0.001, options=self.options)
         x = self.lu.solve(b)
+
         return x, 0
 
 
@@ -563,7 +579,6 @@ class SolveRoutine:
         
         self.sorter: Sorter = ReverseCuthillMckee()
         self.precon: Preconditioner = ILUPrecon()
-        
 
         self.iterative_solver: Solver = SolverBicgstab()
         self.direct_solver: Solver = direct_solver
@@ -574,7 +589,7 @@ class SolveRoutine:
         self.smart_iterative_eig_solver: Solver = SmartARPACK()
         self.direct_eig_solver: Solver = SolverLAPACK()
 
-        self.use_sorter: bool = True
+        self.use_sorter: bool = False
         self.use_preconditioner: bool = False
         self.use_direct: bool = True
 
@@ -617,6 +632,7 @@ class SolveRoutine:
                 return self.smart_iterative_eig_solver
             else:
                 return self.iterative_eig_solver
+            
     def get_eig_solver_bma(self, A: lil_matrix, b: lil_matrix, direct: bool = None, smart: bool = False) -> Solver:
         """Returns the relevant eigenmode Solver object given a certain matrix and source vector
 
@@ -664,7 +680,6 @@ class SolveRoutine:
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
-        solution = np.zeros((A.shape[0],), dtype=np.complex128)
         A = A.tocsc()
 
         logger.debug(f'    Removing {NF-NS} prescribed DOFs ({NS} left)')
@@ -680,7 +695,7 @@ class SolveRoutine:
         sorter = 'None'
         if solver.req_sorter and self.use_sorter:
             sorter = str(self.sorter)
-            Asorted, bsorted = self.sorter.sort(Asel,bsel, reuse_sorting=reuse)
+            Asorted, bsorted = self.sorter.sort(Asel, bsel, reuse_sorting=reuse)
         else:
             Asorted, bsorted = Asel, bsel
         
@@ -697,6 +712,7 @@ class SolveRoutine:
         simtime = end-start
         logger.info(f'Time taken: {simtime:.3f} seconds')
         logger.debug(f'    O(N²) performance = {(NS**2)/((end-start+1e-6)*1e6):.3f} MDoF/s')
+        
         if self.use_sorter and solver.req_sorter:
             x = self.sorter.unsort(x_solved)
         else:
@@ -705,8 +721,11 @@ class SolveRoutine:
         if solver.real_only:
             logger.debug('    Converting back to complex matrix')
             x = real_to_complex_block(x)
+
+        solution = np.zeros((NF,), dtype=np.complex128)
         
         solution[solve_ids] = x
+
         logger.debug('Solver complete!')
         if code:
             logger.debug('    Solver code: {code}')

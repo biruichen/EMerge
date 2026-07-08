@@ -19,6 +19,7 @@ along with this program; if not, see
 import os
 
 NTHREADS = "1"
+
 os.environ["OMP_NUM_THREADS"] = NTHREADS
 os.environ["MKL_NUM_THREADS"] = NTHREADS
 os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS

@@ -148,7 +148,7 @@ with em.Simulation3D('FullFilter', loglevel='DEBUG') as mf:
     mf.define_geometry(feed1, feed2, last_iris, *(cavities + irises))
 
     # Simulation settings and mesh
-    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 101)
+    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 81)
     mf.mw.set_resolution(0.1)
     for ir in irises:
         mf.mesher.set_domain_size(ir, 2*mm)

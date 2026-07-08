@@ -44,6 +44,7 @@ class FEMBasis:
 
         self._rows: np.ndarray = None
         self._cols: np.ndarray = None
+        
     
     def interpolate_Ef(self, field: np.ndarray, basis: np.ndarray = None, origin: np.ndarray = None, tetids: np.ndarray = None) -> Callable:
         '''Generates the Interpolation function as a function object for a given coordiante basis and origin.'''
@@ -71,12 +72,12 @@ class FEMBasis:
     
     def empty_tet_matrix(self) -> np.ndarray:
         nnz = self.n_tets*self.n_tet_dofs**2
-        matrix = np.empty(nnz, dtype=np.complex128)
+        matrix = np.empty((nnz,), dtype=np.complex128)
         return matrix
     
     def empty_tri_matrix(self) -> np.ndarray:
         nnz = self.n_tris*self.n_tri_dofs**2
-        matrix = np.empty(nnz, dtype=np.complex128)
+        matrix = np.zeros((nnz,), dtype=np.complex128)
         return matrix
      
     def empty_tet_rowcol(self) -> tuple[np.ndarray, np.ndarray]:
@@ -124,8 +125,8 @@ class FEMBasis:
         return slice(itri*N,(itri+1)*N)
     
     def generate_csr(self, data: np.ndarray) -> csr_matrix:
-        return coo_matrix((data, (self._rows, self._cols)), shape=(self.n_field, self.n_field)).tocsr()
-    
+        ids = np.argwhere(data!=0)[:,0]
+        return csr_matrix((data[ids], (self._rows[ids], self._cols[ids])), shape=(self.n_field, self.n_field))
     ### QUANTITIES
 
     def tet_to_edge_lengths(self, itet: int) -> np.ndarray:

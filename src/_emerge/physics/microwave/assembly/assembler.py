@@ -248,39 +248,43 @@ class Assembler:
         if len(robin_bcs) > 0:
             logger.debug('    Implementing Robin Boundary Conditions.')
         
-        gauss_points = gaus_quad_tri(4)
+            gauss_points = gaus_quad_tri(4)
+            
+            Bempty = field.empty_tri_matrix()
 
-        for bc in robin_bcs:
-            for tag in bc.tags:
-                face_tags = [tag,]
+            for bc in robin_bcs:
 
-                tri_ids = mesh.get_triangles(face_tags)
-                nodes = mesh.get_nodes(face_tags)
-                edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
+                for tag in bc.tags:
+                    face_tags = [tag,]
 
-                gamma = bc.get_gamma(k0)
+                    tri_ids = mesh.get_triangles(face_tags)
+                    nodes = mesh.get_nodes(face_tags)
+                    edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
 
-                def Ufunc(x,y): 
-                    return bc.get_Uinc(x,y,k0)
-                
-                ibasis = bc.get_inv_basis()
-                if ibasis is None:
-                    basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
-                    ibasis = np.linalg.pinv(basis)
-                if bc._include_force:
+                    gamma = bc.get_gamma(k0)
 
-                    B_p, b_p = assemble_robin_bc_excited(field, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points)
+                    def Ufunc(x,y): 
+                        return bc.get_Uinc(x,y,k0)
                     
-                    port_vectors[bc.port_number] += b_p
-                
-                else:
-                    B_p = assemble_robin_bc(field, tri_ids, gamma)
-                if bc._include_stiff:
-                    K = K + B_p
+                    ibasis = bc.get_inv_basis()
+                    if ibasis is None:
+                        basis = plane_basis_from_points(mesh.nodes[:,nodes]) + 1e-16
+                        ibasis = np.linalg.pinv(basis)
+                    if bc._include_force:
+
+                        Bempty, b_p = assemble_robin_bc_excited(field, Bempty, tri_ids, Ufunc, gamma, ibasis, bc.cs.origin, gauss_points)
+                        
+                        port_vectors[bc.port_number] += b_p
+                    
+                    else:
+                        Bempty = assemble_robin_bc(field, Bempty, tri_ids, gamma)
+            B_p = field.generate_csr(Bempty)
+            K = K + B_p
         
         if len(periodic) > 0:
             logger.debug('    Implementing Periodic Boundary Conditions.')
 
+        
         # Periodic BCs
         Pmats = []
         remove = set()
