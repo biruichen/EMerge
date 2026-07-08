@@ -36,7 +36,7 @@ f2 = 1.6e9              # stop frequency
 # --- Create simulation object -------------------------------------------
 # Using PVDisplay backend for 3D visualization
 model = em.Simulation('MyPatchAntenna')
-model.check_version("0.6.6") # Checks version compatibility.
+model.check_version("0.6.7") # Checks version compatibility.
 # --- Define geometry primitives -----------------------------------------
 # Substrate block centered at origin in XY, thickness in Z (negative down)
 dielectric = em.geo.Box(wsub, hsub, th,
@@ -116,7 +116,7 @@ data = model.mw.run_sweep()
 # --- Post-process S-parameters ------------------------------------------
 freqs = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1, 1)            # reflection coefficient
-plot_sp(freqs / 1e9, S11)                 # plot return loss in dB
+plot_sp(freqs, S11)                 # plot return loss in dB
 smith(S11, f=freqs, labels='S11')         # Smith chart of S11
 
 # --- Far-field radiation pattern ----------------------------------------

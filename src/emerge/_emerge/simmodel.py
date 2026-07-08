@@ -319,24 +319,26 @@ class Simulation:
     def view(self, 
              selections: list[Selection] | None = None, 
              use_gmsh: bool = False,
-             volume_opacity: float = 0.1,
-             surface_opacity: float = 1,
-             show_edges: bool = True) -> None:
+             plot_mesh: bool = False,
+             volume_mesh: bool = True,
+             opacity: float | None = None) -> None:
         """View the current geometry in either the BaseDisplay object (PVDisplay only) or
         the GMSH viewer.
 
         Args:
-            selections (list[Selection], optional): Additional selections to highlight. Defaults to None.
-            use_gmsh (bool, optional): Whether to use the GMSH display. Defaults to False.
-            opacity (float, optional): The global opacity of all objects.. Defaults to None.
-            show_edges (bool, optional): Whether to show the geometry edges. Defaults to None.
+            selections (list[Selection] | None, optional): Optional selections to highlight. Defaults to None.
+            use_gmsh (bool, optional): If GMSH's GUI should be used. Defaults to False.
+            plot_mesh (bool, optional): If the mesh should be plot instead of the object. Defaults to False.
+            volume_mesh (bool, optional): If the internal mesh should be plot instead of only the surface boundary mesh. Defaults to True
+            opacity (float | None, optional): The object/mesh opacity. Defaults to None.
+
         """
         if not (self.display is not None and self.mesh.defined) or use_gmsh:
             gmsh.model.occ.synchronize()
             gmsh.fltk.run()
             return
         for geo in _GEOMANAGER.all_geometries():
-            self.display.add_object(geo)
+            self.display.add_object(geo, mesh=plot_mesh, opacity=opacity, volume_mesh=volume_mesh)
         if selections:
             [self.display.add_object(sel, color='red', opacity=0.3) for sel in selections]
         self.display.show()

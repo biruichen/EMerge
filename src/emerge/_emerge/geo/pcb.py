@@ -963,7 +963,17 @@ class PCB:
         Returns:
             float: the z-height
         """
+        if layer <= 0:
+            return self._zs[layer]
         return self._zs[layer-1]
+    
+    @property
+    def top(self) -> float:
+        return self._zs[-1]
+    
+    @property
+    def bottom(self) -> float:
+        return self._zs[0]
     
     def _get_z(self, element: RouteElement) -> float :
         """Return the z-height of a given Route Element
@@ -979,6 +989,31 @@ class PCB:
                 return path.z
         raise RouteException('Requesting z-height of route element that is not contained in a path.')
 
+    def add_vias(self, *coordinates: tuple[float, float], radius: float,
+                 z1: float | None = None,
+                 z2: float | None = None,
+                 segments: int = 6) -> None:
+        """Add a series of vias provided by a list of coordinates.
+        
+        Make sure to define the radius explicitly, otherwise the radius gets interpreted as a coordinate:
+        
+        >>> pcb.add_vias((x1,y1), (x1,y2), radius=1)
+
+        Args:
+            *coordinates (tuple(float, float)): A series of coordinates
+            radius (float): The radius
+            z1 (float | None, optional): The bottom z-coordinate. Defaults to None.
+            z2 (float | None, optional): The top z-coordinate. Defaults to None.
+            segments (int, optional): The number of segmets for the via. Defaults to 6.
+        """
+        if z1 is None:
+            z1 = self.z(0)
+        if z2 is None:
+            z2 = self.z(-1)
+        
+        for x,y in coordinates:
+            self.vias.append(Via(x,y,z1,z2,radius,segments))
+        
     def load(self, name: str) -> StripLine:
         """Acquire the x,y, coordinate associated with the label name.
         
@@ -1060,7 +1095,7 @@ class PCB:
             GeoSurface: _description_
         """
         if width is None or height is None or origin is None:
-            if self.width is None or self.length is None or self.origin:
+            if self.width is None or self.length is None or self.origin is None:
                 raise RouteException('Cannot define a plane with no possible definition of its size.')
             width = self.width
             height = self.length
@@ -1075,6 +1110,7 @@ class PCB:
 
         plane = Plate(origin, (width*self.unit, 0, 0), (0, height*self.unit, 0)) # type: ignore
         plane = change_coordinate_system(plane, self.cs) # type: ignore
+        plane.set_material(COPPER)
         return plane # type: ignore
     
     def generate_pcb(self, 
@@ -1121,7 +1157,7 @@ class PCB:
         """Generate the Air Block object
 
         This requires that the width, depth and origin are deterimed. This 
-        can either be done manually or via the .determine_boudns() method.
+        can either be done manually or via the .determine_bounds() method.
 
         Returns:
             GeoVolume: The PCB Block
@@ -1357,20 +1393,19 @@ class PCB:
             poly = self._gen_poly(pcbpoly.xys, pcbpoly.z)
             poly.material = pcbpoly.material
             polys.append(poly)
+            xs, ys = zip(*pcbpoly.xys)
+            allx.extend(xs)
+            ally.extend(ys)
+            
 
         self.xs = allx
         self.ys = ally
 
         self.traces = polys
+        
         if merge:
             polys = unite(*polys)
-            # tags = []
-            # for p in polys:
-            #     tags.extend(p.tags)
-            #     if p.material != COPPER:
-            #         logger.warning(f'Merging a polygon with material {p.material} into a single polygon that will be COPPER.')
-            # polys = GeoSurface(tags)
-            # polys.material = COPPER
+            
         return polys
                 
 ############################################################
