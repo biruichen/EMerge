@@ -6,24 +6,25 @@ import numpy as np
 
 This demo sets up and simulates a rectangular horn antenna in an
 absorbing domain with PML layers. We compute return loss (S11) over a
-90–110 GHz band and plot the far-field radiation pattern. """
+90–110 GHz band and plot the far-field radiation pattern. 
+
+The dimensions come from this paper:
+https://pure.tue.nl/ws/portalfiles/portal/332971061/Uncertainties_in_the_Estimation_of_the_Gain_of_a_Standard_Gain_Horn_in_the_Frequency_Range_of_90_GHz_to_140_GHz.pdf
+"""
 
 # --- Units ---------------------------------------------------------------
 mm = 0.001               # meters per millimeter
 
 # --- Horn and feed dimensions -------------------------------------------
-A = 27.4 * mm            # horn input aperture width
-B = 10 * mm              # horn input aperture height
-C = 7 * mm               # horn output aperture height
-D = 2.054 * mm           # feed waveguide width
-E = 1.04 * mm            # feed waveguide height
-F = 21 * mm              # horn length
-G = 1.016 * mm           # PML half-width (x-direction)
-H = 2.032 * mm           # PML half-height (y-direction)
+wga = 2.01 * mm           # waveguide width
+wgb = 1.01 * mm          # waveguide height
+WH = 10 * mm            # Aperture width
+HH = 7 * mm             # Aperture height
+Lhorn = 21 * mm        # Horn length
 
 # --- Feed and simulation setup ------------------------------------------
-Lfeed = 5 * mm           # length of feed waveguide
-th = 1.5 * mm            # PML thickness
+Lfeed = 2 * mm           # length of feed waveguide
+th = 1 * mm            # PML thickness
 dx = 2 * mm              # distance from horn exit to PML start
 
 # Create simulation object
@@ -35,19 +36,19 @@ hornCS = em.CS(em.YAX, em.ZAX, em.XAX)
 # Feed waveguide as rectangular box (metal)
 feed = em.geo.Box(
     Lfeed,   # length along X
-    D/2,     # half-width along Y (centered)
-    E/2,     # half-height along Z
+    wga/2,     # half-width along Y (centered)
+    wgb/2,     # half-height along Z
     position=(-Lfeed, 0, 0)
 )
 
 # --- Horn geometry ------------------------------------------------------
 # Inner horn taper from (D,E) at throat to (B,C) at mouth over length F
 horn_in = em.geo.Horn(
-    (D, E), (B, C), F, hornCS
+    (wga, wgb), (WH, HH), Lhorn, hornCS,
 )
 # Outer horn (including metal thickness) helps define PML subtraction
 horn_out = em.geo.Horn(
-    (D+2*th, E+2*th), (B+2*th, C+2*th), F, hornCS
+    (wga+2*th, wgb+2*th), (WH+2*th, HH+2*th), Lhorn, hornCS
 )
 
 # --- Bounding objects and PML -------------------------------------------
@@ -60,10 +61,10 @@ horn_out = em.geo.intersect(horn_out, ibox)
 rat = 1.6  # PML extension ratio
 air, *pmls = em.geo.pmlbox(
     4*mm,          # air padding before PML
-    rat*B/2,       # half-height in Y
-    rat*C/2,       # half-width in Z
-    (F - dx, 0, 0),# PML origin offset along X
-    thickness=1.5*mm,
+    rat*WH/2,       # half-height in Y
+    rat*HH/2,       # half-width in Z
+    (Lhorn - dx, 0, 0),# PML origin offset along X
+    thickness=4*mm,
     N_mesh_layers=4,
     top=True, right=True, back=True
 )
@@ -71,7 +72,7 @@ air, *pmls = em.geo.pmlbox(
 air2 = em.geo.subtract(air, horn_out)
 
 # --- Solver parameters --------------------------------------------------
-m.mw.set_frequency_range(90e9, 110e9, 3)  # 90–110 GHz sweep
+m.mw.set_frequency_range(90e9, 110e9, 11)  # 90–110 GHz sweep
 m.mw.set_resolution(0.3)                # mesh resolution fraction
 
 # --- Assemble geometry and mesh -----------------------------------------
@@ -82,12 +83,12 @@ m.generate_mesh()
 p1 = m.mw.bc.ModalPort(feed.face('left'), 1)     # excite TE10 in feed
 PMC = m.mw.bc.PMC(m.select.face.inplane(0, 0, 0, 0, 1, 0))  # perfect magnetic on symmetry
 radiation_boundary = air.outside('front', 'left', 'bottom')  # open faces
-
+abs = m.mw.bc.AbsorbingBoundary(m.select.face.inplane(Lhorn-dx,0,0,1,0,0))
 # View mesh and BC selections
 m.view(selections=[p1.selection, PMC.selection, radiation_boundary])
 
 # --- Run frequency-domain solver ----------------------------------------
-data = m.mw.frequency_domain(False)
+data = m.mw.frequency_domain(True, 2, frequency_groups=4)
 
 # --- Plot return loss ---------------------------------------------------
 scal = data.scalar.grid
@@ -100,5 +101,11 @@ ang, E, H = data.field[0].farfield_2d(
     (-90, 90), syms=['Ez','Hy']
 )
 # Normalize to free-space impedance and convert to dB
-Eiso = np.sqrt(2 * np.pi / 376.14)
-plot_ff(ang * 180/np.pi, 20 * np.log10(em.norm(E) / Eiso))
+
+m.display.add_object(horn_in, opacity=0.1)
+m.display.add_object(air2, opacity=0.1)
+m.display.add_object(feed, opacity=0.1)
+m.display.add_surf(*data.field[0].farfield_3d(radiation_boundary, syms=['Ez','Hy'])\
+                   .surfplot('normE', True, True, -30, 5*mm, (Lhorn,0,0)), cmap='viridis', symmetrize=False)
+m.display.add_surf(*data.field[0].cutplane(0.5*mm, z=0).scalar('Ez','real'))
+m.display.show()
