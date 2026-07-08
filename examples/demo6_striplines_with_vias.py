@@ -11,7 +11,7 @@ PCB related demos (demo1 and demo3) to get more information on the PCBLayouter.
 mm = 0.001
 th = 1
 
-model = em.Simulation('Stripline_test', loglevel='DEBUG')
+model = em.Simulation('Stripline_test')
 model.check_version("0.6.4") # Checks version compatibility.
 
 # As usual we start by creating our layouter

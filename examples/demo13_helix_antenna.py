@@ -24,10 +24,10 @@ L = 4*rad0                      # helix axial length
 porth = 2*mm                    # vertical height of the feed extrusion
 
 # --- Simulation object -------------------------------------------------------
-model = em.Simulation('helix', loglevel="DEBUG")
+model = em.Simulation('helix')
 model.check_version("0.6.4") # Checks version compatibility.
 
-dfeed = 5*mm                    # straight feed length before the helix starts
+dfeed = 3*mm                    # straight feed length before the helix starts
 
 # --- Geometry: helix curve and metal pipe -----------------------------------
 # Helix curve from (0,0,porth+dfeed/2) to (0,0,porth+dfeed/2+L)
@@ -53,6 +53,8 @@ cross_section = em.geo.XYPolygon.circle(radw, Nsections=6)
 # Sweep a circular cross-section along the curve to make a metallic pipe
 helix = h_curve.pipe(cross_section).set_material(em.lib.MET_COPPER)
 
+# We add a block to make attachment of ports easier.
+block = em.geo.Box(dfeed, dfeed, dfeed, position=h_curve.p0, alignment=em.geo.Alignment.CENTER).set_material(em.lib.MET_COPPER)
 # Optional preview of current scene (geometry only at this point)
 model.view()
 

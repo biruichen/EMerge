@@ -42,7 +42,7 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-model = em.Simulation('Combline_DEMO', loglevel='DEBUG')
+model = em.Simulation('Combline_DEMO')
 model.check_version("0.6.4") # Checks version compatibility.
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.

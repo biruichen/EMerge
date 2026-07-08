@@ -11,7 +11,7 @@ direction (+Z vs -Z). In EMerge we can alignm modes using the .align_mode() meth
 """
 
 # First we define our simulation
-m = em.Simulation('aligntest', loglevel='INFO')
+m = em.Simulation('aligntest')
 m.check_version("0.6.4") # Checks version compatibility.
 
 # We create a cyllindrical waveguide in the Y-axis.

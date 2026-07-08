@@ -79,7 +79,7 @@ def KZ0(S11, S12, S21, S22):
 wgaps = np.linspace(1*mm, 20*mm, 21)
 Ks = []
 hphis = []
-with em.Simulation('IrisSim', loglevel='DEBUG') as sim:
+with em.Simulation('IrisSim') as sim:
     sim.check_version("0.6.4") # Checks version compatibility.
     for (wgap,) in sim.parameter_sweep(True, wgap=wgaps):
         # Define two short waveguide sections separated by iris plate
@@ -129,7 +129,7 @@ cavity_lengths = (1/beta0 * np.array([
 ])).real
 
 # --- Build and simulate full filter -------------------------------------
-with em.Simulation('FullFilter', loglevel='DEBUG') as mf:
+with em.Simulation('FullFilter') as mf:
     # Input feed section
     feed1 = em.geo.Box(wga, Lfeed, wgb, (-wga/2, -Lfeed, 0))
     # Create cavities and irises sequentially
@@ -150,7 +150,7 @@ with em.Simulation('FullFilter', loglevel='DEBUG') as mf:
     mf.commit_geometry(feed1, feed2, last_iris, *(cavities + irises))
 
     # Simulation settings and mesh
-    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 101)
+    mf.mw.set_frequency_range(f1 - 0.2e9, f2 + 0.2e9, 51)
     mf.mw.set_resolution(0.10)
     for ir in irises:
         mf.mesher.set_domain_size(ir, 2*mm)
