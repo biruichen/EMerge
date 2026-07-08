@@ -21,7 +21,7 @@ mm = 0.001      # mm definition
 th = 1.54       # PCB Thickness
 Lprestub = 2    # Extra stripline before the radial stub
 Lstub = 8       # Length of the radial stub
-angstub = 110   # Angle of the radial stub
+angstub = 100   # Angle of the radial stub
 Lfeed = 20      # Length of the microstrip feedline
 Lslot = 20      # Length of the slotline
 wslot = 0.8     # width of the slotline
@@ -101,7 +101,6 @@ m.generate_mesh()
 # Notice the course initial mesh
 m.view(plot_mesh=False)
 m.view(plot_mesh=True)
-
 
 ############################################################
 #                    BOUNDARY CONDITIONS                   #

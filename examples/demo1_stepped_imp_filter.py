@@ -8,7 +8,9 @@ In this demo we will look at how we can construct a stepped impedance filter usi
 PCB Layouter interface in EMerge.
 
 """
+
 # First we will define some constants/variables/parameters for our simulation.
+
 mm = 0.001
 mil = 0.0254*mm
 

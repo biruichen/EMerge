@@ -53,6 +53,21 @@ INDEX_BASE = cudss.IndexBase.ZERO
 def _c_pointer(arry) -> int:
     return int(arry.data.ptr)
 
+
+
+############################################################
+#                         FUNCTIONS                        #
+############################################################
+
+def is_complex_symmetric(A, rtol=1e-12, atol=0.0):
+    D = A-A.T
+    D.sum_duplicates()
+    if D.nnz == 0:
+        return True
+    max_diff = float(np.abs(D.data).max())
+    max_A = float(np.abs(A.data).max()) if A.nnz else 0.0
+    return (max_diff <= atol) if max_A == 0.0 else (max_diff <= atol + rtol * max_A)
+
 ############################################################
 #                         INTERFACE                        #
 ############################################################
@@ -152,6 +167,11 @@ class CuDSSInterface:
         """
         self.N = A.shape[0]
 
+        if is_complex_symmetric(A, rtol=1e-12, atol=1e-15):
+            self.MTYPE = cudss.MatrixType.SYMMETRIC
+        else:
+            self.MTYPE = cudss.MatrixType.GENERAL
+        
         if np.iscomplexobj(A):
             self._COMP = True
         else:
@@ -186,7 +206,6 @@ class CuDSSInterface:
         """Updates the currently defined matrix data into the existing memory.ALG_AMD
         """
         cudss.matrix_set_values(self.A_cobj, _c_pointer(self._VAL))
-
         
         self.b_cobj = cudss.matrix_create_dn(self.N, 1, self.N, _c_pointer(self.b_cu),
                                     int(self.VTYPE), int(cudss.Layout.COL_MAJOR))
