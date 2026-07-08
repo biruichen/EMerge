@@ -49,7 +49,7 @@ conda install -y python=3.10
 ## Step 3: Install required packages
 
 ```bash
-conda install suitesparse
+conda install anaconda::suitesparse
 conda install meson swig
 conda install -c conda-forge compilers
 conda install -c conda-forge m2w64-toolchain
