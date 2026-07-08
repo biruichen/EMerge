@@ -607,14 +607,13 @@ class CuDSSSolver(Solver):
             logger.debug('Executing symbollic factorization')
             x = self._cudss.from_symbolic(A,b)
             self.fact_symb = True
-            return x, 0
         else:
             if reuse_factorization:
                 x = self._cudss.from_solve(b)
-                return x, 0
             else:
                 x = self._cudss.from_numeric(A,b)
-                return x, 0
+        
+        return x, SolveReport(solver=str(self), exit_code=0, aux={})
 
 
 ############################################################
