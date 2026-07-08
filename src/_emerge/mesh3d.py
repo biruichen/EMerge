@@ -59,9 +59,9 @@ class Mesh3D:
     are mapped to mesh elements is managed by the FEMBasis class.
     
     """
-    def __init__(self, geometry: Mesher):
+    def __init__(self, mesher: Mesher):
         
-        self.geometry: Mesher = geometry
+        self.geometry: Mesher = mesher
 
         # All spatial objects
         self.nodes: np.ndarray = None

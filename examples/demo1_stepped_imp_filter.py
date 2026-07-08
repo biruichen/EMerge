@@ -1,6 +1,7 @@
 import emerge as em
 import numpy as np
 import matplotlib.pyplot as plt
+
 """ STEPPED IMPEDANCE FILTER
 
 In this demo we will look at how we can construct a stepped impedance filter using the
