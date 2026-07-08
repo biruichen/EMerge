@@ -116,7 +116,7 @@ data = model.mw.run_sweep()
 # --- Post-process S-parameters ------------------------------------------
 freqs = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1, 1)            # reflection coefficient
-plot_sp(freqs / 1e9, S11)                 # plot return loss in dB
+plot_sp(freqs, S11)                 # plot return loss in dB
 smith(S11, f=freqs, labels='S11')         # Smith chart of S11
 
 # --- Far-field radiation pattern ----------------------------------------
