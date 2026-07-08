@@ -75,6 +75,7 @@ class Mesher:
         self.objects: list[GeoObject] = []
         self.size_definitions: list[tuple[int, float]] = []
         self.mesh_fields: list[int] = []
+        self._amr_fields: list[int] = []
         self.min_size: float = None
         self.max_size: float = None
         self.periodic_cell: PeriodicCell = None
@@ -222,8 +223,13 @@ class Mesher:
         gmsh.model.mesh.field.set_numbers(ctag, "CurvesList", tags)
         gmsh.model.mesh.field.set_number(ctag, "VIn", max_size)
         self.mesh_fields.append(ctag)
+    
+    def _reset_amr_points(self) -> None:
+        for tag in self._amr_fields:
+            gmsh.model.mesh.field.remove(tag)
+        self._amr_fields = []
         
-    def _set_size_on_point(self, tags: list[int], max_size: float) -> None:
+    def _set_amr_point(self, tags: list[int], max_size: float) -> None:
         """Define the size of the mesh on a point
 
         Args:
@@ -233,7 +239,7 @@ class Mesher:
         ctag = gmsh.model.mesh.field.add("Constant")
         gmsh.model.mesh.field.set_numbers(ctag, "PointsList", tags)
         gmsh.model.mesh.field.set_number(ctag, "VIn", max_size)
-        self.mesh_fields.append(ctag)
+        self._amr_fields.append(ctag)
 
     def _configure_mesh_size(self, discretizer: Callable, resolution: float):
         """Defines the mesh sizes based on a discretization callable.
@@ -267,7 +273,7 @@ class Mesher:
             logger.debug(f'Setting mesh size:{1000*size:.3f}mm in domains: {tag}')
             self._set_size_in_domain([tag,], size)
 
-        gmsh.model.mesh.field.setNumbers(mintag, "FieldsList", self.mesh_fields)
+        gmsh.model.mesh.field.setNumbers(mintag, "FieldsList", self.mesh_fields + self._amr_fields)
         gmsh.model.mesh.field.setAsBackgroundMesh(mintag)
 
         for tag, size in self.size_definitions:
@@ -279,7 +285,19 @@ class Mesher:
         logger.trace(f'Unsetting mesh size constraint for domains: {dimtags}')
         for dimtag in dimtags:
             gmsh.model.mesh.setSizeFromBoundary(dimtag[0], dimtag[1], 0)
-            
+    
+    def add_refinement_point(self,
+                             coordinate: np.ndarray,
+                             refinement: float,
+                             size: float,
+                             gr: float = 1.5):
+        x0, y0, z0 = coordinate
+        disttag = gmsh.model.mesh.field.add("MathEval")
+        newsize = refinement*size
+        funcstr = f"({newsize})/({gr}) - (1-{gr})/({gr}) * Sqrt((x-({x0}))^2+ (y-({y0}))^2 + (z-({z0}))^2)"
+        gmsh.model.mesh.field.setString(disttag, "F", funcstr)
+        self.mesh_fields.append(disttag)
+        
     def set_boundary_size(self, 
                           boundary: GeoObject | Selection | Iterable, 
                           size:float,

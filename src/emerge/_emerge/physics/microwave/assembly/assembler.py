@@ -186,11 +186,12 @@ class Assembler:
 
         return E, B, np.array(solve_ids), nedlegfield
 
-    def assemble_freq_matrix(self, field: Nedelec2, 
-                        materials: list[Material],
-                        bcs: list[BoundaryCondition],
-                        frequency: float,
-                        cache_matrices: bool = False) -> SimJob:
+    def assemble_freq_matrix(self, 
+                             field: Nedelec2, 
+                            materials: list[Material],
+                            bcs: list[BoundaryCondition],
+                            frequency: float,
+                            cache_matrices: bool = False) -> SimJob:
         """Assembles the frequency domain FEM matrix
 
         Args:

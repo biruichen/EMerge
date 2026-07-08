@@ -73,7 +73,6 @@ class MWBoundaryConditionSet(BoundaryConditionSet):
         for bc in self.oftype(SurfaceImpedance):
             if bc.sigma > 10.0:
                 bcs.append(bc)
-
         return bcs
         
     def get_type(self, bctype: Literal['PEC','ModalPort','LumpedPort','PMC','LumpedElement','RectangularWaveguide','Periodic','FloquetPort','SurfaceImpedance']) -> FaceSelection:
@@ -497,6 +496,8 @@ class ModalPort(PortBC):
         self._first_k0: float | None = None
         self._last_k0: float | None = None
         
+        self.plus_terminal: list[tuple[int, int]] = []
+        self.minus_terminal: list[tuple[int, int]] = []
 
         if cs is None:
             logger.info('Constructing coordinate system from normal port')
@@ -522,6 +523,26 @@ class ModalPort(PortBC):
             *axes (tuple, np.ndarray, Axis): The alignment vectors.
         """ 
         self.alignment_vectors = [_parse_axis(ax) for ax in axes]
+    
+    def set_terminals(self, positive: Selection | GeoObject | None = None,
+                      negative: Selection | GeoObject | None = None,
+                      ground: Selection | GeoObject | None = None) -> None:
+        """Define which objects/faces/selection should be assigned the positive terminal
+        and which one the negative terminal.
+        
+        The terminal assignment will be used to find an integration line for the impedance calculation.
+
+        Note: Ground is currently unused.
+        
+        Args:
+            positive (Selection | GeoObject | None, optional): The postive terminal. Defaults to None.
+            negative (Selection | GeoObject | None, optional): The negative terminal. Defaults to None.
+            ground (Selection | GeoObject | None, optional): _description_. Defaults to None.
+        """
+        if positive is not None:
+            self.plus_terminal = positive.dimtags
+        if negative is not None:
+            self.minus_terminal = negative.dimtags
         
     @property
     def nmodes(self) -> int:
@@ -569,9 +590,10 @@ class ModalPort(PortBC):
         Returns:
             PortMode: The requested PortMode object
         """
+        options = self.modes[min(self.modes.keys(), key=lambda k: abs(k - k0))]
         if i is None:
-            i = self.selected_mode
-        return self.modes[min(self.modes.keys(), key=lambda k: abs(k - k0))][i]
+            i = min(len(options)-1, self.selected_mode)
+        return options[i]
     
     def global_field_function(self, k0: float = 0, which: Literal['E','H'] = 'E') -> Callable:
         ''' The field function used to compute the E-field. 

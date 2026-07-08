@@ -59,7 +59,7 @@ class MatProperty:
         self._z: np.ndarray = np.array([], dtype=np.float64)
         
         self._fmax = lambda f: value
-
+        
     def initialize(self, x: np.ndarray, y: np.ndarray, z: np.ndarray, ids: np.ndarray) -> None:
         self._apply_to = np.concatenate([self._apply_to, ids])
         self._x = np.concatenate([self._x, x])

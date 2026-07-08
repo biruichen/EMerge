@@ -78,13 +78,13 @@ m.mw.set_frequency_range(0.2e9, 8e9, 41)
 # With the set_boundary_size(method) we can define a meshing resolution for the edges of boundaries.
 # This is adviced for small stripline structures.
 # The growth_rate setting allows us to change how fast the mesh size will recover to the original size.
-m.mesher.set_boundary_size(polies, 0.5*mm, growth_rate=1.2)
-m.mesher.set_face_size(p1, 1*mm)
-m.mesher.set_face_size(p2, 1*mm)
+m.mesher.set_boundary_size(polies, 1*mm, growth_rate=1.2)
+m.mesher.set_face_size(p1, 2*mm)
+m.mesher.set_face_size(p2, 2*mm)
 
 # Finally we generate our mesh and view it
 m.generate_mesh()
-m.view(plot_mesh=True)
+m.view()
 # We can now define the modal ports for the in and outputs and set the conductor to PEC.
 port1 = m.mw.bc.ModalPort(p1, 1, TEM=True)
 port2 = m.mw.bc.ModalPort(p2, 2, TEM=True)

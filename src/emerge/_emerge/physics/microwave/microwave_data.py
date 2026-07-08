@@ -18,7 +18,7 @@
 from __future__ import annotations
 from ...simulation_data import BaseDataset, DataContainer
 from ...elements.femdata import FEMBasis
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 from typing import Literal
 from loguru import logger
@@ -372,6 +372,7 @@ class EHField:
     freq: float
     er: np.ndarray
     ur: np.ndarray
+    aux: dict[str, np.ndarray] = field(default_factory=dict)
 
     @property
     def k0(self) -> float:
@@ -537,7 +538,7 @@ class EHField:
         
         return self.x, self.y, self.z, Fx, Fy, Fz
     
-    def scalar(self, field: Literal['Ex','Ey','Ez','Hx','Hy','Hz','normE','normH'], metric: Literal['abs','real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def scalar(self, field: Literal['Ex','Ey','Ez','Hx','Hy','Hz','normE','normH'] | str, metric: Literal['abs','real','imag','complex'] = 'real') -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Returns the data X, Y, Z, Field based on the interpolation
 
         For animations, make sure to select the complex metric.
@@ -549,7 +550,11 @@ class EHField:
         Returns:
             (X,Y,Z,Field): The coordinates plus field scalar
         """
-        field_arry = getattr(self, field)
+        if field in self.aux:
+            field_arry = self.aux[field]
+        else:
+            field_arry = getattr(self, field)
+        
         if metric=='abs':
             field = np.abs(field_arry)
         elif metric=='real':
@@ -666,6 +671,10 @@ class MWField:
         self.excitation = {key: 0.0 for key in self._fields.keys()}
         self.excitation[self.port_modes[0].port_number] = 1.0 + 0j
 
+    def excite_port(self, number: int) -> None:
+        self.excitation = {key: 0.0 for key in self._fields.keys()}
+        self.excitation[self.port_modes[number].port_number] = 1.0 + 0j
+        
     @property
     def EH(self) -> tuple[np.ndarray, np.ndarray]:
         ''' Return the electric and magnetic field as a tuple of numpy arrays '''
@@ -726,12 +735,20 @@ class MWField:
         self.Hx = Hx.reshape(shp)
         self.Hy = Hy.reshape(shp)
         self.Hz = Hz.reshape(shp)
-
+        
         self._x = xs
         self._y = ys
         self._z = zs
-        return EHField(xs, ys, zs, self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz, self.freq, self.er, self.ur)
-
+        field = EHField(xs, ys, zs, self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz, self.freq, self.er, self.ur)
+        
+        return field
+    
+    def _solution_quality(self) -> tuple[np.ndarray, np.ndarray]:
+        from .adaptive_mesh import compute_error_estimate
+        
+        error_tet, max_elem_size = compute_error_estimate(self)
+        return error_tet, max_elem_size
+        
     def boundary(self,
                  selection: FaceSelection) -> EHField:
         nodes = self.mesh.nodes
