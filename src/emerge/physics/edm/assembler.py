@@ -16,17 +16,18 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from ...bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC
+from ...bc import PEC, BoundaryCondition, RectangularWaveguide, RobinBC, PortBC, Periodic
 from ...elements.legrange2 import Legrange2
 from ...elements.nedelec2 import Nedelec2
 from ...elements.nedleg2 import NedelecLegrange2
 from ...mth.optimized import gaus_quad_tri
 from ...mth.tri import ned2_tri_stiff_force
-from scipy.sparse import lil_matrix, csr_matrix
+from scipy.sparse import lil_matrix, csr_matrix, eye
 from loguru import logger
 from typing import Callable
 import time
 from numba import types, njit, f8, i8, c16
+from collections import defaultdict
 
 c0 = 299792458
 
@@ -59,6 +60,8 @@ def diagnose_matrix(mat: np.ndarray) -> None:
     logger.info('Diagnostics finished')
 
 #############
+def gen_key(coord, mult):
+    return tuple([int(round(c*mult)) for c in coord])
 
 @njit(types.Tuple((f8[:],f8[:]))(f8[:,:], i8[:,:], f8[:,:], i8[:]), cache=True, nogil=True)
 def generate_points(vertices_local, tris, DPTs, surf_triangle_indices):
@@ -202,6 +205,22 @@ def tri_tem_stiffness_matrix(field: Nedelec2,
         
     return field.generate_csr(K)
 
+class EMFreqData:
+    def __init__(self,
+                 A: csr_matrix,
+                 b: np.ndarray,
+                 solve_ids: np.ndarray,
+                 port_vectors: dict[int, np.ndarray],
+                 Pmat: csr_matrix,
+                 has_periodic: bool):
+        self.A: csr_matrix = A
+        self.b: np.ndarray = b
+        self.solve_ids: np.ndarray = solve_ids
+        self.port_vectors: dict[int, np.ndarray] = port_vectors
+        self.Pmat: csr_matrix = Pmat
+        self.has_periodic: bool = has_periodic
+        self.Pmat_dag = self.Pmat.conjugate().transpose()
+
 class Assembler:
 
     def __init__(self):
@@ -314,7 +333,7 @@ class Assembler:
                         ur: np.ndarray, 
                         bcs: list[BoundaryCondition],
                         frequency: float,
-                        cache_matrices: bool = False) -> tuple[csr_matrix, np.ndarray, np.ndarray, dict[int, np.ndarray]]:
+                        cache_matrices: bool = False) -> EMFreqData:
         
         from .optimized_assembly import tet_mass_stiffness_matrices
 
@@ -332,12 +351,13 @@ class Assembler:
         
         K: csr_matrix = (E - B*(k0**2)).tocsr()
 
+        NF = E.shape[0]
         logger.debug('Starting second order boundary conditions.')
 
         pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
         robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
         ports: list[PortBC] = [bc for bc in bcs if isinstance(bc, PortBC)]
-        
+        periodic: list[Periodic] = [bc for bc in bcs if isinstance(bc, Periodic)]
 
         b = np.zeros((E.shape[0],)).astype(np.complex128)
         port_vectors = {port.port_number: np.zeros((E.shape[0],)).astype(np.complex128) for port in ports}
@@ -345,6 +365,7 @@ class Assembler:
         pec_ids = []
         logger.debug('Implementing PEC BCs')
         
+        # PEC
         for pec in pecs:
             face_tags = pec.tags
             tri_ids = mesh.get_triangles(face_tags)
@@ -358,7 +379,9 @@ class Assembler:
                 tids = field.tri_to_field[:, ii]
                 pec_ids.extend(list(tids))
 
-        logger.debug('Implementing Port BCs')
+
+        # Robin BCs
+        logger.debug('Implementing Robin BCs')
         gauss_points = gaus_quad_tri(4)
         for bc in robin_bcs:
             face_tags = bc.tags
@@ -381,8 +404,82 @@ class Assembler:
                 B_p = assemble_robin_bc(field, tri_ids, gamma)
             if bc._include_stiff:
                 K = K + B_p
+        
+        logger.debug('Implementing Periodic BCs')
+        # Periodic BCs
+        Pmat = eye(NF, format='lil', dtype=np.complex128)
+        remove = set()
+        has_periodic = False
+        for bc in periodic:
+            has_periodic = True
+            tri_ids_1 = mesh.get_triangles(bc.face1.tags)
+            tri_ids_2 = mesh.get_triangles(bc.face2.tags)
+            dv = np.array(bc.dv)
+            trimapdict = defaultdict(lambda: [-1, -1])
+            edgemapdict = defaultdict(lambda: [-1, -1])
+            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+1))
+            
+            edge_ids_1 = set()
+            edge_ids_2 = set()
+            
+            phi = bc.phi(k0)
+            for i1, i2 in zip(tri_ids_1, tri_ids_2):
+                trimapdict[gen_key(mesh.tri_centers[:,i1], mult)][0] = i1
+                trimapdict[gen_key(mesh.tri_centers[:,i2]-dv, mult)][1] = i2
+                ie1, ie2, ie3 = mesh.tri_to_edge[:,i1]
+                edge_ids_1.update({ie1, ie2, ie3})
+                ie1, ie2, ie3 = mesh.tri_to_edge[:,i2]
+                edge_ids_2.update({ie1, ie2, ie3})
+            
+            for i1, i2 in zip(list(edge_ids_1), list(edge_ids_2)):
+                edgemapdict[gen_key(mesh.edge_centers[:,i1], mult)][0] = i1
+                edgemapdict[gen_key(mesh.edge_centers[:,i2]-dv, mult)][1] = i2
+
+            
+            for t1, t2 in trimapdict.values():
+                f1, f2 = field.tri_to_field[[3,7],t1]
+                f12, f22 = field.tri_to_field[[3,7],t2]
+                if Pmat[f12,f1] == 0:
+                    Pmat[f12,f1] += phi
+                else:
+                    Pmat[f12,f1] *= phi
+                
+                if Pmat[f22,f2] == 0:
+                    Pmat[f22,f2] += phi
+                else:
+                    Pmat[f22,f2] *= phi
+                remove.add(f12)
+                remove.add(f22)
+                
+            for e1, e2 in edgemapdict.values():
+                f1, f2 = field.edge_to_field[:,e1]
+                f12, f22 = field.edge_to_field[:,e2]
+                if Pmat[f12,f1] == 0:
+                    Pmat[f12,f1] += phi
+                else:
+                    Pmat[f12,f1] *= phi
+                
+                if Pmat[f22,f2] == 0:
+                    Pmat[f22,f2] += phi
+                else:
+                    Pmat[f22,f2] *= phi
+                remove.add(f12)
+                remove.add(f22)
+        
+        Pmat = Pmat.tocsr()
+        remove = np.array(sorted(list(remove)))
+        all_indices = np.arange(NF)
+        keep_indices = np.setdiff1d(all_indices, remove)
+        Pmat = Pmat[:,keep_indices]
+
         pec_ids = set(pec_ids)
         solve_ids = np.array([i for i in range(E.shape[0]) if i not in pec_ids])
+        
+        if has_periodic:
+            mask = np.zeros((NF,))
+            mask[solve_ids] = 1
+            mask = mask[keep_indices]
+            solve_ids = np.argwhere(mask==1).flatten()
 
         logger.debug(f'Assembly complete! Total of {K.shape[0]} DOF')
-        return K, b, solve_ids, port_vectors
+        return EMFreqData(K, b, solve_ids, port_vectors, Pmat, has_periodic)

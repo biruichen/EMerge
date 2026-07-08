@@ -21,7 +21,7 @@ from ...mesh3d import Mesh3D
 from ...bc import BoundaryCondition, PEC, ModalPort, LumpedPort, PortBC
 from .emdata import EMSimData
 from ...elements.femdata import FEMBasis
-from .assembler import Assembler
+from .assembler import Assembler, EMFreqData
 from ...solver import DEFAULT_ROUTINE, SolveRoutine
 from ...selection import FaceSelection
 from ...mth.sparam import sparam_field_power, sparam_mode_power
@@ -545,16 +545,19 @@ class Electrodynamics3D:
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
             logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
-            job = SimJob(self.basis, self.boundary_conditions, freq, True)
             
             # Assembling matrix problem
-            K, b, solve_ids, port_vectors = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+            freqdata = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
 
-            job = SimJob(K, b, freq, True)
-            job.port_vectors = port_vectors
-            job.solve_ids = solve_ids
+            job = SimJob(freqdata.A, freqdata.b, freq, True)
+            job.port_vectors = freqdata.port_vectors
+            job.solve_ids = freqdata.solve_ids
             job.erttri = ertri.copy()
             job.urtri = urtri.copy()
+            if freqdata.has_periodic:
+                job.P = freqdata.Pmat
+                job.Pd = freqdata.Pmat_dag
+                job.has_periodic = True
             jobs.append(job)
         
         
@@ -706,7 +709,7 @@ class Electrodynamics3D:
                                          Pout= port.power)
             
             # Assembling matrix problem
-            K, b, solve_ids, port_vectors = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
+            freqdata = self.assembler.assemble_freq_matrix(self.basis, er, ur, self.boundary_conditions, freq, cache_matrices=True)
         
             logger.debug(f'Routine: {self.solveroutine}')
             
@@ -715,11 +718,16 @@ class Electrodynamics3D:
             for active_port in all_ports:
                 # Set port as active and add the port mode to the forcing vector
                 active_port.active = True
-                b_active = b + port_vectors[active_port.port_number]
-
+                b_active = freqdata.b + freqdata.port_vectors[active_port.port_number]
+                A = freqdata.A
+                if freqdata.has_periodic:
+                    b_active = freqdata.Pmat_dag @ b_active
+                    A = freqdata.Pmat_dag @ A @ freqdata.Pmat
                 # Solve the Ax=b problem
-                solution = self.solveroutine.solve(K,b_active,solve_ids, reuse=reuse_factorization)
+                solution = self.solveroutine.solve(A,b_active,freqdata.solve_ids, reuse=reuse_factorization)
 
+                if freqdata.has_periodic:
+                    solution = freqdata.Pmat @ solution
                 # From now reuse the factorization
                 reuse_factorization = True
 
