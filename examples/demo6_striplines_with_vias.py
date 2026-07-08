@@ -11,7 +11,7 @@ PCB related demos (demo1 and demo3) to get more information on the PCBLayouter.
 mm = 0.001
 th = 1
 
-model = em.Simulation3D('Stripline_test', loglevel='DEBUG')
+model = em.Simulation('Stripline_test', loglevel='DEBUG')
 # As usual we start by creating our layouter
 ly = em.geo.PCB(th, mm, em.GCS, em.lib.DIEL_RO4350B)
 
@@ -43,9 +43,9 @@ ly.determine_bounds(5,5,5,5)
 
 # Finally we can generate the PCB volumes. Because the trace start halfway through the PCB we turn
 # on the split-z function which cuts the PCB in multiple layers. This improves meshing around the striplines.
-diel = ly.gen_pcb(True, merge=True)
+diel = ly.generate_pcb(True, merge=True)
 # We also define the air-box
-air = ly.gen_air(3)
+air = ly.generate_air(3)
 
 # The rest is as usual
 model.commit_geometry()
@@ -75,7 +75,7 @@ pec = model.mw.bc.PEC(trace)
 pecvia = model.mw.bc.PEC(vias.outside())
 
 # Finally we run the simulation!
-data = model.mw.frequency_domain(True, 4, frequency_groups=8)
+data = model.mw.run_sweep(True, 4, frequency_groups=8)
 
 freq = data.scalar.grid.freq
 S11 = data.scalar.grid.S(1,1)

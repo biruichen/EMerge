@@ -42,7 +42,7 @@ rin = 12.5*mil
 lfeed = 100*mil
 
 # A usual we start our simulation file
-model = em.Simulation3D('Combline_DEMO', loglevel='DEBUG')
+model = em.Simulation('Combline_DEMO', loglevel='DEBUG')
 
 
 # The filter consists of quarter lamba cylindrical pins inside an airbox.
@@ -58,10 +58,10 @@ stubs = model.modeler.cyllinder(W/2, model.modeler.series(C1, lr1, lr2, lr1, C1)
 
 # Next we create the in and output feed cyllinders for the coaxial cable. We will use the Nsections feature in order to guarantee a better
 # adherence to the boundary.
-feed1out = em.geo.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=12)
-feed1in = em.geo.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=8)
-feed2out = em.geo.Cyllinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox, 0, h])), Nsections=12)
-feed2in = em.geo.Cyllinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox-wi-W/2, 0, h])), Nsections=8)
+feed1out = em.geo.Cylinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=12)
+feed1in = em.geo.Cylinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([-lfeed, 0, h])), Nsections=8)
+feed2out = em.geo.Cylinder(rout, lfeed, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox, 0, h])), Nsections=12)
+feed2in = em.geo.Cylinder(rin, lfeed+wi+W/2, em.CoordinateSystem(em.ZAX, em.YAX, em.XAX, np.array([Lbox-wi-W/2, 0, h])), Nsections=8)
 
 # Next we subtract the stubs and the center conductor from the box and feedline.
 for ro in stubs:
@@ -94,7 +94,7 @@ port1 = model.mw.bc.ModalPort(model.select.face.near(-lfeed, 0, h), 1, TEM=True)
 port2 = model.mw.bc.ModalPort(model.select.face.near(Lbox+lfeed, 0, h), 2, TEM=True)
 
 # At last we can compute the frequency domain study
-data = model.mw.frequency_domain(parallel=True)
+data = model.mw.run_sweep(parallel=True)
 
 # Next we will use the Vector Fitting algorithm to model our S-parameters with a Rational function
 

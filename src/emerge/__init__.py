@@ -44,7 +44,7 @@ from loguru import logger
 LOG_CONTROLLER.set_default()
 logger.debug('Importing modules')
 
-from ._emerge.simmodel import Simulation3D
+from ._emerge.simmodel import Simulation
 from ._emerge.material import Material
 from ._emerge import bc
 from ._emerge.solver import SolverBicgstab, SolverGMRES, SolveRoutine, ReverseCuthillMckee, Sorter, SolverPardiso, SolverUMFPACK, SolverSuperLU, EMSolver
