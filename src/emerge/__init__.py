@@ -20,8 +20,8 @@ import os
 
 NTHREADS = "1"
 
-os.environ["OMP_NUM_THREADS"] = NTHREADS
-os.environ["MKL_NUM_THREADS"] = NTHREADS
+os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["MKL_NUM_THREADS"] = "4"
 os.environ["OPENBLAS_NUM_THREADS"] = NTHREADS
 os.environ["VECLIB_MAXIMUM_THREADS"] = NTHREADS
 os.environ["NUMEXPR_NUM_THREADS"] = NTHREADS

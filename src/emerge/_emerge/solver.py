@@ -32,32 +32,14 @@ from enum import Enum
 
 _PARDISO_AVAILABLE = False
 _UMFPACK_AVAILABLE = False
-_PARDISO_ERROR_CODES = """
-   0 | No error.
-  -1 | Input inconsistent.
-  -2 | Not enough memory.
-  -3 | Reordering problem.
-  -4 | Zero pivot, numerical fac. or iterative refinement problem.
-  -5 | Unclassified (internal) error.
-  -6 | Preordering failed (matrix types 11(real and nonsymmetric), 13(complex and nonsymmetric) only).
-  -7 | Diagonal Matrix problem.
-  -8 | 32-bit integer overflow problem.
- -10 | No license file pardiso.lic found.
- -11 | License is expired.
- -12 | Wrong username or hostname.
--100 | Reached maximum number of Krylov-subspace iteration in iterative solver.
--101 | No sufficient convergence in Krylov-subspace iteration within 25 iterations.
--102 | Error in Krylov-subspace iteration.
--103 | Bread-Down in Krylov-subspace iteration
-"""
+
 """ Check if the PC runs on a non-ARM architechture
 If so, attempt to import PyPardiso (if its installed)
 """
 
 if 'arm' not in platform.processor():
     try:
-        from pypardiso import spsolve as pardiso_solve
-        from pypardiso.pardiso_wrapper import PyPardisoError
+        from .pardiso.pardiso_solver import PyPardisoSolver, PyPardisoError
         _PARDISO_AVAILABLE = True
     except ModuleNotFoundError as e:
         logger.info('Pardiso not found, defaulting to SuperLU')
@@ -426,12 +408,12 @@ class SolverUMFPACK(Solver):
 
 class SolverPardiso(Solver):
     """ Implements the PARDISO solver through PyPardiso. """
-    real_only: bool = True
+    real_only: bool = False
     req_sorter: bool = False
 
     def __init__(self):
         super().__init__()
-
+        self.solver: PyPardisoSolver = PyPardisoSolver()
         self.A: np.ndarray = None
         self.b: np.ndarray = None
     
@@ -439,11 +421,7 @@ class SolverPardiso(Solver):
         logger.info(f'Calling Pardiso Solver. ID={id}')
         self.A = A
         self.b = b
-        try:
-            x = pardiso_solve(A, b)
-        except PyPardisoError as e:
-            print('Error Codes:')
-            print(_PARDISO_ERROR_CODES)
+        x = self.solver.solve(A, b)
         return x, 0
     
 ## -----  DIRECT EIG SOLVERS --------------------------------------
