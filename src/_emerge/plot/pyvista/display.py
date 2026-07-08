@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from ...mesh3d import Mesh3D
 from ...geometry import GeoObject
-from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection
+from ...selection import FaceSelection, DomainSelection, EdgeSelection, Selection, encode_data, decode_data
 from ...bc import PortBC
 import numpy as np
 import pyvista as pv
@@ -26,6 +26,7 @@ from typing import Iterable, Literal, Callable
 from ..display import BaseDisplay
 from .display_settings import PVDisplaySettings
 from matplotlib.colors import ListedColormap
+
 ### Color scale
 
 # Define the colors we want to use
@@ -189,36 +190,59 @@ class _AnimObject:
 
 class PVDisplay(BaseDisplay):
 
-    def __init__(self, mesh: Mesh3D, plotter: pv.Plotter = None):
+    def __init__(self, mesh: Mesh3D):
         self._mesh: Mesh3D = mesh
         self.set: PVDisplaySettings = PVDisplaySettings()
-        if plotter is None:
-            self._reset()
-        else:
-            self._plot: pv.Plotter = plotter
         
         # Animation options
+        self._facetags: list[int] = []
         self._stop: bool = False
         self._objs: list[_AnimObject] = []
         self._do_animate: bool = False
         self._Nsteps: int = None
         self._fps: int = 25
         self._ruler: ScreenRuler = ScreenRuler(self, 0.001)
-        
+        self._selector: ScreenSelector = ScreenSelector(self)
+        self._stop = False
+        self._objs = []
+
+        self._plot = pv.Plotter()
+
+        self._plot.add_key_event("m", self.activate_ruler)
+        self._plot.add_key_event("f", self.activate_object)
+
+    def activate_ruler(self):
+        self._plot.disable_picking()
+        self._selector.turn_off()
+        self._ruler.toggle()
+
+    def activate_object(self):
+        self._plot.disable_picking()
+        self._ruler.turn_off()
+        self._selector.toggle()
 
     def show(self):
         """ Shows the Pyvista display. """
-        self._ruler.min_length = min(self._mesh.edge_lengths)
+        self._ruler.min_length = max(1e-5, min(self._mesh.edge_lengths))
         self._add_aux_items()
         if self._do_animate:
             self._plot.show(auto_close=False, interactive_update=True, before_close_callback=self._close_callback)
             self._animate()
         else:
-            self._plot.show(auto_close=False, interactive_update=False, )
+            self._plot.show()
         self._reset()
     
+    def set_mesh(self, mesh: Mesh3D):
+        """Define the mesh to be used
+
+        Args:
+            mesh (Mesh3D): The mesh object
+        """
+        self._mesh = mesh
+
     def _reset(self):
         """ Resets key display parameters."""
+        self._plot.close()
         self._plot = pv.Plotter()
         self._stop = False
         self._objs = []
@@ -227,8 +251,6 @@ class PVDisplay(BaseDisplay):
         """The private callback function that stops the animation.
         """
         self._stop = True
-
-   
 
     def _animate(self) -> None:
         """Private function that starts the animation loop.
@@ -243,7 +265,6 @@ class PVDisplay(BaseDisplay):
                     aobj.update(phi)
                 self._plot.update()
                 time.sleep(1/self._fps)
-        self._stop = False
 
     def animate(self, Nsteps: int = 35, fps: int = 25) -> PVDisplay:
         """ Turns on the animation mode with the specified number of steps and FPS.
@@ -349,7 +370,7 @@ class PVDisplay(BaseDisplay):
             Fnorm = np.sqrt(Fx.real**2 + Fy.real**2 + Fz.real**2)
 
         grid = pv.StructuredGrid(X,Y,Z)
-        self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8)
+        self._plot.add_mesh(grid, scalars = Fnorm, opacity=0.8, pickable=False)
 
         Emag = F/np.max(Fnorm.flatten())*d*3
         self._plot.add_arrows(np.array([xf,yf,zf]).T, Emag)
@@ -405,7 +426,7 @@ class PVDisplay(BaseDisplay):
             lim = max(abs(clim[0]),abs(clim[1]))
             clim = (-lim, lim)
 
-        kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity)
+        kwargs = setdefault(kwargs, cmap=cmap, clim=clim, opacity=opacity, pickable=False)
         actor = self._plot.add_mesh(grid, scalars='anim', **kwargs)
 
         if self._animate:
@@ -482,7 +503,7 @@ class PVDisplay(BaseDisplay):
         grid['anim'] = np.real(field)
         levels = np.linspace(vmin, vmax, Nlevels)
         contour = grid.contour(isosurfaces=levels)
-        actor = self._plot.add_mesh(contour, opacity=0.25, cmap=cmap)
+        actor = self._plot.add_mesh(contour, opacity=0.25, cmap=cmap, pickable=False)
 
         if self._animate:
             def on_update(obj: _AnimObject, phi: complex):
@@ -519,6 +540,7 @@ class PVDisplay(BaseDisplay):
                 color='red',
                 opacity=self.set.plane_opacity,
                 show_edges=False,
+                pickable=False,
             )
             self._plot.add_mesh(
                 plane,
@@ -527,6 +549,7 @@ class PVDisplay(BaseDisplay):
                 color='red',
                 line_width=self.set.plane_edge_width,
                 style='wireframe',
+                pickable=False,
             )
             
         if self.set.draw_yplane:
@@ -543,6 +566,7 @@ class PVDisplay(BaseDisplay):
                 color='green',
                 opacity=self.set.plane_opacity,
                 show_edges=False,
+                pickable=False,
             )
             self._plot.add_mesh(
                 plane,
@@ -551,6 +575,7 @@ class PVDisplay(BaseDisplay):
                 color='green',
                 line_width=self.set.plane_edge_width,
                 style='wireframe',
+                pickable=False,
             )
         if self.set.draw_zplane:
             plane = pv.Plane(
@@ -566,6 +591,7 @@ class PVDisplay(BaseDisplay):
                 color='blue',
                 opacity=self.set.plane_opacity,
                 show_edges=False,
+                pickable=False,
             )
             self._plot.add_mesh(
                 plane,
@@ -574,6 +600,7 @@ class PVDisplay(BaseDisplay):
                 color='blue',
                 line_width=self.set.plane_edge_width,
                 style='wireframe',
+                pickable=False,
             )
         # Draw X-axis
         if getattr(self.set, 'draw_xax', False):
@@ -585,6 +612,7 @@ class PVDisplay(BaseDisplay):
                 x_line,
                 color='red',
                 line_width=self.set.axis_line_width,
+                pickable=False,
             )
 
         # Draw Y-axis
@@ -597,6 +625,7 @@ class PVDisplay(BaseDisplay):
                 y_line,
                 color='green',
                 line_width=self.set.axis_line_width,
+                pickable=False,
             )
 
         # Draw Z-axis
@@ -609,6 +638,7 @@ class PVDisplay(BaseDisplay):
                 z_line,
                 color='blue',
                 line_width=self.set.axis_line_width,
+                pickable=False,
             )
 
         exponent = np.floor(np.log10(length))
@@ -629,7 +659,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(-L, y, 0),
                     pointb=(L, y, 0)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5,pickable=False)
 
             # lines parallel to Y
             for x in x_vals:
@@ -637,7 +667,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(x, -L, 0),
                     pointb=(x, L, 0)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5,pickable=False)
 
 
         # YZ grid at X=0
@@ -651,7 +681,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(0, -L, z),
                     pointb=(0, L, z)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5, pickable=False)
 
             # lines parallel to Z
             for y in y_vals:
@@ -659,7 +689,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(0, y, -L),
                     pointb=(0, y, L)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5, pickable=False)
 
 
         # XZ grid at Y=0
@@ -673,7 +703,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(-length, 0, z),
                     pointb=(length, 0, z)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5, pickable=False)
 
             # lines parallel to Z
             for x in x_vals:
@@ -681,7 +711,7 @@ class PVDisplay(BaseDisplay):
                     pointa=(x, 0, -length),
                     pointb=(x, 0, length)
                 )
-                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5)
+                self._plot.add_mesh(line, color=self.set.grid_line_color, line_width=self.set.grid_line_width, opacity=0.5, edge_opacity=0.5, pickable=False)
 
         if self.set.add_light:
             light = pv.Light()
@@ -710,6 +740,76 @@ def freeze(function):
         self.disp._plot.render()
     return new_function
 
+
+class ScreenSelector:
+
+    def __init__(self, display: PVDisplay):
+        self.disp: PVDisplay = display
+        self.original_actors: list[pv.Actor] = []
+        self.select_actors: list[pv.Actor] = []
+        self.grids: list[pv.UnstructuredGrid] = []
+        self.surfs: dict[int, np.ndarray] = dict()
+        self.state = False
+
+    def toggle(self):
+        if self.state:
+            self.turn_off()
+        else:
+            self.activate()
+
+    def activate(self):
+        self.original_actors = list(self.disp._plot.actors.values())
+
+        for actor in self.original_actors:
+            if isinstance(actor, pv.Text):
+                continue
+            actor.pickable = False
+        
+        if len(self.grids) == 0:
+            for key in self.disp._facetags:
+                tris = self.disp._mesh.get_triangles(key)
+                ntris = tris.shape[0]
+                cells = np.zeros((ntris,4), dtype=np.int64)
+                cells[:,1:] = self.disp._mesh.tris[:,tris].T
+                cells[:,0] = 3
+                nodes = np.unique(self.disp._mesh.tris[:,tris].flatten())
+                celltypes = np.full(ntris, fill_value=pv.CellType.TRIANGLE, dtype=np.uint8)
+                points = self.disp._mesh.nodes.T
+                grid = pv.UnstructuredGrid(cells, celltypes, points)
+                grid._tag = key
+                self.grids.append(grid)
+                self.surfs[key] = points[nodes,:].T
+        
+        self.select_actors = []
+        for grid in self.grids:
+            actor = self.disp._plot.add_mesh(grid, opacity=0.001, color='red', pickable=True, name=f'FaceTag_{grid._tag}')
+            self.select_actors.append(actor)
+
+        def callback(actor: pv.Actor):
+            key = int(actor.name.split('_')[1])
+            points = self.surfs[key]
+            xs = points[0,:]
+            ys = points[1,:]
+            zs = points[2,:]
+            meanx = np.mean(xs)
+            meany = np.mean(ys)
+            meanz = np.mean(zs)
+            data = (meanx, meany, meanz, min(xs), min(ys), min(zs), max(xs), max(ys), max(zs))
+            encoded = encode_data(data)
+            print(f'Face code key={key}: ', encoded)
+
+        self.disp._plot.enable_mesh_picking(callback, style='surface', left_clicking=True, use_actor=True)
+    
+    def turn_off(self) -> None:
+        for actor in self.select_actors:
+            self.disp._plot.remove_actor(actor)
+        self.select_actors = []
+        for actor in self.original_actors:
+            if isinstance(actor, pv.Text):
+                continue
+            actor.pickable = True
+
+        
 class ScreenRuler:
 
     def __init__(self, display: PVDisplay, min_length: float):
@@ -717,12 +817,11 @@ class ScreenRuler:
         self.points: list[tuple] = [(0,0,0),(0,0,0)]
         self.text: pv.Text = None
         self.ruler = None
-        self.disp._plot.add_key_event("m", lambda: self.toggle_ruler())
         self.state = False
         self.min_length: float = min_length
     
     @freeze
-    def toggle_ruler(self):
+    def toggle(self):
         if not self.state:
             self.state = True
             self.disp._plot.enable_point_picking(self._add_point, left_clicking=True, tolerance=self.min_length)
@@ -730,6 +829,11 @@ class ScreenRuler:
             self.state = False
             self.disp._plot.disable_picking()
 
+    @freeze
+    def turn_off(self):
+        self.state = False
+        self.disp._plot.disable_picking()
+    
     @property
     def dist(self) -> float:
         p1, p2 = self.points

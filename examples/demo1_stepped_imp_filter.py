@@ -26,7 +26,7 @@ pcbmat = em.Material(er=2.2, tand=0.00, color="#217627")
 
 # We start by creating our simulation object.
 
-m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG')
+m = em.Simulation3D('Demo1_SIF', loglevel='DEBUG', save_file=True)
 
 # To accomodate PCB routing we make use of the PCBLayouter class. To use it we need to 
 # supply it with a thickness, the desired air-box height, the units at which we supply
@@ -116,8 +116,8 @@ f, S12 = sol.ax('freq').S(1,2)
 f, S22 = sol.ax('freq').S(2,2)
 
 f = np.linspace(1e9, 10e9, 2001)
-S11 = sol.model_S(1,1)(f)
-S21 = sol.model_S(2,1)(f)
+S11 = sol.model_S(1,1,f)
+S21 = sol.model_S(2,1,f)
 
 smith(f,S11)
 

@@ -93,6 +93,7 @@ class Electrodynamics3D:
         self.basis: FEMBasis = None
         self.solveroutine: SolveRoutine = DEFAULT_ROUTINE
         self.set_order(order)
+        self.cache_matrices: bool = True
 
         ## States
         self._bc_initialized: bool = False
@@ -101,6 +102,9 @@ class Electrodynamics3D:
 
         ## Data
         self._params: dict[str, float] = dict()
+
+    def reset(self):
+        self.basis: FEMBasis = None
 
     def pack_data(self) -> dict:
         datapack = dict(basis = self.basis,
@@ -416,7 +420,7 @@ class Electrodynamics3D:
         end = start + port.direction.np*port.height
 
 
-        port.vintline = Line.from_points(start, end, 11)
+        port.vintline = Line.from_points(start, end, 51)
 
         logger.info(f'Ending node = {_dimstring(end)}')
         port.voltage_integration_points = (start, end)
@@ -615,7 +619,7 @@ class Electrodynamics3D:
                     logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
                     
                     # Assembling matrix problem
-                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=True)
+                    job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
                     job.store_limit = harddisc_threshold
                     job.relative_path = harddisc_path
                     jobs.append(job)
@@ -746,7 +750,7 @@ class Electrodynamics3D:
         for freq in self.frequencies:
             logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
             # Assembling matrix problem
-            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=True)
+            job = self.assembler.assemble_freq_matrix(self.basis, er, ur, cond, self.boundary_conditions, freq, cache_matrices=self.cache_matrices)
             
             logger.debug(f'Routine: {self.solveroutine}')
 
@@ -756,7 +760,7 @@ class Electrodynamics3D:
 
             k0 = 2*np.pi*freq/299792458
 
-            data = self.freq_data.new(basis=self.basis, freq=freq, k0=k0)
+            data = self.freq_data.new(basis=self.basis, freq=freq, k0=k0, **self._params)
             data.init_sp(port_numbers)
             data.er = np.squeeze(er[0,0,:])
             data.ur = np.squeeze(ur[0,0,:])

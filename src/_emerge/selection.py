@@ -91,6 +91,82 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, np
 
 TSelection = TypeVar("TSelection", bound="Selection")
 
+# Your custom alphabet
+ALPHABET = (
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "012345%#"
+)
+# Map char → int and int → char
+CHAR_TO_VAL = {ch: i for i, ch in enumerate(ALPHABET)}
+VAL_TO_CHAR = {i: ch for i, ch in enumerate(ALPHABET)}
+
+def encode_data(values: tuple[float,...]) -> str:
+    """
+    Convert a tuple of floats into a custom base64-like encoded string
+    using 16-bit float representation and a 64-character alphabet.
+    """
+    # Convert floats to 16-bit half-floats
+    arr = np.array(values, dtype=np.float16)
+    # Get raw bytes
+    byte_data = arr.tobytes()
+    # Convert bytes to a bitstring
+    bitstring = ""
+    for byte in byte_data:
+        bitstring += f"{byte:08b}"
+    
+    # Pad the bitstring to a multiple of 6 bits
+    pad_len = (6 - len(bitstring) % 6) % 6
+    bitstring += "0" * pad_len
+    
+    # Encode 6 bits at a time
+    encoded = ""
+    for i in range(0, len(bitstring), 6):
+        chunk = bitstring[i:i+6]
+        val = int(chunk, 2)
+        encoded += VAL_TO_CHAR[val]
+    
+    # Optionally store how many pad bits we added
+    # so we can remove them during decoding.
+    # We'll prepend it as one character encoding pad_len (0-5).
+    encoded = VAL_TO_CHAR[pad_len] + encoded
+    return encoded
+
+def decode_data(encoded: str) -> tuple[float,...]:
+    """
+    Decode a string produced by floats_to_custom_string
+    back into a tuple of float64 values.
+    """
+    # The first character encodes how many zero bits were padded
+    pad_char = encoded[0]
+    pad_len = CHAR_TO_VAL[pad_char]
+    data = encoded[1:]
+    
+    # Convert each char back to 6 bits
+    bitstring = ""
+    for ch in data:
+        val = CHAR_TO_VAL[ch]
+        bitstring += f"{val:06b}"
+    
+    # Remove any padding bits at the end
+    if pad_len > 0:
+        bitstring = bitstring[:-pad_len]
+    
+    # Split into bytes
+    byte_data = []
+    for i in range(0, len(bitstring), 8):
+        byte_chunk = bitstring[i:i+8]
+        if len(byte_chunk) < 8:
+            break
+        byte_val = int(byte_chunk, 2)
+        byte_data.append(byte_val)
+    
+    byte_array = bytes(byte_data)
+    # Recover as float16
+    arr = np.frombuffer(byte_array, dtype=np.float16)
+    # Convert back to float64 for higher precision
+    return tuple(np.array(arr, dtype=np.float64))
+
 class Selection:
     """A generalized class representing a slection of tags.
 
@@ -467,4 +543,26 @@ class Selector:
                 tags.append(t)
         return FaceSelection(tags)
     
+    def code(self, code: str):
+        nums1 = decode_data(code)
+        
+        dimtags = gmsh.model.getEntities(2)
+        
+        scoring = dict()
+        for dim, tag in dimtags:
+            x1, y1, z1 = gmsh.model.occ.getCenterOfMass(2, tag)
+            xmin2, ymin2, zmin2, xmax2, ymax2, zmax2 = gmsh.model.occ.getBoundingBox(dim, tag)
+            nums2 = [x1, y1, z1, xmin2, ymin2, zmin2, xmax2, ymax2, zmax2]
+            score = np.sqrt(sum([(a-b)**2 for a,b in zip(nums1, nums2)]))
+            scoring[tag] = score
+        
+        min_val = min(scoring.values())
+
+        # Find all keys whose value == min_val
+        candidates = [k for k, v in scoring.items() if v == min_val]
+
+        # Pick the lowest key
+        lowest_key = min(candidates)
+        return FaceSelection([lowest_key,])
+
 SELECTOR_OBJ = Selector()

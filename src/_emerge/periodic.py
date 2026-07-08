@@ -25,10 +25,24 @@ class PeriodicCell:
         self._bcs: list[Periodic] = []
 
     def volume(self, z1: float, z2: float) -> GeoPrism:
+        """Genereates a volume with the cell geometry ranging from z1 tot z2
+
+        Args:
+            z1 (float): The start height
+            z2 (float): The end height
+
+        Returns:
+            GeoPrism: The resultant prism
+        """
         raise NotImplementedError('This method is not implemented for this subclass.')
     
     def cell_data(self) -> Generator[tuple[FaceSelection,FaceSelection,tuple[float, float, float]], None, None]:
-        pass
+        """An iterator that yields the two faces of the hex cell plus a cell periodicity vector
+
+        Yields:
+            Generator[np.ndarray, np.ndarray, np.ndarray]: The face and periodicity data
+        """
+        raise NotImplementedError('This method is not implemented for this subclass.')
 
     def bcs(self, exclude_faces: list[FaceSelection] = None) -> list[Periodic]:
         """Returns a list of Periodic boundary conditions for the given PeriodicCell
@@ -69,10 +83,21 @@ class PeriodicCell:
             bc.uz = uz
 
 class RectCell(PeriodicCell):
+    """This class represents the unit cell environment of a regular rectangular tiling.
 
+    Args:
+        PeriodicCell (_type_): _description_
+    """
     def __init__(self, 
                  width: float,
                  height: float,):
+        """The RectCell class represents a regular rectangular tiling in the XY plane where
+        the width is along the X-axis (centered at x=0) and the height along the Y-axis (centered at y=0)
+
+        Args:
+            width (float): The Cell width
+            height (float): The Cell height
+        """
         v1 = (width, 0, 0)
         o1 = (-width/2, 0, 0)
         v2 = (0, height, 0)
@@ -133,6 +158,7 @@ class HexCell(PeriodicCell):
         n1 = _rotnorm(p2-p1)
         n2 = _rotnorm(p3-p2)
         n3 = _rotnorm(p4-p3)
+        
         super().__init__([o1, o2, o3], [n1,n2,n3])
 
         self.f11 = (o1, n1)
@@ -142,7 +168,7 @@ class HexCell(PeriodicCell):
         self.f22 = (-o2, n2)
         self.f32 = (-o3, n3)
 
-    def cell_data(self):
+    def cell_data(self) -> Generator[FaceSelection, FaceSelection, np.ndarray]:
         nrm = np.linalg.norm
 
         o = self.o1[:-1]

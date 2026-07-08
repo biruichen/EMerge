@@ -1,5 +1,4 @@
 import emerge as em
-from emerge.pyvista import PVDisplay
 from emerge.plot import plot_sp
 
 """PCB Vias
@@ -12,7 +11,7 @@ PCB related demos (demo1 and demo3) to get more information on the PCBLayouter.
 mm = 0.001
 th = 1
 
-model = em.Simulation3D('Stripline_test', PVDisplay)
+model = em.Simulation3D('Stripline_test', loglevel='DEBUG')
 # As usual we start by creating our layouter
 ly = em.geo.PCBLayouter(th, mm, em.GCS, em.lib.ROGERS_4350B)
 
@@ -22,8 +21,8 @@ ly = em.geo.PCBLayouter(th, mm, em.GCS, em.lib.ROGERS_4350B)
 # The .via(...) method allows one to add a via geometry to the PCBLayouter that can be extracted later
 # A user may decide whether to proceed or not beyond the via. More information can be found in the 
 # docstring of the method. The vias can be created later.
-ly.new(0,0,2,(1,0), -th/2).store('p1').straight(10).turn(90).straight(10).turn(-90)\
-    .straight(2).via(0, 0.5, True).straight(8).via(-th/2, 0.5).straight(2)\
+ly.new(0,0,1,(1,0), -th/2).store('p1').straight(10).turn(90).straight(10).turn(-90)\
+    .straight(2).via(0, 0.2, True).straight(8).via(-th/2, 0.2).straight(2)\
         .turn(-90).straight(10).turn(90).straight(10).store('p2')
 
 # As usual we compile the traces as a merger of polygons
@@ -53,7 +52,7 @@ model.define_geometry(diel, lp1, lp2, trace, air, vias)
 
 model.view()
 
-model.physics.set_frequency_range(2e9, 3e9, 21)
+model.physics.set_frequency_range(1e9, 6e9, 11)
 model.mesher.set_boundary_size(trace, 0.001)
 
 model.generate_mesh()
