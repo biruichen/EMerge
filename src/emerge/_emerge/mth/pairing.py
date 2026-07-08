@@ -47,7 +47,6 @@ def link_coords(coords: np.ndarray, ids1: np.ndarray, ids2: np.ndarray, disp: np
     for i1 in range(N):
         ictr = 0
         c1 = coords[:,ids1[i1]]
-
         for i2 in range(id_start, N):
             if available[i2] == 0:
                 continue
@@ -91,7 +90,7 @@ def pair_coordinates(coords: np.ndarray, ids1: np.ndarray, ids2: np.ndarray, dis
     ids2_c_sorted = sorted(ids2, key= lambda x: tuple(coords[:,x]-disp))
 
     mapping = link_coords(coords, np.array(ids1_c_sorted), np.array(ids2_c_sorted), disp, dsmax)
-
+    
     mapping = {i: j for i,j in zip(mapping[0,:], mapping[1,:])}
     
     return mapping

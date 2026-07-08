@@ -31,7 +31,7 @@ def _pair_selection(f1: Selection, f2: Selection, translation: tuple[float, floa
     f2s = []
     for t1, c1 in zip(f1.tags, c1s):
         for t2, c2 in zip(f2.tags, c2s):
-            if np.linalg.norm((c1 + ds)-c2) < 1e-6:
+            if np.linalg.norm((c1 + ds)-c2) < 1e-8:
                 f1s.append(Selection([t1,]))
                 f2s.append(Selection([t2,]))
     return f1s, f2s

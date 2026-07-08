@@ -536,7 +536,7 @@ class Selector:
                 nx: float,
                 ny: float,
                 nz: float,
-                tolerance: float = 1e-6) -> FaceSelection:
+                tolerance: float = 1e-8) -> FaceSelection:
         """Returns a FaceSelection for all faces that lie in a provided infinite plane
         specified by an origin plus a plane normal vector.
 

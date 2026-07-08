@@ -18,7 +18,6 @@ from ._emerge.const import C0, Z0, PI, EPS0, MU0
 EISO: float = (Z0/(2*PI))**0.5
 EOMNI = (3*Z0/(4*PI))**0.5
 
-
 ##MATERIALS 
 VACUUM = Material(color="#2d8cd5", opacity=0.05)
 
@@ -80,9 +79,14 @@ LIQ_FERRITE   = Material(er=12.0,    ur=2000, tand=0.02, color="#994d4d", opacit
 ############################################################
 #                        DIELECTRICS                       #
 ############################################################
-DIEL_PTFE      = Material(er=2.1,     tand=0.0002,       color="#21912b", opacity=0.3)
-DIEL_POLYIMIDE = Material(er=3.4,     tand=0.02,         color="#b8b8b8")
-DIEL_CERAMIC   = Material(er=6.0,     tand=0.001,        color="#efead1")
+
+#  TRADEMARKS: All product names (e.g. “DUROID”) are the property of their
+#  respective owners.  Use of them here does not imply any affiliation with or
+#  endorsement by those owners.
+
+DIEL_PTFE = Material(er=2.1, tand=0.0002, color="#21912b", opacity=0.3)
+DIEL_POLYIMIDE = Material(er=3.4, tand=0.02, color="#b8b8b8")
+DIEL_CERAMIC = Material(er=6.0, tand=0.001, color="#efead1")
 DIEL_AD10 = Material(er=10.2, tand=0.0078, color="#21912b", opacity=0.3)
 DIEL_AD1000 = Material(er=10.2, tand=0.0023, color="#21912b", opacity=0.3)
 DIEL_AD250 = Material(er=2.5, tand=0.0018, color="#21912b", opacity=0.3)
