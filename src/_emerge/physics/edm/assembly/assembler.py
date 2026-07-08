@@ -95,10 +95,12 @@ class Assembler:
         E, B = generelized_eigenvalue_matrix(nedlegfield, ermesh, urmesh, port.cs._basis, k0)
         
 
-        logger.debug('Implementing PEC BCs')
+       
 
         pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
-        
+        if len(pecs) > 0:
+            logger.debug('Implementing PEC BCs')
+
         pec_ids = []
 
         # Process all concutors. Everything above the conductivity limit is considered pec.
@@ -133,7 +135,6 @@ class Assembler:
                 tids = nedlegfield.tri_to_field[:, i2]
                 pec_ids.extend(list(tids))
 
-        logger.info('Implementing Port BCs')
         port._field = nedlegfield
         port._pece = pec_edges
         port._pecv = pec_vertices
@@ -165,17 +166,16 @@ class Assembler:
         f_dependent_properties = np.any((sig > 0) & (sig < self.conductivity_limit))
         
         if cache_matrices and not f_dependent_properties and self.cached_matrices is not None:
-            logger.debug('Retreiving cached matricies')
+            logger.debug('    Retreiving cached matricies')
             E, B = self.cached_matrices
         else:
-            logger.debug('Assembling matrices')
+            logger.debug('    Assembling matrices')
             E, B = tet_mass_stiffness_matrices(field, er, ur)
             self.cached_matrices = (E, B)
 
         K: csr_matrix = (E - B*(k0**2)).tocsr()
 
         NF = E.shape[0]
-        logger.debug('Starting second order boundary conditions.')
 
         pecs: list[PEC] = [bc for bc in bcs if isinstance(bc,PEC)]
         robin_bcs: list[RectangularWaveguide] = [bc for bc in bcs if isinstance(bc,RobinBC)]
@@ -186,7 +186,8 @@ class Assembler:
         port_vectors = {port.port_number: np.zeros((E.shape[0],)).astype(np.complex128) for port in ports}
         # Process all PEC Boundary Conditions
         pec_ids = []
-        logger.debug('Implementing PEC BCs')
+        
+        logger.debug('    Implementing PEC Boundary Conditions.')
         
         # Conductivity above al imit, consider it all PEC
         for itet in range(field.n_tets):
@@ -195,6 +196,8 @@ class Assembler:
         
         # PEC Boundary conditions
         for pec in pecs:
+            if len(pec.tags)==0:
+                continue
             face_tags = pec.tags
             tri_ids = mesh.get_triangles(face_tags)
             edge_ids = list(mesh.tri_to_edge[:,tri_ids].flatten())
@@ -208,7 +211,8 @@ class Assembler:
                 pec_ids.extend(list(tids))
 
         # Robin BCs
-        logger.debug('Implementing Robin BCs')
+        if len(robin_bcs) > 0:
+            logger.debug('    Implementing Robin Boundary Conditions.')
         gauss_points = gaus_quad_tri(4)
         for bc in robin_bcs:
             face_tags = bc.tags
@@ -232,19 +236,22 @@ class Assembler:
             if bc._include_stiff:
                 K = K + B_p
         
-        logger.debug('Implementing Periodic BCs')
+        if len(periodic) > 0:
+            logger.debug('    Implementing Periodic Boundary Conditions.')
         # Periodic BCs
-        Pmat = eye(NF, format='lil', dtype=np.complex128)
+        Pmats = []
         remove = set()
         has_periodic = False
+
         for bc in periodic:
+            Pmat = eye(NF, format='lil', dtype=np.complex128)
             has_periodic = True
             tri_ids_1 = mesh.get_triangles(bc.face1.tags)
             tri_ids_2 = mesh.get_triangles(bc.face2.tags)
             dv = np.array(bc.dv)
-            trimapdict = defaultdict(lambda: [-1, -1])
-            edgemapdict = defaultdict(lambda: [-1, -1])
-            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+1))
+            trimapdict = defaultdict(lambda: [None, None])
+            edgemapdict = defaultdict(lambda: [None, None])
+            mult = int(10**(-np.round(np.log10(min(mesh.edge_lengths.flatten())))+2))
             
             edge_ids_1 = set()
             edge_ids_2 = set()
@@ -253,6 +260,7 @@ class Assembler:
             for i1, i2 in zip(tri_ids_1, tri_ids_2):
                 trimapdict[gen_key(mesh.tri_centers[:,i1], mult)][0] = i1
                 trimapdict[gen_key(mesh.tri_centers[:,i2]-dv, mult)][1] = i2
+                
                 ie1, ie2, ie3 = mesh.tri_to_edge[:,i1]
                 edge_ids_1.update({ie1, ie2, ie3})
                 ie1, ie2, ie3 = mesh.tri_to_edge[:,i2]
@@ -264,35 +272,44 @@ class Assembler:
 
             
             for t1, t2 in trimapdict.values():
-                f1, f2 = field.tri_to_field[[3,7],t1]
+                f11, f21 = field.tri_to_field[[3,7],t1]
                 f12, f22 = field.tri_to_field[[3,7],t2]
-                if Pmat[f12,f1] == 0:
-                    Pmat[f12,f1] += phi
+                Pmat[f12,f12] = 0
+                Pmat[f22,f22] = 0
+                if Pmat[f12,f11] == 0:
+                    Pmat[f12,f11] += phi
                 else:
-                    Pmat[f12,f1] *= phi
+                    Pmat[f12,f11] *= phi
                 
-                if Pmat[f22,f2] == 0:
-                    Pmat[f22,f2] += phi
+                if Pmat[f22,f21] == 0:
+                    Pmat[f22,f21] += phi
                 else:
-                    Pmat[f22,f2] *= phi
+                    Pmat[f22,f21] *= phi
                 remove.add(f12)
                 remove.add(f22)
                 
             for e1, e2 in edgemapdict.values():
-                f1, f2 = field.edge_to_field[:,e1]
+                f11, f21 = field.edge_to_field[:,e1]
                 f12, f22 = field.edge_to_field[:,e2]
-                if Pmat[f12,f1] == 0:
-                    Pmat[f12,f1] += phi
+                Pmat[f12,f12] = 0
+                Pmat[f22,f22] = 0
+                if Pmat[f12,f11] == 0:
+                    Pmat[f12,f11] += phi
                 else:
-                    Pmat[f12,f1] *= phi
+                    Pmat[f12,f11] *= phi
                 
-                if Pmat[f22,f2] == 0:
-                    Pmat[f22,f2] += phi
+                if Pmat[f22,f21] == 0:
+                    Pmat[f22,f21] += phi
                 else:
-                    Pmat[f22,f2] *= phi
+                    Pmat[f22,f21] *= phi
                 remove.add(f12)
                 remove.add(f22)
+                
+            Pmats.append(Pmat)
         
+        Pmat = Pmats[0]
+        for P2 in Pmats[1:]:
+            Pmat = Pmat @ P2
         Pmat = Pmat.tocsr()
         remove = np.array(sorted(list(remove)))
         all_indices = np.arange(NF)
@@ -316,7 +333,7 @@ class Assembler:
 
         if has_periodic:
             simjob.P = Pmat
-            simjob.Pd = Pmat.conjugate().transpose()
+            simjob.Pd = Pmat.getH()
             simjob.has_periodic = has_periodic
 
         return simjob

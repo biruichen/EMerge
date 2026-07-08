@@ -54,13 +54,13 @@ model.physics.set_frequency_range(1.5e9, 1.7e9, 11)
 model.define_geometry([dielectric, air, rpatch, port])
 
 model.mesher.set_boundary_size(rpatch, 5*mm, 1.1)
-model.mesher.set_boundary_size(port, 0.5*mm, 1.1)
+model.mesher.set_face_size(port, 0.5*mm)
 
 model.generate_mesh()
 
-model.view(selections=[port,])
+#model.view(selections=[port,])
 
-port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, active=True, Z0=50)
+port = em.bc.LumpedPort(port, 1, width=wline, height=th, direction=em.ZAX, Idirection=em.XAX, active=True, Z0=50)
 
 boundary_selection = air.outside('bottom')
 

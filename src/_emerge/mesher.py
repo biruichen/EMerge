@@ -23,6 +23,7 @@ import numpy as np
 from typing import Iterable, Callable
 from loguru import logger
 from enum import Enum
+from .bc import Periodic
 
 class MeshError(Exception):
     pass
@@ -48,6 +49,12 @@ class Algorithm3D(Enum):
     RTREE = 9
     HXT = 10
 
+_DOM_TO_STR = {
+    0: "point",
+    1: "edge",
+    2: "face",
+    3: "volume",
+}
 def unpack_lists(_list: list[list], collector: list = None) -> list:
     '''Unpack a recursive list of lists'''
     if collector is None:
@@ -68,6 +75,7 @@ class Mesher:
         self.mesh_fields: list[int] = []
         self.min_size: float = None
         self.max_size: float = None
+        self.periodic_cell: PeriodicCell = None
 
     @property
     def edge_tags(self) -> list[int]:
@@ -146,7 +154,7 @@ class Mesher:
         
         gmsh.model.occ.synchronize()
 
-    def set_periodic(self, 
+    def _set_periodic_face(self, 
                      face1: FaceSelection,
                      face2: FaceSelection,
                      lattice: tuple[float,float,float]):
@@ -155,7 +163,7 @@ class Mesher:
                        0,0,1,lattice[2],
                        0,0,0,1]
         gmsh.model.mesh.set_periodic(2, face2.tags, face1.tags, translation)
-    
+
     def set_algorithm(self,
                       obj: GeoObject,
                       algorithm: Algorithm3D) -> None:
@@ -166,11 +174,11 @@ class Mesher:
         """Sets the periodic cell information based on the PeriodicCell class object"""
         if excluded_faces is None:
             for f1, f2, lat in cell.cell_data():
-                print(f1, f2, lat)
-                self.set_periodic(f1, f2, lat)
+                self._set_periodic_face(f1, f2, lat)
         else:
             for f1, f2, lat in cell.cell_data():
-                self.set_periodic(f1 - excluded_faces, f2 - excluded_faces, lat)
+                self._set_periodic_face(f1 - excluded_faces, f2 - excluded_faces, lat)
+        self.periodic_cell = cell
 
     def _set_size_in_domain(self, tags: list[int], max_size: float) -> None:
         """Define the size of the mesh inside a domain
@@ -181,6 +189,18 @@ class Mesher:
         """
         ctag = gmsh.model.mesh.field.add("Constant")
         gmsh.model.mesh.field.set_numbers(ctag, "VolumesList", tags)
+        gmsh.model.mesh.field.set_number(ctag, "VIn", max_size)
+        self.mesh_fields.append(ctag)
+
+    def _set_size_on_face(self, tags: list[int], max_size: float) -> None:
+        """Define the size of the mesh on a face
+
+        Args:
+            tags (list[int]): The tags of the geometry
+            max_size (float): The maximum size (in meters)
+        """
+        ctag = gmsh.model.mesh.field.add("Constant")
+        gmsh.model.mesh.field.set_numbers(ctag, "SurfacesList", tags)
         gmsh.model.mesh.field.set_number(ctag, "VIn", max_size)
         self.mesh_fields.append(ctag)
 
@@ -200,7 +220,7 @@ class Mesher:
 
             size = discretizer(obj.material)*resolution*obj.mesh_multiplier
             size = min(size, obj.max_meshsize)
-            logger.info(f'Setting mesh size for domain {obj.dim} {obj.tags} to {size}')
+            logger.info(f'Setting mesh size for {_DOM_TO_STR[obj.dim]} domain with tags {obj.tags} to {1000*size:.3f}mm')
             for tag in obj.tags:
                 size_mapping[tag] = size
         
@@ -222,12 +242,12 @@ class Mesher:
                           size:float,
                           growth_rate: float = 1.1,
                           max_size: float = None):
-        """D
+        """Refine the mesh size along the boundary of a conducting surface
 
         Args:
-            dimtags (list[tuple[int,int]]): _description_
+            object (GeoSurface | FaceSelection): _description_
             size (float): _description_
-            growth_distance (float, optional): _description_. Defaults to 5.
+            growth_rate (float, optional): _description_. Defaults to 1.1.
             max_size (float, optional): _description_. Defaults to None.
         """
         
@@ -256,7 +276,22 @@ class Mesher:
         self.mesh_fields.append(thtag)
 
     def set_domain_size(self, obj: GeoVolume | Selection, size: float):
+        """Manually set the maximum element size inside a domain
+
+        Args:
+            obj (GeoVolume | Selection): The volumetric domain
+            size (float): The maximum mesh size
+        """
         self._set_size_in_domain(obj.tags, size)
+
+    def set_face_size(self, obj: GeoSurface | Selection, size: float):
+        """Manually set the maximum element size on a face
+
+        Args:
+            obj (GeoSurface | Selection): The surface domain
+            size (float): The maximum size
+        """
+        self._set_size_on_face(obj.tags, size)
         
     def refine_conductor_edge(self, dimtags: list[tuple[int,int]], size):
         nodes = gmsh.model.getBoundary(dimtags, combined=False, recursive=False)

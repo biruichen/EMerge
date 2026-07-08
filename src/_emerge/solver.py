@@ -551,13 +551,13 @@ class SolveRoutine:
         solution = np.zeros((A.shape[0],), dtype=np.complex128)
         A = A.tocsc()
 
-        logger.debug(f'Removing {NF-NS} prescribed DOFs ({NS} left)')
+        logger.debug(f'    Removing {NF-NS} prescribed DOFs ({NS} left)')
 
         Asel = A[np.ix_(solve_ids, solve_ids)]
         bsel = b[solve_ids]
 
         if solver.real_only:
-            logger.debug('Converting to real matrix')
+            logger.debug('    Converting to real matrix')
             Asel, bsel = complex_to_real_block(Asel, bsel)
 
         # SORT
@@ -574,20 +574,20 @@ class SolveRoutine:
         x_solved, code = solver.solve(Asorted, bsorted, self.precon, reuse_factorization=reuse)
         end = time.time()
         logger.info(f'Time taken: {(end-start):.3f} seconds')
-        logger.debug(f'O(N²) performance = {(NS**2)/((end-start+1e-6)*1e6):.3f} MDoF/s')
+        logger.debug(f'    O(N²) performance = {(NS**2)/((end-start+1e-6)*1e6):.3f} MDoF/s')
         if self.use_sorter and solver.req_sorter:
             x = self.sorter.unsort(x_solved)
         else:
             x = x_solved
         
         if solver.real_only:
-            logger.debug('Converting back to complex matrix')
+            logger.debug('    Converting back to complex matrix')
             x = real_to_complex_block(x)
         
         solution[solve_ids] = x
         logger.debug('Solver complete!')
         if code:
-            logger.debug('Solver code: {code}')
+            logger.debug('    Solver code: {code}')
         return solution
     
     def eig(self, 
@@ -617,7 +617,7 @@ class SolveRoutine:
         NF = A.shape[0]
         NS = solve_ids.shape[0]
 
-        logger.debug(f'Removing {NF-NS} prescribed DOFs ({NS} left)')
+        logger.debug(f'    Removing {NF-NS} prescribed DOFs ({NS} left)')
 
         Asel = A[np.ix_(solve_ids, solve_ids)]
         Bsel = B[np.ix_(solve_ids, solve_ids)]

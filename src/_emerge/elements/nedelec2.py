@@ -82,7 +82,7 @@ class Nedelec2(FEMBasis):
         """
         if tetids is None:
             tetids = self._all_tet_ids
-        return ned2_tet_interp_curl(np.array([xs, ys,zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
+        return ned2_tet_interp_curl(np.array([xs, ys, zs]), field, self.mesh.tets, self.mesh.tris, self.mesh.edges, self.mesh.nodes, self.tet_to_field, c, tetids)
     
     ###### INDEX MAPPINGS
 

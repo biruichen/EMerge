@@ -26,6 +26,7 @@ from .geometry import GeoVolume
 from .mth.optimized import outward_normal
 from loguru import logger
 from functools import cache
+from .bc import Periodic
 
 @njit(f8(f8[:], f8[:], f8[:]), cache=True, nogil=True)
 def area(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray):
@@ -221,7 +222,8 @@ class Mesh3D:
         return np.array(sorted(list(set(nodes))))
     
     
-    def update(self):
+    def update(self, periodic_bcs: list[Periodic]):
+
         nodes, lin_coords, _  = gmsh.model.mesh.get_nodes()
         
         coords = lin_coords.reshape(-1, 3).T
@@ -233,22 +235,37 @@ class Mesh3D:
 
         ## Tetrahedras
 
-        _, tri_tags, tri_node_tags = gmsh.model.mesh.get_elements(3)
+        _, tet_tags, tet_node_tags = gmsh.model.mesh.get_elements(3)
         
         # The algorithm assumes that only one domain tag is returned in this function. 
         # Hence the use of tri_node_tags[0] in the next line. If domains are missing.
         # Make sure to combine all the entries in the tri-node-tags list
         
-        tri_node_tags = [self.n_t2i[int(t)] for t in tri_node_tags[0]]
-        tri_tags = np.squeeze(np.array(tri_tags))
+        tet_node_tags = [self.n_t2i[int(t)] for t in tet_node_tags[0]]
+        tet_tags = np.squeeze(np.array(tet_tags))
 
-        self.tets = np.array(tri_node_tags).reshape(-1,4).T
-        self.tet_i2t = {i: int(t) for i, t in enumerate(tri_tags)}
+        self.tets = np.array(tet_node_tags).reshape(-1,4).T
+        self.tet_i2t = {i: int(t) for i, t in enumerate(tet_tags)}
         self.tet_t2i = {t: i for i, t in self.tet_i2t.items()}
 
         self.centers = (self.nodes[:,self.tets[0,:]] + self.nodes[:,self.tets[1,:]] + self.nodes[:,self.tets[2,:]] + self.nodes[:,self.tets[3,:]]) / 4
-        #Extract unique edges and triangles
+        
+        # Resort node indices to be sorted on all periodic conditions
+        # This sorting makes sure that each edge and triangle on a source face is 
+        # sorted in the same order as the corresponding target face triangle or edge.
+        # In other words, if a source face triangle or edge index i1, i2, i3 is mapped to j1, j2, j3 respectively
+        # Then this ensures that if i1>i2>i3 then j1>j2>j3
+    
+        for bc in periodic_bcs:
+            nodemap, ids1, ids2 = self._derive_node_map(bc)
+            nodemap = {int(a): int(b) for a,b in nodemap.items()}
+            self.nodes[:,ids2] = self.nodes[:,ids1]
+            for itet in range(self.tets.shape[1]):
+                self.tets[:,itet] = [nodemap.get(i, i) for i in self.tets[:,itet]]
+            self.n_t2i = {t: nodemap.get(i,i) for t,i in self.n_t2i.items()}
+            self.n_i2t = {t: i for i, t in self.n_t2i.items()}
 
+        # Extract unique edges and triangles
         edgeset = set()
         triset = set()
         for itet in range(self.tets.shape[1]):
@@ -312,15 +329,15 @@ class Mesh3D:
             tets = tri_to_tet[itri]
             self.tri_to_tet[:len(tets), itri] = tets
         
-        _, tri_tags, tri_node_tags = gmsh.model.mesh.get_elements(2)
+        _, tet_tags, tet_node_tags = gmsh.model.mesh.get_elements(2)
         
         # The algorithm assumes that only one domain tag is returned in this function. 
         # Hence the use of tri_node_tags[0] in the next line. If domains are missing.
         # Make sure to combine all the entries in the tri-node-tags list
-        tri_node_tags = [self.n_t2i[int(t)] for t in tri_node_tags[0]]
-        tri_tags = np.squeeze(np.array(tri_tags))
+        tet_node_tags = [self.n_t2i[int(t)] for t in tet_node_tags[0]]
+        tet_tags = np.squeeze(np.array(tet_tags))
 
-        self.tri_i2t = {self.get_tri(*self.tris[:,i]): int(t) for i, t in enumerate(tri_tags)}
+        self.tri_i2t = {self.get_tri(*self.tris[:,i]): int(t) for i, t in enumerate(tet_tags)}
         self.tri_t2i = {t: i for i, t in self.tri_i2t.items()}
 
         self.tri_to_edge = np.ndarray((3, self.tris.shape[1]), dtype=int)
@@ -354,6 +371,44 @@ class Mesh3D:
 
         self.defined = True
     ## Higher order functions
+
+    def _derive_node_map(self, bc: Periodic) -> tuple[dict[int, int], np.ndarray, np.ndarray]:
+        """Computes an old to new node index mapping that preserves global sorting
+
+        Since basis function field direction is based on the order of indices in tetrahedron
+        for periodic boundaries it is important that all triangles and edges in each source
+        face are in the same order as the target face. This method computes the mapping for the
+        secondary face nodes
+
+        Args:
+            bc (Periodic): The Periodic boundary condition
+
+        Returns:
+            tuple[dict[int, int], np.ndarray, np.ndarray]: The node index mapping and the node index arrays
+        """
+
+        def gen_key(coord, mult):
+            return tuple([int(round(c*mult)) for c in coord])
+        
+
+        node_ids_1 = self.get_nodes(bc.face1.tags)
+        node_ids_2 = self.get_nodes(bc.face2.tags)
+        dv = np.array(bc.dv)
+        nodemapdict = defaultdict(lambda: [None, None])
+        
+        mult = 1e6
+        
+        for i1, i2 in zip(node_ids_1, node_ids_2):
+            nodemapdict[gen_key(self.nodes[:,i1], mult)][0] = i1
+            nodemapdict[gen_key(self.nodes[:,i2]-dv, mult)][1] = i2
+
+        nodemap = {i1: i2 for i1, i2 in nodemapdict.values()}
+
+        node_ids_2_unsorted = [nodemap[i] for i in sorted(node_ids_1)]
+        node_ids_2_sorted = sorted(node_ids_2_unsorted)
+        conv_map = {i1: i2 for i1, i2 in zip(node_ids_2_unsorted, node_ids_2_sorted)}
+        return conv_map, np.array(node_ids_2_unsorted), np.array(node_ids_2_sorted)
+
 
     def retreive(self, material_selector: Callable, volumes: list[GeoVolume]) -> np.ndarray:
         '''Retrieve the material properties of the geometry'''

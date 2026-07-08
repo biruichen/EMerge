@@ -16,7 +16,7 @@ class PVDisplaySettings:
         self.show_ygrid: bool = False
         self.show_zgrid: bool = True
         self.grid_line_width: float = 1.0
-        self.add_light: bool = True
+        self.add_light: bool = False
         self.light_angle: float = (20, -20)
         self.cast_shadows: bool = True
         self.background_bottom: str = "#c0d2e8"

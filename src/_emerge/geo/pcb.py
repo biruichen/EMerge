@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 import gmsh
 
-from ..cs import CoordinateSystem, GCS
+from ..cs import CoordinateSystem, GCS, Axis
 from ..geometry import GeoPolygon, GeoVolume, GeoSurface
 from ..material import Material, AIR, COPPER
 from .shapes import Box, Plate, Cyllinder
@@ -732,7 +732,8 @@ class PCBLayouter:
         poly = GeoPolygon([planetag,])
         poly._aux_data['width'] = stripline.width*self.unit
         poly._aux_data['height'] = height*self.unit
-        poly._aux_data['dir'] = self.cs.zax
+        poly._aux_data['vdir'] = self.cs.zax
+        poly._aux_data['idir'] = Axis(self.cs.xax.np*stripline.dirright[0] + self.cs.yax.np*stripline.dirright[1])
         return poly
 
     def modal_port(self,

@@ -112,6 +112,9 @@ class Electrodynamics3D:
                         mode_data = self.mode_data)
         return datapack
     
+    def get_data(self) -> EMSimData:
+        return self.freq_data
+    
     def load_data(self, datapack: dict) -> None:
         self.freq_data = datapack['freq_data']
         self.mode_data = datapack['mode_data']
@@ -178,7 +181,7 @@ class Electrodynamics3D:
         self.mesher.max_size = self.resolution * 299792458 / max(self.frequencies)
         self.mesher.min_size = 0.1 * self.mesher.max_size
 
-        logger.debug(f'Setting mesh size limits to: {self.mesher.min_size*1000:.1f}mm - {self.mesher.max_size*1000:.1f}')
+        logger.debug(f'Setting global mesh size range to: {self.mesher.min_size*1000:.3f}mm - {self.mesher.max_size*1000:.3f}mm')
     
     def set_frequency_range(self, fmin: float, fmax: float, Npoints: int) -> None:
         """Set the frequency range using the np.linspace syntax
@@ -404,7 +407,7 @@ class Electrodynamics3D:
     
     def define_lumped_port_integration_points(self, port: LumpedPort):
         logger.debug('Finding Lumped Port integration points')
-        field_axis = port.direction.np
+        field_axis = port.Vdirection.np
 
         points = self.mesh.get_nodes(port.tags)
 
@@ -418,15 +421,15 @@ class Electrodynamics3D:
 
         start = np.squeeze(np.mean(self.mesh.nodes[:,start_id],axis=1))
         logger.info(f'Starting node = {_dimstring(start)}')
-        end = start + port.direction.np*port.height
+        end = start + port.Vdirection.np*port.height
 
 
-        port.vintline = Line.from_points(start, end, 51)
+        port.vintline = Line.from_points(start, end, 21)
 
         logger.info(f'Ending node = {_dimstring(end)}')
         port.voltage_integration_points = (start, end)
         port.v_integration = True
-
+    
     def _compute_integration_line(self, group1: list[int], group2: list[int]) -> tuple[np.ndarray, np.ndarray]:
         """Computes an integration line for two node island groups by finding the closest two nodes.
         
@@ -445,7 +448,7 @@ class Electrodynamics3D:
         """
         nodes1 = self.mesh.nodes[:,group1]
         nodes2 = self.mesh.nodes[:,group2]
-        path = shortest_path(nodes1, nodes2, 11)
+        path = shortest_path(nodes1, nodes2, 21)
         centres = (path[:,1:] + path[:,:-1])/2
         dls = path[:,1:] - path[:,:-1]
         return centres, dls
@@ -639,7 +642,7 @@ class Electrodynamics3D:
                 jobs = []
                 
                 for freq in fgroup:
-                    logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
+                    logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
                     if automatic_modal_analysis:
                         self._compute_modes(freq)
                     # Assembling matrix problem
@@ -667,7 +670,7 @@ class Electrodynamics3D:
             data.er = np.squeeze(er[0,0,:])
             data.ur = np.squeeze(ur[0,0,:])
 
-            logger.debug(f'Frequency = {freq/1e9:.3f} GHz') 
+            logger.debug(f'Simulation frequency = {freq/1e9:.3f} GHz') 
 
             # Recording port information
             for active_port in all_ports:
@@ -707,7 +710,7 @@ class Electrodynamics3D:
                     tri_vertices = bc._tri_vertices
                     erp = ertri[:,:,tris]
                     urp = urtri[:,:,tris]
-                    pfield, pmode = self._compute_s_data(bc, fieldf, tri_vertices, k0, erp, urp)
+                    pfield, pmode = self._compute_s_data(bc, fieldf,tri_vertices, k0, erp, urp)
                     logger.debug(f'    Field amplitude = {np.abs(pfield):.3f}, Excitation= {np.abs(pmode):.2f}')
                     data.write_S(bc.port_number, active_port.port_number, pfield/Pout)
                 active_port.active=False
@@ -782,7 +785,7 @@ class Electrodynamics3D:
 
         # ITERATE OVER FREQUENCIES
         for freq in self.frequencies:
-            logger.info(f'Frequency = {freq/1e9:.3f} GHz') 
+            logger.info(f'Simulation frequency = {freq/1e9:.3f} GHz') 
             
             # Assembling matrix problem
             if automatic_modal_analysis:
@@ -916,11 +919,8 @@ class Electrodynamics3D:
             tuple[complex, complex]: _description_
         """
         if bc.v_integration:
-           
-            ln = bc.vintline
-            Ex, Ey, Ez = fieldfunction(*ln.cmid)
-
-            V = np.sum(Ex*ln.dxs + Ey*ln.dys + Ez*ln.dzs)
+            V = bc.vintline.line_integral(fieldfunction)
+            
             if bc.active:
                 a = bc.voltage
                 b = (V-bc.voltage)
@@ -930,6 +930,7 @@ class Electrodynamics3D:
             
             a = np.sqrt(a**2/(2*bc.Z0))
             b = np.sqrt(b**2/(2*bc.Z0))
+
             return b, a
         else:
             if bc.modetype(k0) == 'TEM':
@@ -953,7 +954,7 @@ class Electrodynamics3D:
         """
         self._bc_initialized = True
         wordmap = {
-            0: 'node',
+            0: 'point',
             1: 'edge',
             2: 'face',
             3: 'domain'
@@ -966,7 +967,7 @@ class Electrodynamics3D:
             for existing_bc in self.boundary_conditions:
                 excluded = existing_bc.exclude_bc(bc)
                 if excluded:
-                    logger.debug(f'Removed the following {wordmap[bc.dim]}: {excluded} from {existing_bc}')
+                    logger.debug(f'Removed the {excluded} tags from {wordmap[bc.dim]} BC {existing_bc}')
             
             self.boundary_conditions.append(bc)
 

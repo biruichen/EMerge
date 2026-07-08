@@ -35,7 +35,6 @@ class SimJob:
         self.store_if_needed()
 
     def maybe_store(self, matrix, name):
-        
         if self.store_limit is None:
             return matrix
         

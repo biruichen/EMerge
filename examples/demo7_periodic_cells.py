@@ -93,8 +93,8 @@ wgbc = em.bc.RectangularWaveguide(wg.face('bottom'), 1)
 # And then the absorbing boundary at the top
 abc = em.bc.AbsorbingBoundary(model['box'].face('back'))
 
-# We can simply create the necessary periodic boundary conditions using the bcs() method of our cell.
-periodic_bcs = periodic_cell.bcs()
+# We can simply create the necessary periodic boundary conditions using the bcs() property of our cell.
+periodic_bcs = periodic_cell.bcs
 
 # Finally we assign the boundary conditions. 
 model.physics.assign(wgbc, abc, *periodic_bcs)
@@ -104,7 +104,7 @@ model.physics.assign(wgbc, abc, *periodic_bcs)
 # ky = sin(θ)·sin(ϕ)
 # kx = cos(θ)ϕ
 # The arguments of the function are θ,ϕ in degrees.
-periodic_cell.set_scanangle(60,45)
+periodic_cell.set_scanangle(30,45)
 
 # And at last we run our simulation and view the results.
 data = model.physics.frequency_domain()
