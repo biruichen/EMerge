@@ -50,7 +50,7 @@ def main():
     dielectric.material = em.Material(er, tand=0.0, color="#207020", opacity=0.6)
     model.mw.resolution = 0.1
 
-    model.mw.set_frequency_range(1.5e9, 1.7e9, 32)
+    model.mw.set_frequency_range(1.5e9, 1.7e9, 21)
 
     model.define_geometry([dielectric, air, rpatch, port])
 
