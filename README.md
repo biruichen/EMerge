@@ -27,11 +27,13 @@ If you have a new NVidia card you can try the first test implementation of the c
 ```
 pip install emerge[cudss]
 ```
-The `scikit-umfpack` solver can be installed on Windows as well from binaries with conda. This is a bit more complicated and is described in the installation guide.
+The `scikit-umfpack` solver can be installed on Windows as well from binaries with conda. This is a bit more complicated and is described in the installation guide which can be downloaded from the official website: 
+
+https://www.emerge-software.com/resources
 
 ## Compatibility
 
-As far as I know, the library should work on all systems. PyPARDISO is not supported on ARM but the current SuperLU and UMFPACK solvers work on ARM as well. Both SuperLU and UMFPACK can run on multi-processing implementations as long as you do entry-point protection:
+As far as I know, the library should work on all systems. PARDISO is not supported on ARM but the current SuperLU and UMFPACK solvers work on ARM as well. Both SuperLU and UMFPACK can run on multi-processing implementations as long as you do entry-point protection:
 ```
 import emerge as em
 
@@ -62,6 +64,7 @@ To run this FEM library you need the following libraries
 Optional:
  - scikit-umfpack
  - cudss
+ - ezdxf
 
 ## Resources / Manual
 

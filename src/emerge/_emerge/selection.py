@@ -18,6 +18,7 @@
 from __future__ import annotations
 import gmsh # type: ignore
 import numpy as np
+from scipy.spatial import ConvexHull # type: ignore
 from .cs import Axis, CoordinateSystem, _parse_vector, Plane
 from typing import Callable, TypeVar, Iterable, Any
 
@@ -33,8 +34,6 @@ def align_rectangle_frame(pts3d: np.ndarray, normal: np.ndarray) -> dict[str, An
     """
     
     # 1. centroid
-    from scipy.spatial import ConvexHull # type: ignore
-    
     Omat = np.squeeze(np.mean(pts3d, axis=0))
 
     # 2. build e_x, e_y
